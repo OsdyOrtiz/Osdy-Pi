@@ -1,6 +1,6 @@
 {
   "name": "osdy-pi",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Osdy Pi package: themes, header, and custom editor for Pi.",
   "license": "MIT",
   "type": "module",
@@ -23,7 +23,8 @@
     ],
     "extensions": [
       "./extensions/osdy-pi.ts"
-    ]
+    ],
+    "image": "https://raw.githubusercontent.com/OsdyOrtiz/Osdy-Pi/main/mapche1.png"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
