@@ -1,6 +1,6 @@
 # Osdy Pi
 
-![Osdy Pi preview](https://raw.githubusercontent.com/OsdyOrtiz/Osdy-Pi/main/mapche1.png)
+<img width="1857" height="847" alt="image" src="https://github.com/user-attachments/assets/028eeb14-3f43-4f1c-9603-0c55a8d2856d" />
 
 Theme package for [Pi](https://github.com/earendil-works/pi) with the Osdy terminal style: neon pink/purple colors, a custom ASCII header, and a framed editor experience.
 
@@ -84,6 +84,8 @@ To install it from a local path:
 ```bash
 pi install /absolute/path/to/Osdy-Pi
 ```
+
+![Osdy Pi preview](https://raw.githubusercontent.com/OsdyOrtiz/Osdy-Pi/main/mapche1.png)
 
 ## Package contents
 
