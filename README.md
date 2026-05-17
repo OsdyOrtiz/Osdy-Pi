@@ -1,48 +1,73 @@
-# osdy-pi
+# Osdy Pi
 
-Pi package for the Osdy terminal experience.
+Theme package for [Pi](https://github.com/earendil-works/pi) with the Osdy terminal style: neon pink/purple colors, a custom ASCII header, and a framed editor experience.
 
-## Features
+## What you get
 
-- `osdy-pi-dark` neon pink/purple theme enabled by default on `session_start`.
-- `osdy-pi-light` neon pink/purple companion theme included.
-- Centered custom Osdy-Pi ASCII header with responsive Git, path, MCP, plugins, AGENTS, extensions, Pi version, and tools status.
-- Custom editor with four internal lines by default and smaller responsive fallback.
-- Full-width Osdy editor frame with complete top, bottom, and side borders in normal terminal widths.
-- Editor border status:
-  - top-right: current model and thinking level;
-  - bottom-left: input/output/cache tokens, accumulated cost, and context percentage/window.
-- Animation disabled.
+- **Dark theme:** `osdy-pi-dark`, enabled by default when the package starts.
+- **Light theme:** `osdy-pi-light`, with the same Osdy palette adapted for light terminals.
+- **Custom header:** centered Osdy-Pi ASCII branding with responsive status metadata.
+- **Custom editor:** full-width framed input area with model, thinking, token, cost, and context status.
+- **Clean layout:** the built-in footer/working row is hidden while Osdy Pi is enabled to avoid duplicated UI.
 
-## Install
+## Install in Pi
 
-Pi packages are not uploaded to a separate Pi registry. They are shared through npm, git, or a local path.
-
-### From npm
-
-After publishing this package to npm:
+Install the package directly from GitHub:
 
 ```bash
-pi install npm:osdy-pi
+pi install git:github.com/OsdyOrtiz/Osdy-Pi
 ```
 
-### From GitHub
-
-After pushing this package to a GitHub repository:
+Then start Pi normally:
 
 ```bash
-pi install git:github.com/<owner>/osdy-pi
+pi
 ```
 
-You can also pin a tag or branch:
+Osdy Pi enables the `osdy-pi-dark` theme and custom UI automatically on `session_start`.
 
-```bash
-pi install git:github.com/<owner>/osdy-pi@v0.1.0
+## Choose the theme manually
+
+If you only want to switch themes, open Pi settings:
+
+```text
+/settings
 ```
 
-### Local development
+Then select one of these theme names:
 
-To test this package from this repository without installing it permanently:
+```text
+osdy-pi-dark
+osdy-pi-light
+```
+
+You can also set it in your Pi `settings.json`:
+
+```json
+{
+  "theme": "osdy-pi-dark"
+}
+```
+
+Use `osdy-pi-light` instead if you prefer the light version.
+
+## Commands
+
+Osdy Pi includes a small command group:
+
+```text
+/osdy-pi enable
+/osdy-pi disable
+/osdy-pi status
+```
+
+- `enable` applies the dark Osdy theme, custom header, custom editor, and clean layout.
+- `disable` restores Pi's built-in header, editor, footer, and working visibility, then switches back to the previous theme or `dark`.
+- `status` shows whether the Osdy Pi UI is currently enabled.
+
+## Local install
+
+If you cloned this repository and want to test it locally:
 
 ```bash
 pi -e .
@@ -51,47 +76,28 @@ pi -e .
 To install it from a local path:
 
 ```bash
-pi install /absolute/path/to/osdy-pi
+pi install /absolute/path/to/Osdy-Pi
 ```
 
-## Publishing
-
-### npm
-
-```bash
-npm login
-npm pack --dry-run
-npm publish
-```
-
-Then verify with:
-
-```bash
-pi install npm:osdy-pi
-```
-
-### GitHub
-
-Initialize the repository, commit the package, push it to GitHub, then install it with the `git:` source shown above.
-
-## Commands
+## Package contents
 
 ```text
-/osdy-pi enable
-/osdy-pi disable
-/osdy-pi status
+themes/osdy-pi-dark.json
+themes/osdy-pi-light.json
+extensions/osdy-pi.ts
 ```
 
-`enable` applies the `osdy-pi-dark` theme, custom header, custom editor, and hides the built-in footer/working row to avoid duplicate status UI.
+The Pi manifest is declared in `package.json` through `pi.themes` and `pi.extensions`, so Pi can discover the themes and extension after installation.
 
-`disable` restores the built-in header, editor, footer, and working visibility, then switches back to the previously captured theme or `dark`.
+## Uninstall or turn off
 
-## Package resources
+To temporarily turn off the custom UI inside Pi:
 
-The Pi manifest is declared in `package.json`:
+```text
+/osdy-pi disable
+```
 
-- themes: `themes/osdy-pi-dark.json`, `themes/osdy-pi-light.json`
-- extension: `extensions/osdy-pi.ts`
+To remove the package completely, use Pi's package management command for installed packages.
 
 ## License
 
