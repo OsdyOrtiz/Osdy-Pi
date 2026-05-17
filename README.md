@@ -12,13 +12,20 @@ Visit the Osdy landing page: [landing-osdy.vercel.app](https://landing-osdy.verc
 - **Light theme:** `osdy-pi-light`, with the same Osdy palette adapted for light terminals.
 - **Custom header:** centered Osdy-Pi ASCII branding with responsive status metadata.
 - **Custom editor:** full-width framed input area with model, thinking, token, cost, and context status.
-- **Clean layout:** the built-in footer/working row is hidden while Osdy Pi is enabled to avoid duplicated UI.
+- **Custom working indicator:** a dedicated working widget/spinner appears above the text box, outside the editor frame.
+- **Clean layout:** the built-in working row is hidden while Osdy Pi is enabled to avoid duplicated UI.
 
 <img width="1280" height="433" alt="image" src="https://github.com/user-attachments/assets/20c7624d-9ad8-4494-97fb-6b6d81aaf328" />
 
 ## Install in Pi
 
-Install the package directly from GitHub:
+Install the published package from npm:
+
+```bash
+pi install npm:osdy-pi
+```
+
+You can also install it directly from GitHub:
 
 ```bash
 pi install git:github.com/OsdyOrtiz/Osdy-Pi
@@ -93,9 +100,21 @@ pi install /absolute/path/to/Osdy-Pi
 themes/osdy-pi-dark.json
 themes/osdy-pi-light.json
 extensions/osdy-pi.ts
+extensions/osdy-pi/
 ```
 
+`extensions/osdy-pi.ts` is the package entrypoint. The implementation lives in the modular `extensions/osdy-pi/` folder (runtime, UI, metrics, working controller, animation, border, and formatting helpers).
+
 The Pi manifest is declared in `package.json` through `pi.themes` and `pi.extensions`, so Pi can discover the themes and extension after installation.
+
+## Development
+
+If you are working on the package locally, you can run:
+
+```bash
+npm run typecheck
+npm run lint
+```
 
 ## Uninstall or turn off
 
