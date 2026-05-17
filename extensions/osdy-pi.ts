@@ -86,11 +86,19 @@ const HEADER_WIDTH = HEADER.reduce(
 const HEADER_FALLBACK = ["OSDY - PI", "</> Compilador de ideas"];
 
 class OsdyFooter implements Component {
+	private readonly ctx: ExtensionContext;
+	private readonly footerData: any;
+	private readonly theme: { fg(name: string, text: string): string };
+
 	constructor(
-		private readonly ctx: ExtensionContext,
-		private readonly footerData: any,
-		private readonly theme: { fg(name: string, text: string): string },
-	) {}
+		ctx: ExtensionContext,
+		footerData: any,
+		theme: { fg(name: string, text: string): string },
+	) {
+		this.ctx = ctx;
+		this.footerData = footerData;
+		this.theme = theme;
+	}
 
 	render(width: number): string[] {
 		let location = formatPath(this.ctx.cwd);
@@ -500,12 +508,15 @@ function applyOsdyPi(
 	ctx.ui.setWorkingVisible(false);
 
 	class OsdyEditor extends CustomEditor {
+		private readonly tuiRef: TUI;
+
 		constructor(
-			private readonly tuiRef: TUI,
+			tuiRef: TUI,
 			theme: EditorTheme,
 			keybindings: KeybindingsManager,
 		) {
 			super(tuiRef, theme, keybindings, { paddingX: 1 });
+			this.tuiRef = tuiRef;
 		}
 		render(width: number): string[] {
 			if (width < 4 || this.isShowingAutocomplete()) return super.render(width);
@@ -564,6 +575,24 @@ function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 	ctx.ui.notify("osdy-pi disabled", "info");
 }
 
+function claimOsdyVisualLayer(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+): void {
+	if (!state.enabled) return;
+	applyOsdyPi(pi, ctx, state);
+
+	// Some packages install startup headers asynchronously. Re-apply Osdy-Pi
+	// after startup so it remains the visual owner without disabling those
+	// packages' prompts, agents, MCP tools, commands, or other behavior.
+	for (const delayMs of [300, 1000]) {
+		setTimeout(() => {
+			if (state.enabled) applyOsdyPi(pi, ctx, state);
+		}, delayMs);
+	}
+}
+
 export default function (pi: ExtensionAPI) {
 	const state: OsdyState = { enabled: true, gitLabel: "-", agentsLabel: "-" };
 	pi.on("session_start", (_event, ctx) => {
@@ -589,7 +618,7 @@ export default function (pi: ExtensionAPI) {
 			.catch(() => {
 				state.agentsLabel = "0";
 			});
-		if (state.enabled) applyOsdyPi(pi, ctx, state);
+		claimOsdyVisualLayer(pi, ctx, state);
 	});
 	pi.registerCommand("osdy-pi", {
 		description: "Manage the Osdy Pi experience: enable, disable, or status.",
