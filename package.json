@@ -1,0 +1,32 @@
+{
+  "name": "osdy-pi",
+  "version": "0.1.0",
+  "description": "Osdy Pi package: themes, header, and custom editor for Pi.",
+  "license": "MIT",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "theme",
+    "extension"
+  ],
+  "files": [
+    "README.md",
+    "LICENSE",
+    "themes",
+    "extensions"
+  ],
+  "pi": {
+    "themes": [
+      "./themes/osdy-pi-dark.json",
+      "./themes/osdy-pi-light.json"
+    ],
+    "extensions": [
+      "./extensions/osdy-pi.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  }
+}
