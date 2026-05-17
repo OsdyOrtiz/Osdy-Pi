@@ -6,7 +6,7 @@ openspec/
 sdd/
 
 # Local design/reference images not published with package
-*.png
+
 
 # Dependencies and build output
 node_modules/
