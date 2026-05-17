@@ -4,6 +4,8 @@
 
 Theme package for [Pi](https://github.com/earendil-works/pi) with the Osdy terminal style: neon pink/purple colors, a custom ASCII header, and a framed editor experience.
 
+Visit the Osdy landing page: [landing-osdy.vercel.app](https://landing-osdy.vercel.app/).
+
 ## What you get
 
 - **Dark theme:** `osdy-pi-dark`, enabled by default when the package starts.
