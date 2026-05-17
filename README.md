@@ -1,6 +1,6 @@
 # Osdy Pi
 
-<img width="1857" height="847" alt="image" src="https://github.com/user-attachments/assets/84907a2b-4913-41a1-bc6e-1840490d5404" />
+![Osdy Pi preview](https://raw.githubusercontent.com/OsdyOrtiz/Osdy-Pi/main/mapche1.png)
 
 Theme package for [Pi](https://github.com/earendil-works/pi) with the Osdy terminal style: neon pink/purple colors, a custom ASCII header, and a framed editor experience.
 
@@ -13,7 +13,6 @@ Theme package for [Pi](https://github.com/earendil-works/pi) with the Osdy termi
 - **Clean layout:** the built-in footer/working row is hidden while Osdy Pi is enabled to avoid duplicated UI.
 
 <img width="1280" height="433" alt="image" src="https://github.com/user-attachments/assets/20c7624d-9ad8-4494-97fb-6b6d81aaf328" />
-
 
 ## Install in Pi
 
