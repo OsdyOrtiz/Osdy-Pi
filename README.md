@@ -1,5 +1,6 @@
 # Osdy Pi
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/e8c5e33d-0f43-4ff2-8b57-e5f3d310a68e" />
+
+<img width="1857" height="847" alt="image" src="https://github.com/user-attachments/assets/84907a2b-4913-41a1-bc6e-1840490d5404" />
 
 Theme package for [Pi](https://github.com/earendil-works/pi) with the Osdy terminal style: neon pink/purple colors, a custom ASCII header, and a framed editor experience.
 
