@@ -1,6 +1,6 @@
 {
 	"name": "osdy-pi",
-	"version": "0.1.6",
+	"version": "0.1.7",
 	"description": "Osdy Pi package: themes, header, and custom editor for Pi.",
 	"license": "MIT",
 	"type": "module",
