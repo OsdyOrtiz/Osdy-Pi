@@ -11,7 +11,7 @@ Visit the Osdy landing page: [landing-osdy.vercel.app](https://landing-osdy.verc
 - **Dark theme:** `osdy-pi-dark`, enabled by default when the package starts.
 - **Light theme:** `osdy-pi-light`, with the same Osdy palette adapted for light terminals.
 - **Simple theme:** `osdy-pi-simple`, a blue/red/slate console theme for the full Pi interface.
-- **Custom header:** centered Osdy-Pi ASCII branding with responsive status metadata.
+- **Custom header:** two selectable header styles with responsive status metadata: `osdy-theme` (default) and `classic`.
 - **Custom editor:** full-width framed input area with model, thinking, token, cost, and context status.
 - **Custom working indicator:** a dedicated working widget/spinner appears above the text box, outside the editor frame.
 - **Clean layout:** the built-in working row is hidden while Osdy Pi is enabled to avoid duplicated UI.
@@ -83,8 +83,8 @@ Osdy Pi includes a small command group:
 - `enable` applies the dark Osdy theme, custom header, custom editor, and clean layout.
 - `disable` restores Pi's built-in header, editor, footer, and working visibility, then switches back to the previous theme or `dark`.
 - `status` shows whether the Osdy Pi UI is currently enabled, including the active style.
-- `osdy-theme` is the default OsdyTheme header with pink, cyan, and purple styling.
-- `classic` keeps the previous classic header shape.
+- `osdy-theme` is the default OsdyTheme header with pink, cyan, and purple styling, plus the mascot glow on the right edge.
+- `classic` keeps the previous classic header shape with the shared mascot.
 - `/osdy-pi-osdy-theme` and `/osdy-pi-classic` are direct aliases.
 
 After changing a local extension, run `/reload` or restart Pi so the updated commands are registered.
@@ -110,6 +110,7 @@ pi install /absolute/path/to/Osdy-Pi
 ```text
 themes/osdy-pi-dark.json
 themes/osdy-pi-light.json
+themes/osdy-pi-simple.json
 extensions/osdy-pi.ts
 extensions/osdy-pi/
 ```
