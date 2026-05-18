@@ -29,6 +29,15 @@ Guidance for AI agents working in this repository.
 - UI/rendering code should not own business rules.
 - Keep side effects at the edges: filesystem, network, process execution, and UI notifications.
 
+## Osdy Pi package boundaries
+
+- `osdy-pi` may include visual experience and workflow ergonomics, including notifications, but keep subsystems modular inside the package.
+- Do not mix audio notification logic directly into header, editor, footer, or working-indicator rendering code.
+- Keep notification orchestration in dedicated runtime/service modules, not inline inside presentation helpers.
+- Resolve platform-specific sound playback behind a small service boundary so macOS, Windows, and future Linux support can evolve independently.
+- User-configurable sound files (`.mp3`/`.wav`) must be validated at the boundary before playback logic uses them.
+- Prefer silent or explicit fallback behavior over brittle platform assumptions when audio playback is unavailable.
+
 ## Tooling expectations
 
 - Use ESLint for consistency and unsafe-pattern detection.

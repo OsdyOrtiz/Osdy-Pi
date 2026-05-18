@@ -15,6 +15,7 @@ Visit the Osdy landing page: [landing-osdy.vercel.app](https://landing-osdy.verc
 - **Custom editor:** full-width framed input area with model, thinking, token, cost, and context status.
 - **Custom working indicator:** a dedicated working widget/spinner appears above the text box, outside the editor frame.
 - **Clean layout:** the built-in working row is hidden while Osdy Pi is enabled to avoid duplicated UI.
+- **Optional audio notifications:** configurable `.mp3`/`.wav` files for `completion`, `error`, `permission`, and `question` events on macOS and Windows.
 
 <img width="1280" height="433" alt="image" src="https://github.com/user-attachments/assets/20c7624d-9ad8-4494-97fb-6b6d81aaf328" />
 
@@ -74,6 +75,7 @@ Osdy Pi includes a small command group:
 /osdy-pi enable
 /osdy-pi disable
 /osdy-pi status
+/osdy-pi sound setup
 /osdy-pi osdy-theme
 /osdy-pi classic
 /osdy-pi-osdy-theme
@@ -83,11 +85,78 @@ Osdy Pi includes a small command group:
 - `enable` applies the dark Osdy theme, custom header, custom editor, and clean layout.
 - `disable` restores Pi's built-in header, editor, footer, and working visibility, then switches back to the previous theme or `dark`.
 - `status` shows whether the Osdy Pi UI is currently enabled, including the active style.
+- `sound setup` opens the guided global sound-setup wizard for audio notifications.
 - `osdy-theme` is the default OsdyTheme header with pink, cyan, and purple styling, plus the mascot glow on the right edge.
 - `classic` keeps the previous classic header shape with the shared mascot.
 - `/osdy-pi-osdy-theme` and `/osdy-pi-classic` are direct aliases.
 
 After changing a local extension, run `/reload` or restart Pi so the updated commands are registered.
+
+## Audio notifications
+
+Osdy Pi can play your own sound files for these product-level events:
+
+- `completion`: the full orchestrator flow finishes and Pi returns control to input.
+- `error`: a real tool execution failure occurs during the flow.
+- `permission`: reserved for future explicit Pi approval hooks, dormant by default today.
+- `question`: reserved for future explicit Pi question hooks, dormant by default today.
+
+Initial audio playback support is implemented for:
+
+- macOS
+- Windows
+
+Unsupported platforms fall back safely without crashing Osdy Pi.
+
+### Supported files
+
+Only readable `.mp3` and `.wav` files are accepted.
+
+### Configure sounds
+
+The preferred setup path is the guided Osdy Pi wizard:
+
+```text
+/osdy-pi sound setup
+```
+
+The wizard:
+
+- walks through `completion`, `error`, `permission`, and `question`;
+- lets you keep, replace, clear, or skip each event;
+- validates every selected path before save;
+- blocks save if any selected file is missing, unreadable, not a regular file, or not `.mp3`/`.wav`;
+- stores accepted settings globally at `~/.pi/agent/extensions/osdy-pi/audio-notifications.json` (or `$PI_CODING_AGENT_DIR/extensions/osdy-pi/audio-notifications.json` when that env var is set).
+
+Saved global sound paths apply across restarts and projects that use Osdy Pi.
+
+### Startup flags still work
+
+You can still pass sound paths as Pi flags when starting the session:
+
+```bash
+pi \
+  --osdy-pi-sound-completion /absolute/path/completion.wav \
+  --osdy-pi-sound-error /absolute/path/error.mp3 \
+  --osdy-pi-sound-permission /absolute/path/permission.wav \
+  --osdy-pi-sound-question /absolute/path/question.wav
+```
+
+Precedence is per event:
+
+1. startup flag
+2. saved global Osdy Pi setting
+3. unconfigured
+
+Notes:
+
+- Empty or omitted flags mean that event does not override the saved global setting.
+- Relative startup-flag paths resolve from the current working directory.
+- The setup wizard saves normalized absolute paths for global settings.
+- `~` expands to your home directory.
+- Invalid, unreadable, or unsupported files are skipped at playback time without changing existing UI behavior.
+- If a file was valid when saved but later disappears or becomes unreadable, Osdy Pi fails safely and skips playback for that event.
+- Audio notifications and sound setup are additive only, they do not change the current header, editor, footer, working indicator, theme, or commands.
 
 ## Local install
 

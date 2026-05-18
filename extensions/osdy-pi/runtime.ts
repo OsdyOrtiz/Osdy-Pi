@@ -2,7 +2,13 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { createAudioEventRouter } from "./audio-event-router.js";
+import { registerAudioNotificationFlags } from "./audio-notification-config.js";
+import { createAudioNotificationService } from "./audio-notification-service.js";
+import { createAudioPlaybackAdapter } from "./audio-playback.js";
+import { createAudioSoundSettingsStore } from "./audio-sound-settings.js";
 import { applyOsdyPi, disableOsdyPi, notifyStatus } from "./runtime-helpers.js";
+import { runSoundSetupWizard } from "./sound-setup-wizard.js";
 import type { HeaderVariant, OsdyState, WorkingWidgetState } from "./types.js";
 import {
 	createWorkingController,
@@ -105,49 +111,82 @@ function setHeaderVariant(
 	ctx.ui.notify(`osdy-pi style: ${variant}`, "info");
 }
 
+function getOsdyCommandCompletions(prefix: string) {
+	const trimmed = prefix.trim();
+	const parts = parseCommandArgs(trimmed);
+	if (parts.length === 0) {
+		return ["enable", "disable", "status", "sound", ...HEADER_VARIANTS].map(
+			(value) => ({ value, label: value }),
+		);
+	}
+	if (trimmed === "sound") {
+		return [{ value: "sound setup", label: "sound setup" }];
+	}
+	if (parts.length === 1) {
+		const valuePrefix = parts[0] ?? "";
+		return ["enable", "disable", "status", "sound", ...HEADER_VARIANTS]
+			.filter((value) => value.startsWith(valuePrefix))
+			.map((value) => ({ value, label: value }));
+	}
+	if (parts[0] === "sound" && parts.length === 2) {
+		const valuePrefix = parts[1] ?? "";
+		return ["setup"]
+			.filter((value) => value.startsWith(valuePrefix))
+			.map((value) => ({ value: `sound ${value}`, label: `sound ${value}` }));
+	}
+	return null;
+}
+
+async function handleSoundCommand(
+	args: string[],
+	ctx: ExtensionContext,
+	settingsStore: ReturnType<typeof createAudioSoundSettingsStore>,
+): Promise<void> {
+	const [subcommand] = args;
+	if (subcommand === "setup") {
+		await runSoundSetupWizard(ctx, settingsStore);
+		return;
+	}
+	ctx.ui.notify("Usage: /osdy-pi sound setup", "warning");
+}
+
 function registerCommand(
 	pi: ExtensionAPI,
 	state: OsdyState,
 	workingState: WorkingWidgetState,
 	controller: WorkingController,
+	settingsStore: ReturnType<typeof createAudioSoundSettingsStore>,
 ): void {
 	pi.registerCommand("osdy-pi", {
 		description:
-			"Manage the Osdy Pi experience: enable, disable, status, or style.",
-		getArgumentCompletions(prefix: string) {
-			const trimmed = prefix.trim();
-			const parts = parseCommandArgs(trimmed);
-			if (parts.length <= 1) {
-				const valuePrefix = parts[0] ?? "";
-				return ["enable", "disable", "status", ...HEADER_VARIANTS]
-					.filter((value) => value.startsWith(valuePrefix))
-					.map((value) => ({ value, label: value }));
-			}
-			return null;
-		},
-		handler: (args, ctx) => {
-			const [action = "status"] = parseCommandArgs(args);
+			"Manage the Osdy Pi experience: enable, disable, status, style, or sound setup.",
+		getArgumentCompletions: getOsdyCommandCompletions,
+		handler: async (args, ctx) => {
+			const [action = "status", ...rest] = parseCommandArgs(args);
 			if (action === "enable") {
 				enableOsdyPi(pi, ctx, state, workingState, controller);
-				return Promise.resolve();
+				return;
 			}
 			if (action === "disable") {
 				disableOsdyPiCommand(ctx, state, controller);
-				return Promise.resolve();
+				return;
 			}
 			if (action === "status") {
 				notifyStatus(ctx, state);
-				return Promise.resolve();
+				return;
+			}
+			if (action === "sound") {
+				await handleSoundCommand(rest, ctx, settingsStore);
+				return;
 			}
 			if (isHeaderVariant(action)) {
 				setHeaderVariant(pi, ctx, state, workingState, action);
-				return Promise.resolve();
+				return;
 			}
 			ctx.ui.notify(
-				"Usage: /osdy-pi enable | disable | status | osdy-theme | classic",
+				"Usage: /osdy-pi enable | disable | status | sound setup | osdy-theme | classic",
 				"warning",
 			);
-			return Promise.resolve();
 		},
 	});
 
@@ -177,18 +216,36 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		tui: undefined,
 	};
 	const controller = createWorkingController(state, workingState);
+	const settingsStore = createAudioSoundSettingsStore();
+	registerAudioNotificationFlags(pi);
+	const audioRouter = createAudioEventRouter(
+		createAudioNotificationService(
+			pi,
+			createAudioPlaybackAdapter(),
+			settingsStore,
+		),
+	);
 
-	pi.on("agent_start", () => controller.onAgentStart());
-	pi.on("agent_end", () => controller.onAgentEnd());
+	pi.on("agent_start", () => {
+		controller.onAgentStart();
+		audioRouter.onAgentStart();
+	});
+	pi.on("agent_end", (_event, ctx) => {
+		controller.onAgentEnd();
+		audioRouter.onAgentEnd(ctx);
+	});
 	pi.on("tool_execution_start", (event) =>
 		controller.onToolStart(event.toolName),
 	);
-	pi.on("tool_execution_end", () => controller.onToolEnd());
+	pi.on("tool_execution_end", (event, ctx) => {
+		controller.onToolEnd();
+		audioRouter.onToolExecutionEnd(event.isError === true, ctx);
+	});
 	pi.on("session_shutdown", () => controller.onShutdown());
 	pi.on("session_start", (_event, ctx) => {
 		loadSessionMetadata(pi, ctx, state);
 		claimOsdyVisualLayer(pi, ctx, state, workingState);
 	});
 
-	registerCommand(pi, state, workingState, controller);
+	registerCommand(pi, state, workingState, controller, settingsStore);
 }
