@@ -3,7 +3,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { applyOsdyPi, disableOsdyPi, notifyStatus } from "./runtime-helpers.js";
-import type { OsdyState, WorkingWidgetState } from "./types.js";
+import type { HeaderVariant, OsdyState, WorkingWidgetState } from "./types.js";
 import {
 	createWorkingController,
 	type WorkingController,
@@ -61,8 +61,14 @@ function loadSessionMetadata(
 		});
 }
 
-function parseCommandAction(args: string): string {
-	return args.trim().split(/\s+/, 1)[0] || "status";
+function parseCommandArgs(args: string): string[] {
+	return args.trim().split(/\s+/).filter(Boolean);
+}
+
+const HEADER_VARIANTS = ["osdy-theme", "classic"] as const;
+
+function isHeaderVariant(value: string): value is HeaderVariant {
+	return HEADER_VARIANTS.includes(value as HeaderVariant);
 }
 
 function enableOsdyPi(
@@ -87,6 +93,18 @@ function disableOsdyPiCommand(
 	disableOsdyPi(ctx, state);
 }
 
+function setHeaderVariant(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+	workingState: WorkingWidgetState,
+	variant: HeaderVariant,
+): void {
+	state.headerVariant = variant;
+	if (state.enabled) applyOsdyPi(pi, ctx, state, workingState);
+	ctx.ui.notify(`osdy-pi style: ${variant}`, "info");
+}
+
 function registerCommand(
 	pi: ExtensionAPI,
 	state: OsdyState,
@@ -94,14 +112,21 @@ function registerCommand(
 	controller: WorkingController,
 ): void {
 	pi.registerCommand("osdy-pi", {
-		description: "Manage the Osdy Pi experience: enable, disable, or status.",
+		description:
+			"Manage the Osdy Pi experience: enable, disable, status, or style.",
 		getArgumentCompletions(prefix: string) {
-			return ["enable", "disable", "status"]
-				.filter((value) => value.startsWith(prefix.trim()))
-				.map((value) => ({ value, label: value }));
+			const trimmed = prefix.trim();
+			const parts = parseCommandArgs(trimmed);
+			if (parts.length <= 1) {
+				const valuePrefix = parts[0] ?? "";
+				return ["enable", "disable", "status", ...HEADER_VARIANTS]
+					.filter((value) => value.startsWith(valuePrefix))
+					.map((value) => ({ value, label: value }));
+			}
+			return null;
 		},
 		handler: (args, ctx) => {
-			const action = parseCommandAction(args);
+			const [action = "status"] = parseCommandArgs(args);
 			if (action === "enable") {
 				enableOsdyPi(pi, ctx, state, workingState, controller);
 				return Promise.resolve();
@@ -114,14 +139,36 @@ function registerCommand(
 				notifyStatus(ctx, state);
 				return Promise.resolve();
 			}
-			ctx.ui.notify("Usage: /osdy-pi enable | disable | status", "warning");
+			if (isHeaderVariant(action)) {
+				setHeaderVariant(pi, ctx, state, workingState, action);
+				return Promise.resolve();
+			}
+			ctx.ui.notify(
+				"Usage: /osdy-pi enable | disable | status | osdy-theme | classic",
+				"warning",
+			);
 			return Promise.resolve();
 		},
 	});
+
+	for (const variant of HEADER_VARIANTS) {
+		pi.registerCommand(`osdy-pi-${variant}`, {
+			description: `Switch Osdy Pi header to ${variant}.`,
+			handler: (_args, ctx) => {
+				setHeaderVariant(pi, ctx, state, workingState, variant);
+				return Promise.resolve();
+			},
+		});
+	}
 }
 
 export function registerOsdyPi(pi: ExtensionAPI): void {
-	const state: OsdyState = { enabled: true, gitLabel: "-", agentsLabel: "-" };
+	const state: OsdyState = {
+		enabled: true,
+		headerVariant: "osdy-theme",
+		gitLabel: "-",
+		agentsLabel: "-",
+	};
 	const workingState: WorkingWidgetState = {
 		active: false,
 		label: "Working...",

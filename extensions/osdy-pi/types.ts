@@ -2,8 +2,11 @@ import type { TUI } from "@earendil-works/pi-tui";
 
 export type AnimationMode = "off" | "intro" | "continuous";
 
+export type HeaderVariant = "osdy-theme" | "classic";
+
 export type OsdyState = {
 	enabled: boolean;
+	headerVariant: HeaderVariant;
 	previousThemeName?: string;
 	gitLabel: string;
 	agentsLabel: string;

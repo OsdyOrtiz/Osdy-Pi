@@ -95,7 +95,7 @@ export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 
 export function notifyStatus(ctx: ExtensionContext, state: OsdyState): void {
 	ctx.ui.notify(
-		`osdy-pi ${state.enabled ? "enabled" : "disabled"} · theme ${ctx.ui.theme.name ?? "unknown"} · animation ${asciiAnimationMode()} · ${modelLabel(ctx)} · ${usageLabel(ctx).trim()}`,
+		`osdy-pi ${state.enabled ? "enabled" : "disabled"} · theme ${ctx.ui.theme.name ?? "unknown"} · style ${state.headerVariant} · animation ${asciiAnimationMode()} · ${modelLabel(ctx)} · ${usageLabel(ctx).trim()}`,
 		"info",
 	);
 }

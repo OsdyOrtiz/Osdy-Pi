@@ -10,6 +10,7 @@ Visit the Osdy landing page: [landing-osdy.vercel.app](https://landing-osdy.verc
 
 - **Dark theme:** `osdy-pi-dark`, enabled by default when the package starts.
 - **Light theme:** `osdy-pi-light`, with the same Osdy palette adapted for light terminals.
+- **Simple theme:** `osdy-pi-simple`, a blue/red/slate console theme for the full Pi interface.
 - **Custom header:** centered Osdy-Pi ASCII branding with responsive status metadata.
 - **Custom editor:** full-width framed input area with model, thinking, token, cost, and context status.
 - **Custom working indicator:** a dedicated working widget/spinner appears above the text box, outside the editor frame.
@@ -52,6 +53,7 @@ Then select one of these theme names:
 ```text
 osdy-pi-dark
 osdy-pi-light
+osdy-pi-simple
 ```
 
 You can also set it in your Pi `settings.json`:
@@ -62,7 +64,7 @@ You can also set it in your Pi `settings.json`:
 }
 ```
 
-Use `osdy-pi-light` instead if you prefer the light version.
+Use `osdy-pi-light` if you prefer the light version, or `osdy-pi-simple` if you want the blue/red/slate palette across the whole console.
 
 ## Commands
 
@@ -72,11 +74,20 @@ Osdy Pi includes a small command group:
 /osdy-pi enable
 /osdy-pi disable
 /osdy-pi status
+/osdy-pi osdy-theme
+/osdy-pi classic
+/osdy-pi-osdy-theme
+/osdy-pi-classic
 ```
 
 - `enable` applies the dark Osdy theme, custom header, custom editor, and clean layout.
 - `disable` restores Pi's built-in header, editor, footer, and working visibility, then switches back to the previous theme or `dark`.
-- `status` shows whether the Osdy Pi UI is currently enabled.
+- `status` shows whether the Osdy Pi UI is currently enabled, including the active style.
+- `osdy-theme` is the default OsdyTheme header with pink, cyan, and purple styling.
+- `classic` keeps the previous classic header shape.
+- `/osdy-pi-osdy-theme` and `/osdy-pi-classic` are direct aliases.
+
+After changing a local extension, run `/reload` or restart Pi so the updated commands are registered.
 
 ## Local install
 

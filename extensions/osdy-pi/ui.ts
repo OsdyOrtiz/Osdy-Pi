@@ -12,18 +12,21 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
-import { animateAsciiLine, asciiAnimationMode } from "./animation.js";
+import {
+	animateAsciiLine,
+	animateAsciiLineWithToneMap,
+	asciiAnimationMode,
+} from "./animation.js";
 import { fitBorder } from "./border.js";
 import {
 	ANIMATION_INTERVAL_MS,
-	HEADER,
+	headerWidth,
 	HEADER_FALLBACK,
-	HEADER_WIDTH,
+	HEADER_VARIANTS,
 	INTRO_ANIMATION_FRAMES,
-	MASCOT,
 	MASCOT_GAP,
 	MASCOT_MIN_ROWS,
-	MASCOT_WIDTH,
+	mascotWidth,
 	WORKING_SPINNER_FRAMES,
 } from "./constants.js";
 import { formatPath } from "./format.js";
@@ -130,39 +133,85 @@ export function createHeaderComponent(
 			render(width: number): string[] {
 				const animationStyle =
 					animateAscii && !animationComplete ? "animated" : "static";
+				const variant = HEADER_VARIANTS[state.headerVariant];
+				const fullHeaderWidth = headerWidth(state.headerVariant);
+				const canUseFullHeader =
+					width >= fullHeaderWidth &&
+					(variant.minRowsForFull === undefined ||
+						_tui.terminal.rows >= variant.minRowsForFull);
+				const mascotLinesSource = variant.mascot ?? [];
+				const mascotToneMap = variant.mascotMap ?? [];
+				const fullMascotWidth = mascotWidth(state.headerVariant);
 				const showMascot =
+					canUseFullHeader &&
+					mascotLinesSource.length > 0 &&
 					_tui.terminal.rows >= MASCOT_MIN_ROWS &&
-					width >= MASCOT_WIDTH + MASCOT_GAP + HEADER_WIDTH;
-				const useFullHeader = width >= HEADER_WIDTH;
-				const headerLines = useFullHeader ? [...HEADER] : [...HEADER_FALLBACK];
+					width >= fullMascotWidth + MASCOT_GAP + fullHeaderWidth;
+				const headerLines = canUseFullHeader
+					? [...variant.header]
+					: [...(variant.fallbackHeader ?? HEADER_FALLBACK)];
+				const headerToneMap = canUseFullHeader ? (variant.headerMap ?? []) : [];
 				const metadataRows = renderHeaderMetadata(pi, ctx, state, width);
 				const logoLines = headerLines.map((line, index) => {
-					const baseColor = useFullHeader && index >= 6 ? "mdLink" : "accent";
+					const toneLine = headerToneMap[index];
+					if (toneLine && variant.headerTonePalette) {
+						return animateAsciiLineWithToneMap(
+							line,
+							toneLine,
+							index,
+							frame,
+							theme,
+							variant.headerTonePalette,
+							animationStyle,
+						);
+					}
+					const palette = canUseFullHeader
+						? variant.linePalette(index)
+						: (variant.fallbackLinePalette?.(index) ??
+							variant.linePalette(index));
 					return animateAsciiLine(
 						line,
 						index,
 						frame,
 						theme,
-						baseColor,
-						"mdHeading",
-						"mdLink",
+						palette.baseColor,
+						palette.highlightColor,
+						palette.trailColor,
 						animationStyle,
 					);
 				});
-				const mascotLines = MASCOT.map((line, index) =>
-					animateAsciiLine(
+				const mascotLines = mascotLinesSource.map((line, index) => {
+					const toneLine = mascotToneMap[index];
+					if (toneLine && variant.mascotTonePalette) {
+						return animateAsciiLineWithToneMap(
+							line,
+							toneLine,
+							index,
+							frame,
+							theme,
+							variant.mascotTonePalette,
+							animationStyle,
+						);
+					}
+					return animateAsciiLine(
 						line,
 						index,
 						frame,
 						theme,
-						"muted",
-						"mdCode",
-						"muted",
+						variant.mascotPalette.baseColor,
+						variant.mascotPalette.highlightColor,
+						variant.mascotPalette.trailColor,
 						animationStyle,
-					),
-				);
+					);
+				});
 				const headerBlock = showMascot
-					? composeSideBySide(mascotLines, logoLines, width)
+					? composeSideBySide(
+							mascotLines,
+							fullMascotWidth,
+							logoLines,
+							width,
+							fullHeaderWidth,
+						)
 					: logoLines.map((line) => fitCenterVisible(line, width));
 				return [
 					"",

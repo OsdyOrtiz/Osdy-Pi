@@ -1,6 +1,6 @@
 {
 	"name": "osdy-pi",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "Osdy Pi package: themes, header, and custom editor for Pi.",
 	"license": "MIT",
 	"type": "module",
@@ -24,7 +24,8 @@
 	"pi": {
 		"themes": [
 			"./themes/osdy-pi-dark.json",
-			"./themes/osdy-pi-light.json"
+			"./themes/osdy-pi-light.json",
+			"./themes/osdy-pi-simple.json"
 		],
 		"extensions": [
 			"./extensions/osdy-pi.ts"

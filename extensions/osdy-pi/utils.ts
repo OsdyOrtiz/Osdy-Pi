@@ -1,6 +1,6 @@
 import type { TUI } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { HEADER_WIDTH, MASCOT_GAP, MASCOT_WIDTH } from "./constants.js";
+import { MASCOT_GAP } from "./constants.js";
 
 export function sanitizeStatusText(text: string): string {
 	return text
@@ -26,27 +26,27 @@ export function padVisibleRight(line: string, width: number): string {
 	return `${line}${" ".repeat(Math.max(0, width - visibleWidth(line)))}`;
 }
 
-function getCombinedHeaderWidth(): number {
-	return MASCOT_WIDTH + MASCOT_GAP + HEADER_WIDTH;
-}
-
 export function composeSideBySide(
 	leftLines: string[],
+	leftWidth: number,
 	rightLines: string[],
 	width: number,
+	rightWidth: number,
 ): string[] {
-	const combinedWidth = getCombinedHeaderWidth();
+	const combinedWidth = leftWidth + MASCOT_GAP + rightWidth;
 	if (width < combinedWidth) return rightLines;
 	const leftPad = " ".repeat(
 		Math.max(0, Math.floor((width - combinedWidth) / 2)),
 	);
 	const rows = Math.max(leftLines.length, rightLines.length);
 	const topOffset = Math.max(0, Math.floor((rows - rightLines.length) / 2));
-	return Array.from({ length: rows }, (_, index) => {
-		const left = padVisibleRight(leftLines[index] ?? "", MASCOT_WIDTH);
+	const composedRows: string[] = [];
+	for (let index = 0; index < rows; index += 1) {
+		const left = padVisibleRight(leftLines[index] ?? "", leftWidth);
 		const right = rightLines[index - topOffset] ?? "";
-		return `${leftPad}${left}${" ".repeat(MASCOT_GAP)}${right}`;
-	});
+		composedRows.push(`${leftPad}${left}${" ".repeat(MASCOT_GAP)}${right}`);
+	}
+	return composedRows;
 }
 
 export function internalLineTarget(tui: TUI): number {
