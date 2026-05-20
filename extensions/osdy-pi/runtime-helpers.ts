@@ -3,15 +3,24 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { asciiAnimationMode } from "./animation.js";
-import { THEME_NAME, WORKING_WIDGET_KEY } from "./constants.js";
+import {
+	THEME_NAME,
+	WORKING_TREE_WIDGET_KEY,
+	WORKING_WIDGET_KEY,
+} from "./constants.js";
 import { modelLabel, usageLabel } from "./metrics.js";
-import type { OsdyState, WorkingWidgetState } from "./types.js";
+import type {
+	OsdyState,
+	WorkingTreeState,
+	WorkingWidgetState,
+} from "./types.js";
 import {
 	createEditorComponent,
 	createFooterComponent,
 	createHeaderComponent,
 	createWorkingWidgetFactory,
 } from "./ui.js";
+import { createWorkingTreeWidgetFactory } from "./working-tree.js";
 
 function shouldRememberTheme(
 	previousThemeName: string | undefined,
@@ -52,6 +61,7 @@ export function mountOsdyUi(
 	ctx: ExtensionContext,
 	state: OsdyState,
 	workingState: WorkingWidgetState,
+	workingTreeState: WorkingTreeState,
 ): void {
 	ctx.ui.setHeader(createHeaderComponent(pi, ctx, state));
 	ctx.ui.setFooter((_tui, theme, footerData) =>
@@ -63,6 +73,11 @@ export function mountOsdyUi(
 		createWorkingWidgetFactory(workingState),
 		{ placement: "aboveEditor" },
 	);
+	ctx.ui.setWidget(
+		WORKING_TREE_WIDGET_KEY,
+		createWorkingTreeWidgetFactory(workingTreeState),
+		{ placement: state.workingTreePlacement },
+	);
 	ctx.ui.setEditorComponent(createEditorComponent(pi, ctx));
 }
 
@@ -71,12 +86,13 @@ export function applyOsdyPi(
 	ctx: ExtensionContext,
 	state: OsdyState,
 	workingState: WorkingWidgetState,
+	workingTreeState: WorkingTreeState,
 	notify = false,
 ): void {
 	if (!ctx.hasUI) return;
 	rememberPreviousTheme(ctx, state);
 	applyOsdyTheme(ctx);
-	mountOsdyUi(pi, ctx, state, workingState);
+	mountOsdyUi(pi, ctx, state, workingState, workingTreeState);
 	if (notify) ctx.ui.notify("osdy-pi enabled", "info");
 }
 
@@ -86,6 +102,7 @@ export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 	ctx.ui.setEditorComponent(undefined);
 	ctx.ui.setFooter(undefined);
 	ctx.ui.setWidget(WORKING_WIDGET_KEY, undefined);
+	ctx.ui.setWidget(WORKING_TREE_WIDGET_KEY, undefined);
 	ctx.ui.setWorkingVisible(true);
 	const targetTheme = state.previousThemeName ?? "dark";
 	const result = ctx.ui.setTheme(targetTheme);
@@ -95,7 +112,7 @@ export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 
 export function notifyStatus(ctx: ExtensionContext, state: OsdyState): void {
 	ctx.ui.notify(
-		`osdy-pi ${state.enabled ? "enabled" : "disabled"} · theme ${ctx.ui.theme.name ?? "unknown"} · style ${state.headerVariant} · animation ${asciiAnimationMode()} · ${modelLabel(ctx)} · ${usageLabel(ctx).trim()}`,
+		`osdy-pi ${state.enabled ? "enabled" : "disabled"} · working-tree ${state.workingTreeEnabled ? "on" : "off"} · widget ${state.workingTreePlacement === "aboveEditor" ? "top" : "bottom"} · theme ${ctx.ui.theme.name ?? "unknown"} · style ${state.headerVariant} · animation ${asciiAnimationMode()} · ${modelLabel(ctx)} · ${usageLabel(ctx).trim()}`,
 		"info",
 	);
 }

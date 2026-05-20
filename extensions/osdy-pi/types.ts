@@ -4,12 +4,16 @@ export type AnimationMode = "off" | "intro" | "continuous";
 
 export type HeaderVariant = "osdy-theme" | "classic";
 
+export type WorkingTreePlacement = "aboveEditor" | "belowEditor";
+
 export type OsdyState = {
 	enabled: boolean;
 	headerVariant: HeaderVariant;
 	previousThemeName?: string;
 	gitLabel: string;
 	agentsLabel: string;
+	workingTreeEnabled: boolean;
+	workingTreePlacement: WorkingTreePlacement;
 };
 
 export type WorkingWidgetState = {
@@ -17,6 +21,33 @@ export type WorkingWidgetState = {
 	label: string;
 	frame: number;
 	timer: ReturnType<typeof setInterval> | undefined;
+	tui: TUI | undefined;
+};
+
+export type WorkingTreeFileSummary = {
+	path: string;
+	additions: number;
+	removals: number;
+	staged: boolean;
+	unstaged: boolean;
+	untracked: boolean;
+};
+
+export type WorkingTreeSnapshot = {
+	files: WorkingTreeFileSummary[];
+	totalFiles: number;
+	stagedFiles: number;
+	unstagedFiles: number;
+	untrackedFiles: number;
+	additions: number;
+	removals: number;
+};
+
+export type WorkingTreeState = {
+	enabled: boolean;
+	loading: boolean;
+	snapshot: WorkingTreeSnapshot | null;
+	error: string | undefined;
 	tui: TUI | undefined;
 };
 

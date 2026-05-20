@@ -18,6 +18,7 @@ export const WORKING_SPINNER_FRAMES = [
   "⠏",
 ];
 export const WORKING_WIDGET_KEY = "osdy-pi-working";
+export const WORKING_TREE_WIDGET_KEY = "osdy-pi-working-tree";
 export const MASCOT_MIN_ROWS = 34;
 export const MASCOT_GAP = 0;
 

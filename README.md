@@ -76,6 +76,13 @@ Osdy Pi includes a small command group:
 /osdy-pi disable
 /osdy-pi status
 /osdy-pi sound setup
+/osdy-pi working-tree on
+/osdy-pi working-tree off
+/osdy-pi working-tree toggle
+/osdy-pi working-tree status
+/osdy-pi working-tree position top
+/osdy-pi working-tree position bottom
+/osdy-pi diff
 /osdy-pi osdy-theme
 /osdy-pi classic
 /osdy-pi-osdy-theme
@@ -86,11 +93,50 @@ Osdy Pi includes a small command group:
 - `disable` restores Pi's built-in header, editor, footer, and working visibility, then switches back to the previous theme or `dark`.
 - `status` shows whether the Osdy Pi UI is currently enabled, including the active style.
 - `sound setup` opens the guided global sound-setup wizard for audio notifications.
+- `working-tree on|off|toggle|status` controls the persistent git working-tree summary widget.
+- `working-tree position top|bottom` moves the summary widget above or below the editor.
+- `diff` opens a wizard-style in-app diff viewer to inspect the current per-file diff without leaving Pi.
 - `osdy-theme` is the default OsdyTheme header with pink, cyan, and purple styling, plus the mascot glow on the right edge.
 - `classic` keeps the previous classic header shape with the shared mascot.
 - `/osdy-pi-osdy-theme` and `/osdy-pi-classic` are direct aliases.
 
 After changing a local extension, run `/reload` or restart Pi so the updated commands are registered.
+
+### Working tree widget
+
+Osdy Pi can show a persistent git working-tree summary above or below the editor.
+
+Current behavior:
+
+- shows file count, `+/-` totals, and staged/unstaged/new counts;
+- previews the top changed files;
+- refreshes automatically when Pi finishes mutating tools such as `edit`, `write`, `ast_grep_replace`, or `bash`;
+- is intentionally scoped to changes observed during Pi-driven work for now.
+
+Use these commands to control it:
+
+```text
+/osdy-pi working-tree on
+/osdy-pi working-tree off
+/osdy-pi working-tree toggle
+/osdy-pi working-tree status
+/osdy-pi working-tree position top
+/osdy-pi working-tree position bottom
+/osdy-pi diff
+```
+
+The `/osdy-pi diff` viewer now behaves like a simple wizard and opens with a wider centered modal by default:
+
+1. select a changed file in a centered modal
+2. open its patch in a second centered view
+3. return with `esc` / `backspace` or close with `q`
+
+Controls:
+
+- selector: `↑` / `↓` or `j` / `k`, then `enter` or `→`
+- patch view: `PgUp` / `PgDn`
+- back: `esc` / `backspace` or `←`
+- close: `q`
 
 ## Audio notifications
 
@@ -160,10 +206,18 @@ Notes:
 
 ## Local install
 
-If you cloned this repository and want to test it locally:
+If you cloned this repository and want to test it locally without colliding with an already installed global `osdy-pi`, use the isolated dev launcher:
 
 ```bash
-pi -e .
+npm run pi:dev
+```
+
+This command runs `pi -e .` with `PI_CODING_AGENT_DIR=.pi-dev`, so it uses a separate local Pi config/package/extensions directory and does not load your global installed `osdy-pi` package.
+
+You can still launch it manually if needed:
+
+```bash
+PI_CODING_AGENT_DIR="$PWD/.pi-dev" pi -e .
 ```
 
 To install it from a local path:
@@ -195,6 +249,7 @@ If you are working on the package locally, you can run:
 ```bash
 npm run typecheck
 npm run lint
+npm run pi:dev
 ```
 
 ## Uninstall or turn off
