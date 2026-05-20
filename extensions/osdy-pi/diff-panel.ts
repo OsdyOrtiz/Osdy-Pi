@@ -12,7 +12,6 @@ import {
 	type TUI,
 } from "@earendil-works/pi-tui";
 import { truncateMiddle } from "./format.js";
-import { centerVisible } from "./utils.js";
 import type {
 	SimpleTheme,
 	WorkingTreeFileSummary,
@@ -153,6 +152,7 @@ class WorkingTreeDiffPanel implements Component {
 	private selectedIndex = 0;
 	private scrollOffset = 0;
 	private mode: "select" | "view" = "select";
+	private searchTerm = "";
 
 	constructor(
 		private readonly tui: TUI,
@@ -161,24 +161,46 @@ class WorkingTreeDiffPanel implements Component {
 		private readonly close: () => void,
 	) {}
 
+	private get filteredFiles(): DiffFileView[] {
+		const query = this.searchTerm.trim().toLowerCase();
+		if (!query) return this.files;
+		return this.files.filter((entry) =>
+			entry.file.path.toLowerCase().includes(query),
+		);
+	}
+
 	private get selected(): DiffFileView | undefined {
-		return this.files[this.selectedIndex];
+		return this.filteredFiles[this.selectedIndex];
+	}
+
+	private clampSelection(): void {
+		const files = this.filteredFiles;
+		this.selectedIndex = Math.max(
+			0,
+			Math.min(Math.max(0, files.length - 1), this.selectedIndex),
+		);
 	}
 
 	private moveSelection(delta: number): void {
-		if (this.files.length === 0) return;
+		const files = this.filteredFiles;
+		if (files.length === 0) return;
 		this.selectedIndex = Math.max(
 			0,
-			Math.min(this.files.length - 1, this.selectedIndex + delta),
+			Math.min(files.length - 1, this.selectedIndex + delta),
 		);
 		this.scrollOffset = 0;
 		this.tui.requestRender();
 	}
 
+	private updateSearch(next: string): void {
+		this.searchTerm = next;
+		this.selectedIndex = 0;
+		this.scrollOffset = 0;
+		this.tui.requestRender();
+	}
+
 	private renderModal(width: number, title: string, lines: string[]): string[] {
-		const modalWidth = Math.max(56, Math.min(width - 6, 112));
-		const modalLines = borderBox(this.theme, modalWidth, title, lines);
-		return ["", ...modalLines.map((line) => centerVisible(line, width)), ""];
+		return borderBox(this.theme, width, title, lines);
 	}
 
 	handleInput(data: string): void {
@@ -188,8 +210,18 @@ class WorkingTreeDiffPanel implements Component {
 		}
 		if (this.mode === "select") {
 			if (matchesKey(data, "escape")) {
+				if (this.searchTerm.length > 0) {
+					this.updateSearch("");
+					return;
+				}
 				this.close();
 				return;
+			}
+			if (matchesKey(data, "backspace")) {
+				if (this.searchTerm.length > 0) {
+					this.updateSearch(this.searchTerm.slice(0, -1));
+					return;
+				}
 			}
 			if (matchesKey(data, "up") || matchesKey(data, "k")) {
 				this.moveSelection(-1);
@@ -205,9 +237,15 @@ class WorkingTreeDiffPanel implements Component {
 				matchesKey(data, "right") ||
 				matchesKey(data, "l")
 			) {
+				if (this.filteredFiles.length === 0) return;
 				this.mode = "view";
 				this.scrollOffset = 0;
 				this.tui.requestRender();
+				return;
+			}
+			if (data.length === 1 && data >= " " && data !== "\u007f") {
+				this.updateSearch(`${this.searchTerm}${data}`);
+				return;
 			}
 			return;
 		}
@@ -233,20 +271,25 @@ class WorkingTreeDiffPanel implements Component {
 	}
 
 	render(width: number): string[] {
+		this.clampSelection();
+		const filteredFiles = this.filteredFiles;
 		const selected = this.selected;
-		if (this.files.length === 0 || !selected) {
+		if (this.files.length === 0) {
 			return this.renderModal(width, "Osdy Pi Diff", [
 				this.theme.fg("muted", "q or esc to close"),
 				this.theme.fg("warning", "No tracked changes available."),
 			]);
 		}
 		if (this.mode === "select") {
-			const innerWidth = Math.max(20, Math.min(width - 10, 80));
+			const innerWidth = Math.max(20, width - 4);
 			const listStart = Math.max(
 				0,
-				Math.min(this.selectedIndex - 4, this.files.length - 10),
+				Math.min(
+					this.selectedIndex - 4,
+					Math.max(0, filteredFiles.length - 10),
+				),
 			);
-			const listEntries = this.files.slice(listStart, listStart + 10);
+			const listEntries = filteredFiles.slice(listStart, listStart + 10);
 			const listLines = listEntries.map((entry, index) => {
 				const fileIndex = listStart + index;
 				const isSelected = fileIndex === this.selectedIndex;
@@ -264,13 +307,22 @@ class WorkingTreeDiffPanel implements Component {
 			return this.renderModal(width, "Osdy Pi Diff · Select file", [
 				this.theme.fg(
 					"muted",
-					"↑↓ or j/k move · enter/right open · esc/q close",
+					"Type to filter · ↑↓ move · enter/right open · esc clear/close",
 				),
+				`${this.theme.fg("accent", "Search:")} ${this.theme.fg("toolOutput", this.searchTerm || "")}${this.searchTerm.length === 0 ? this.theme.fg("muted", "(all files)") : ""}`,
 				this.theme.fg(
 					"mdLink",
-					`Files ${this.selectedIndex + 1}/${this.files.length}`,
+					`Files ${filteredFiles.length === 0 ? 0 : this.selectedIndex + 1}/${filteredFiles.length} · total ${this.files.length}`,
 				),
-				...listLines,
+				...(listLines.length > 0
+					? listLines
+					: [this.theme.fg("warning", "No files match the current search.")]),
+			]);
+		}
+		if (!selected) {
+			return this.renderModal(width, "Osdy Pi Diff", [
+				this.theme.fg("muted", "esc to go back"),
+				this.theme.fg("warning", "No file selected."),
 			]);
 		}
 		const patchLines =
@@ -315,5 +367,15 @@ export async function showWorkingTreeDiffPanel(
 	await ctx.ui.custom<void>(
 		(tui, theme, _keybindings, done) =>
 			new WorkingTreeDiffPanel(tui, theme, files, () => done()),
+		{
+			overlay: true,
+			overlayOptions: {
+				anchor: "center",
+				width: 112,
+				minWidth: 56,
+				maxHeight: "88%",
+				margin: 1,
+			},
+		},
 	);
 }

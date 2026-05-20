@@ -67,9 +67,9 @@ You can also set it in your Pi `settings.json`:
 
 Use `osdy-pi-light` if you prefer the light version, or `osdy-pi-simple` if you want the blue/red/slate palette across the whole console.
 
-## Commands
+## Commands and features
 
-Osdy Pi includes a small command group:
+Osdy Pi includes this command group:
 
 ```text
 /osdy-pi enable
@@ -89,54 +89,43 @@ Osdy Pi includes a small command group:
 /osdy-pi-classic
 ```
 
+### Core UI
+
 - `enable` applies the dark Osdy theme, custom header, custom editor, and clean layout.
 - `disable` restores Pi's built-in header, editor, footer, and working visibility, then switches back to the previous theme or `dark`.
 - `status` shows whether the Osdy Pi UI is currently enabled, including the active style.
-- `sound setup` opens the guided global sound-setup wizard for audio notifications.
-- `working-tree on|off|toggle|status` controls the persistent git working-tree summary widget.
-- `working-tree position top|bottom` moves the summary widget above or below the editor.
-- `diff` opens a wizard-style in-app diff viewer to inspect the current per-file diff without leaving Pi.
 - `osdy-theme` is the default OsdyTheme header with pink, cyan, and purple styling, plus the mascot glow on the right edge.
 - `classic` keeps the previous classic header shape with the shared mascot.
 - `/osdy-pi-osdy-theme` and `/osdy-pi-classic` are direct aliases.
 
-After changing a local extension, run `/reload` or restart Pi so the updated commands are registered.
+### Working tree and diff
 
-### Working tree widget
+- `working-tree on|off|toggle|status` controls the persistent git working-tree summary widget.
+- `working-tree position top|bottom` moves the summary widget above or below the editor.
+- the working-tree summary shows file count, `+/-` totals, and staged/unstaged/new counts.
+- the widget refreshes automatically when Pi finishes mutating tools such as `edit`, `write`, `ast_grep_replace`, or `bash`.
+- for now, the widget is intentionally scoped to changes observed during Pi-driven work.
+- `diff` opens a centered floating diff window.
+- inside the diff selector, you can type to filter files by path before opening the patch.
 
-Osdy Pi can show a persistent git working-tree summary above or below the editor.
+Diff flow:
 
-Current behavior:
-
-- shows file count, `+/-` totals, and staged/unstaged/new counts;
-- previews the top changed files;
-- refreshes automatically when Pi finishes mutating tools such as `edit`, `write`, `ast_grep_replace`, or `bash`;
-- is intentionally scoped to changes observed during Pi-driven work for now.
-
-Use these commands to control it:
-
-```text
-/osdy-pi working-tree on
-/osdy-pi working-tree off
-/osdy-pi working-tree toggle
-/osdy-pi working-tree status
-/osdy-pi working-tree position top
-/osdy-pi working-tree position bottom
-/osdy-pi diff
-```
-
-The `/osdy-pi diff` viewer now behaves like a simple wizard and opens with a wider centered modal by default:
-
-1. select a changed file in a centered modal
-2. open its patch in a second centered view
+1. select a changed file in the floating window
+2. open its patch in the same centered floating window
 3. return with `esc` / `backspace` or close with `q`
 
-Controls:
+Diff controls:
 
-- selector: `↑` / `↓` or `j` / `k`, then `enter` or `→`
+- selector: type to filter, `↑` / `↓` or `j` / `k`, then `enter` or `→`
 - patch view: `PgUp` / `PgDn`
 - back: `esc` / `backspace` or `←`
 - close: `q`
+
+### Audio
+
+- `sound setup` opens the guided global sound-setup wizard for audio notifications.
+
+After changing a local extension, run `/reload` or restart Pi so the updated commands are registered.
 
 ## Audio notifications
 
