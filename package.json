@@ -24,9 +24,8 @@
 	],
 	"pi": {
 		"themes": [
-			"./themes/osdy-pi-dark.json",
-			"./themes/osdy-pi-light.json",
-			"./themes/osdy-pi-simple.json"
+			"./themes/osdy-pi-new.json",
+			"./themes/osdy-pi-dark.json"
 		],
 		"extensions": [
 			"./extensions/osdy-pi.ts"

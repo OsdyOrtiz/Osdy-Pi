@@ -21,52 +21,63 @@ import { fitBorder } from "./border.js";
 import {
 	ANIMATION_INTERVAL_MS,
 	headerWidth,
-	HEADER_FALLBACK,
 	HEADER_VARIANTS,
 	INTRO_ANIMATION_FRAMES,
 	MASCOT_GAP,
-	MASCOT_MIN_ROWS,
-	mascotWidth,
+	scaleMascot,
 	WORKING_SPINNER_FRAMES,
 } from "./constants.js";
 import { formatPath } from "./format.js";
-import {
-	modelLabel,
-	renderHeaderMetadata,
-	renderMetaRows,
-	usageLabel,
-} from "./metrics.js";
+import { modelLabel, usageLabel } from "./metrics.js";
 import type { OsdyState, SimpleTheme, WorkingWidgetState } from "./types.js";
 import {
+	compactMascotWidthBudget,
 	composeSideBySide,
 	fitCenterVisible,
 	internalLineTarget,
+	isSmallResponsiveMode,
 	sanitizeStatusText,
 } from "./utils.js";
 
+const THINKING_THEME_TOKENS = {
+	off: "thinkingOff",
+	minimal: "thinkingMinimal",
+	low: "thinkingLow",
+	medium: "thinkingMedium",
+	high: "thinkingHigh",
+	xhigh: "thinkingXhigh",
+} satisfies Record<ReturnType<ExtensionAPI["getThinkingLevel"]>, string>;
+
 class OsdyFooter implements Component {
+	private readonly pi: ExtensionAPI;
 	private readonly ctx: ExtensionContext;
+	private readonly state: OsdyState;
 	private readonly footerData: ReadonlyFooterDataProvider;
 	private readonly theme: SimpleTheme;
 
 	constructor(
+		pi: ExtensionAPI,
 		ctx: ExtensionContext,
+		state: OsdyState,
 		footerData: ReadonlyFooterDataProvider,
 		theme: SimpleTheme,
 	) {
+		this.pi = pi;
 		this.ctx = ctx;
+		this.state = state;
 		this.footerData = footerData;
 		this.theme = theme;
 	}
 
 	render(width: number): string[] {
+		const ellipsis = this.theme.fg("dim", "...");
 		let location = formatPath(this.ctx.cwd);
 		const branch = this.footerData.getGitBranch?.();
 		if (branch) location = `${location} (${branch})`;
 		const locationLine = truncateToWidth(
 			this.theme.fg("dim", location),
 			width,
-			this.theme.fg("dim", "..."),
+			ellipsis,
 		);
 		const statuses = this.footerData.getExtensionStatuses?.() ?? new Map();
 		const statusEntries = Array.from(statuses.entries());
@@ -74,12 +85,26 @@ class OsdyFooter implements Component {
 			.sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
 			.map(([, text]) => sanitizeStatusText(text))
 			.join(" ");
+		if (!this.state.smallMode) {
+			return statusLine
+				? [locationLine, truncateToWidth(statusLine, width, ellipsis)]
+				: [locationLine];
+		}
+		const thinkingLevel = this.pi.getThinkingLevel();
+		const thinkingLine = truncateToWidth(
+			`${modelLabel(this.ctx)} · think ${this.theme.fg(THINKING_THEME_TOKENS[thinkingLevel], `\u001B[1m${thinkingLevel}\u001B[22m`)}`,
+			width,
+			ellipsis,
+		);
+		const usageLine = truncateToWidth(usageLabel(this.ctx).trim(), width, ellipsis);
 		return statusLine
 			? [
-					locationLine,
-					truncateToWidth(statusLine, width, this.theme.fg("dim", "...")),
-				]
-			: [locationLine];
+				thinkingLine,
+				usageLine,
+				locationLine,
+				truncateToWidth(statusLine, width, ellipsis),
+			]
+			: [thinkingLine, usageLine, locationLine];
 	}
 
 	invalidate(): void {}
@@ -97,9 +122,7 @@ class OsdyWorkingWidget implements Component {
 	render(width: number): string[] {
 		if (!this.state.active) return [];
 		const frame =
-			WORKING_SPINNER_FRAMES[
-				this.state.frame % WORKING_SPINNER_FRAMES.length
-			] ??
+			WORKING_SPINNER_FRAMES[this.state.frame % WORKING_SPINNER_FRAMES.length] ??
 			WORKING_SPINNER_FRAMES[0] ??
 			"⠋";
 		const line = `${this.theme.fg("accent", frame)} ${this.theme.fg("muted", this.state.label)}`;
@@ -110,11 +133,12 @@ class OsdyWorkingWidget implements Component {
 }
 
 export function createHeaderComponent(
-	pi: ExtensionAPI,
-	ctx: ExtensionContext,
+	_pi: ExtensionAPI,
+	_ctx: ExtensionContext,
 	state: OsdyState,
 ) {
 	return (_tui: TUI, theme: SimpleTheme) => {
+		state.tui = _tui;
 		let frame = 0;
 		let animationComplete = false;
 		const animationMode = asciiAnimationMode();
@@ -134,54 +158,29 @@ export function createHeaderComponent(
 				const animationStyle =
 					animateAscii && !animationComplete ? "animated" : "static";
 				const variant = HEADER_VARIANTS[state.headerVariant];
+				const terminalColumns = Math.max(1, _tui.terminal.columns);
+				const terminalRows = Math.max(1, _tui.terminal.rows);
+				const mascotSource = variant.mascot ?? [];
+				const mascotMapSource = variant.mascotMap ?? [];
+				const hasMascot = mascotSource.length > 0 && mascotMapSource.length > 0;
 				const fullHeaderWidth = headerWidth(state.headerVariant);
-				const canUseFullHeader =
-					width >= fullHeaderWidth &&
-					(variant.minRowsForFull === undefined ||
-						_tui.terminal.rows >= variant.minRowsForFull);
-				const mascotLinesSource = variant.mascot ?? [];
-				const mascotToneMap = variant.mascotMap ?? [];
-				const fullMascotWidth = mascotWidth(state.headerVariant);
-				const showMascot =
-					canUseFullHeader &&
-					mascotLinesSource.length > 0 &&
-					_tui.terminal.rows >= MASCOT_MIN_ROWS &&
-					width >= fullMascotWidth + MASCOT_GAP + fullHeaderWidth;
-				const headerLines = canUseFullHeader
-					? [...variant.header]
-					: [...(variant.fallbackHeader ?? HEADER_FALLBACK)];
-				const headerToneMap = canUseFullHeader ? (variant.headerMap ?? []) : [];
-				const metadataRows = renderHeaderMetadata(pi, ctx, state, width);
-				const logoLines = headerLines.map((line, index) => {
-					const toneLine = headerToneMap[index];
-					if (toneLine && variant.headerTonePalette) {
-						return animateAsciiLineWithToneMap(
-							line,
-							toneLine,
-							index,
-							frame,
-							theme,
-							variant.headerTonePalette,
-							animationStyle,
-						);
-					}
-					const palette = canUseFullHeader
-						? variant.linePalette(index)
-						: (variant.fallbackLinePalette?.(index) ??
-							variant.linePalette(index));
-					return animateAsciiLine(
-						line,
-						index,
-						frame,
-						theme,
-						palette.baseColor,
-						palette.highlightColor,
-						palette.trailColor,
-						animationStyle,
-					);
-				});
-				const mascotLines = mascotLinesSource.map((line, index) => {
-					const toneLine = mascotToneMap[index];
+				const canUseFullHeader = !isSmallResponsiveMode(
+					state.headerVariant,
+					terminalColumns,
+					terminalRows,
+				);
+				const mascotWidthBudget = canUseFullHeader
+					? Math.max(1, width - fullHeaderWidth - MASCOT_GAP)
+					: compactMascotWidthBudget(width);
+				const mascotArt = hasMascot
+					? scaleMascot(
+							{ mascot: mascotSource, toneMap: mascotMapSource },
+							mascotWidthBudget,
+							terminalRows,
+						)
+					: { mascot: [], toneMap: [] };
+				const mascotLines = mascotArt.mascot.map((line, index) => {
+					const toneLine = mascotArt.toneMap[index];
 					if (toneLine && variant.mascotTonePalette) {
 						return animateAsciiLineWithToneMap(
 							line,
@@ -204,22 +203,45 @@ export function createHeaderComponent(
 						animationStyle,
 					);
 				});
-				const headerBlock = showMascot
-					? composeSideBySide(
-							mascotLines,
-							fullMascotWidth,
-							logoLines,
-							width,
-							fullHeaderWidth,
-						)
-					: logoLines.map((line) => fitCenterVisible(line, width));
-				return [
-					"",
-					...headerBlock,
-					"",
-					...renderMetaRows(metadataRows, width, theme),
-					"",
-				];
+				if (!canUseFullHeader) {
+					return mascotLines.map((line) => fitCenterVisible(line, width));
+				}
+				const logoLines = variant.header.map((line, index) => {
+					const toneLine = variant.headerMap?.[index];
+					if (toneLine && variant.headerTonePalette) {
+						return animateAsciiLineWithToneMap(
+							line,
+							toneLine,
+							index,
+							frame,
+							theme,
+							variant.headerTonePalette,
+							animationStyle,
+						);
+					}
+					const palette = variant.linePalette(index);
+					return animateAsciiLine(
+						line,
+						index,
+						frame,
+						theme,
+						palette.baseColor,
+						palette.highlightColor,
+						palette.trailColor,
+						animationStyle,
+					);
+				});
+				const scaledMascotWidth = mascotArt.mascot.reduce(
+					(maximum, line) => Math.max(maximum, visibleWidth(line)),
+					0,
+				);
+				return composeSideBySide(
+					mascotLines,
+					scaledMascotWidth,
+					logoLines,
+					width,
+					fullHeaderWidth,
+				);
 			},
 			invalidate() {},
 			dispose() {
@@ -230,11 +252,13 @@ export function createHeaderComponent(
 }
 
 export function createFooterComponent(
+	pi: ExtensionAPI,
 	ctx: ExtensionContext,
+	state: OsdyState,
 	footerData: ReadonlyFooterDataProvider,
 	theme: SimpleTheme,
 ): Component {
-	return new OsdyFooter(ctx, footerData, theme);
+	return new OsdyFooter(pi, ctx, state, footerData, theme);
 }
 
 export function createWorkingWidgetFactory(workingState: WorkingWidgetState) {
@@ -275,10 +299,7 @@ export function createEditorComponent(
 			const internalLines = bottomIndex - 1;
 			if (internalLines < target) {
 				const blank = " ".repeat(innerWidth);
-				const added = Array.from(
-					{ length: target - internalLines },
-					() => blank,
-				);
+				const added = Array.from({ length: target - internalLines }, () => blank);
 				lines.splice(bottomIndex, 0, ...added);
 				bottomIndex += added.length;
 			}
@@ -286,9 +307,7 @@ export function createEditorComponent(
 			const side = borderColor("│");
 			for (let index = 1; index < bottomIndex; index += 1) {
 				const content = truncateToWidth(lines[index] ?? "", innerWidth, "");
-				const padding = " ".repeat(
-					Math.max(0, innerWidth - visibleWidth(content)),
-				);
+				const padding = " ".repeat(Math.max(0, innerWidth - visibleWidth(content)));
 				lines[index] = `${side}${content}${padding}${side}`;
 			}
 			const topLeft = ctx.ui.theme.fg("mdLink", " Osdy-Pi ");

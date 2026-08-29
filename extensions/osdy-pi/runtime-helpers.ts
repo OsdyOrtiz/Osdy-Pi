@@ -21,6 +21,9 @@ import {
 	createWorkingWidgetFactory,
 } from "./ui.js";
 import { createWorkingTreeWidgetFactory } from "./working-tree.js";
+import { isSmallResponsiveMode } from "./utils.js";
+
+const RESPONSIVE_WATCH_INTERVAL_MS = 150;
 
 function shouldRememberTheme(
 	previousThemeName: string | undefined,
@@ -56,6 +59,79 @@ export function applyOsdyTheme(ctx: ExtensionContext): void {
 	}
 }
 
+function workingTreeEffective(state: OsdyState): boolean {
+	return state.workingTreeEnabled && !state.smallMode && state.enabled;
+}
+
+function desiredSmallMode(state: OsdyState): boolean {
+	const tui = state.tui;
+	return tui
+		? isSmallResponsiveMode(
+				state.headerVariant,
+				tui.terminal.columns,
+				tui.terminal.rows,
+			)
+		: false;
+}
+
+export function reconcileResponsiveUi(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+	workingTreeState: WorkingTreeState,
+): void {
+	if (!ctx.hasUI || !state.enabled) return;
+	const nextSmallMode = desiredSmallMode(state);
+	const smallModeChanged = nextSmallMode !== state.smallMode;
+	state.smallMode = nextSmallMode;
+	const editorEffective = state.editorEnabled && !state.smallMode;
+	if (state.editorEffective !== editorEffective) {
+		state.editorEffective = editorEffective;
+		if (editorEffective) mountOsdyEditor(pi, ctx);
+		else unmountOsdyEditor(ctx);
+	}
+	const treeVisible = state.workingTreeEnabled && !state.smallMode;
+	if (workingTreeState.visible !== treeVisible) {
+		workingTreeState.visible = treeVisible;
+		if (!smallModeChanged) workingTreeState.tui?.requestRender();
+	}
+	if (smallModeChanged) (state.tui ?? workingTreeState.tui)?.requestRender();
+}
+
+export function createResponsiveCoordinator(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+	workingTreeState: WorkingTreeState,
+) {
+	let timer: ReturnType<typeof setInterval> | undefined;
+	return {
+		start(): void {
+			if (timer) return;
+			reconcileResponsiveUi(pi, ctx, state, workingTreeState);
+			timer = setInterval(() => {
+				if (!state.enabled) return;
+				const nextSmallMode = desiredSmallMode(state);
+				if (nextSmallMode !== state.smallMode) {
+					reconcileResponsiveUi(pi, ctx, state, workingTreeState);
+				}
+			}, RESPONSIVE_WATCH_INTERVAL_MS);
+		},
+		stop(): void {
+			if (timer) clearInterval(timer);
+			timer = undefined;
+		},
+	};
+}
+
+export function mountOsdyEditor(pi: ExtensionAPI, ctx: ExtensionContext): void {
+	ctx.ui.setEditorComponent(createEditorComponent(pi, ctx));
+}
+
+export function unmountOsdyEditor(ctx: ExtensionContext): void {
+	ctx.ui.setEditorComponent(undefined);
+}
+
 export function mountOsdyUi(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
@@ -64,9 +140,10 @@ export function mountOsdyUi(
 	workingTreeState: WorkingTreeState,
 ): void {
 	ctx.ui.setHeader(createHeaderComponent(pi, ctx, state));
-	ctx.ui.setFooter((_tui, theme, footerData) =>
-		createFooterComponent(ctx, footerData, theme),
-	);
+	ctx.ui.setFooter((tui, theme, footerData) => {
+		state.tui = tui;
+		return createFooterComponent(pi, ctx, state, footerData, theme);
+	});
 	ctx.ui.setWorkingVisible(false);
 	ctx.ui.setWidget(
 		WORKING_WIDGET_KEY,
@@ -75,10 +152,14 @@ export function mountOsdyUi(
 	);
 	ctx.ui.setWidget(
 		WORKING_TREE_WIDGET_KEY,
-		createWorkingTreeWidgetFactory(workingTreeState),
+		createWorkingTreeWidgetFactory(
+			workingTreeState,
+			workingState,
+			state.workingTreePlacement,
+		),
 		{ placement: state.workingTreePlacement },
 	);
-	ctx.ui.setEditorComponent(createEditorComponent(pi, ctx));
+	reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 }
 
 export function applyOsdyPi(
@@ -104,6 +185,9 @@ export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 	ctx.ui.setWidget(WORKING_WIDGET_KEY, undefined);
 	ctx.ui.setWidget(WORKING_TREE_WIDGET_KEY, undefined);
 	ctx.ui.setWorkingVisible(true);
+	state.editorEffective = false;
+	state.smallMode = false;
+	state.tui = undefined;
 	const targetTheme = state.previousThemeName ?? "dark";
 	const result = ctx.ui.setTheme(targetTheme);
 	if (!result.success && targetTheme !== "dark") ctx.ui.setTheme("dark");
@@ -112,7 +196,7 @@ export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 
 export function notifyStatus(ctx: ExtensionContext, state: OsdyState): void {
 	ctx.ui.notify(
-		`osdy-pi ${state.enabled ? "enabled" : "disabled"} · working-tree ${state.workingTreeEnabled ? "on" : "off"} · widget ${state.workingTreePlacement === "aboveEditor" ? "top" : "bottom"} · theme ${ctx.ui.theme.name ?? "unknown"} · style ${state.headerVariant} · animation ${asciiAnimationMode()} · ${modelLabel(ctx)} · ${usageLabel(ctx).trim()}`,
+		`osdy-pi ${state.enabled ? "enabled" : "disabled"} · editor desired ${state.editorEnabled ? "on" : "off"}, effective ${state.editorEffective ? "framed" : "native"} · working-tree desired ${state.workingTreeEnabled ? "on" : "off"}, effective ${workingTreeEffective(state) ? "visible" : "hidden"} · widget ${state.workingTreePlacement === "aboveEditor" ? "top" : "bottom"} · theme ${ctx.ui.theme.name ?? "unknown"} · style ${state.headerVariant} · animation ${asciiAnimationMode()} · ${modelLabel(ctx)} · ${usageLabel(ctx).trim()}`,
 		"info",
 	);
 }

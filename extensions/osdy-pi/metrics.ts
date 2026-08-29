@@ -1,17 +1,6 @@
-import {
-	type ExtensionAPI,
-	type ExtensionContext,
-	VERSION,
-} from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
-import { formatPath, shortNumber, truncateMiddle } from "./format.js";
-import type {
-	AssistantSessionEntry,
-	HeaderMetaRow,
-	OsdyState,
-	SimpleTheme,
-} from "./types.js";
-import { centerVisible, fitCenterVisible } from "./utils.js";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { shortNumber } from "./format.js";
+import type { AssistantSessionEntry } from "./types.js";
 
 function isAssistantSessionEntry(
 	entry: unknown,
@@ -86,125 +75,9 @@ function mergeUsageTotals(
 }
 
 function collectUsageTotals(ctx: ExtensionContext): UsageTotals {
-	return ctx.sessionManager
-		.getEntries()
-		.reduce<UsageTotals>((totals, entry) => {
-			return isAssistantSessionEntry(entry)
-				? mergeUsageTotals(totals, entry)
-				: totals;
-		}, createUsageTotals());
-}
-
-function getToolSources(pi: ExtensionAPI) {
-	return pi.getAllTools().map((tool) => ({
-		name: tool.name.toLowerCase(),
-		origin: tool.sourceInfo?.origin?.toLowerCase() ?? "",
-		source: tool.sourceInfo?.source?.toLowerCase() ?? "",
-		path: tool.sourceInfo?.path?.toLowerCase() ?? "",
-	}));
-}
-
-function isMcpTool(tool: ReturnType<typeof getToolSources>[number]): boolean {
-	return tool.name.includes("mcp") || tool.source.includes("mcp");
-}
-
-function getToolServerKey(
-	tool: ReturnType<typeof getToolSources>[number],
-): string {
-	return tool.source || tool.path || tool.name;
-}
-
-function getMcpServerCount(pi: ExtensionAPI): number {
-	const serverKeys = new Set(
-		getToolSources(pi).filter(isMcpTool).map(getToolServerKey),
-	);
-	return serverKeys.size;
-}
-
-function countToolsByOrigin(pi: ExtensionAPI, origin: string): number {
-	return getToolSources(pi).filter((tool) => tool.origin === origin).length;
-}
-
-function countToolsBySource(pi: ExtensionAPI, source: string): number {
-	return getToolSources(pi).filter((tool) => tool.source.includes(source))
-		.length;
-}
-
-function getPathWidth(width: number): number {
-	return width < 110 ? 34 : 52;
-}
-
-export function renderHeaderMetadata(
-	pi: ExtensionAPI,
-	ctx: ExtensionContext,
-	state: OsdyState,
-	width: number,
-): HeaderMetaRow[] {
-	const allTools = pi.getAllTools().length;
-	const git = state.gitLabel === "no-git" ? "Not a git repo" : state.gitLabel;
-	const path = truncateMiddle(formatPath(ctx.cwd), getPathWidth(width));
-	const mcpServerCount = getMcpServerCount(pi);
-	const pluginCount = countToolsByOrigin(pi, "package");
-	const extensionCount = countToolsBySource(pi, "extension");
-	return [
-		{
-			leftLabel: "GIT:",
-			leftValue: git,
-			rightLabel: "PATH:",
-			rightValue: path,
-		},
-		{
-			leftLabel: "MCP:",
-			leftValue: `${mcpServerCount} servers`,
-			rightLabel: "PLUGINS:",
-			rightValue: `${pluginCount} package`,
-		},
-		{
-			leftLabel: "AGENTS:",
-			leftValue: `${state.agentsLabel} loaded`,
-			rightLabel: "EXTENSIONS:",
-			rightValue: `${extensionCount} active`,
-		},
-		{
-			leftLabel: "VER:",
-			leftValue: VERSION,
-			rightLabel: "TOOLS:",
-			rightValue: `${allTools} customs`,
-		},
-	];
-}
-
-export function renderMetaRows(
-	rows: HeaderMetaRow[],
-	width: number,
-	theme: SimpleTheme,
-): string[] {
-	const labelWidth = 11;
-	const leftValueWidth = 32;
-	const rightValueWidth = 52;
-	const gapWidth = 10;
-	const blockWidth =
-		labelWidth +
-		1 +
-		leftValueWidth +
-		gapWidth +
-		labelWidth +
-		1 +
-		rightValueWidth;
-	return rows.map((row) => {
-		const leftLabel = theme.fg("mdLink", row.leftLabel.padEnd(labelWidth));
-		const leftValue = theme.fg(
-			"accent",
-			truncateToWidth(row.leftValue, leftValueWidth).padEnd(leftValueWidth),
-		);
-		const rightLabel = theme.fg("mdLink", row.rightLabel.padEnd(labelWidth));
-		const rightValue = theme.fg(
-			"accent",
-			truncateToWidth(row.rightValue, rightValueWidth).padEnd(rightValueWidth),
-		);
-		const rowText = `${leftLabel} ${leftValue}${" ".repeat(gapWidth)}${rightLabel} ${rightValue}`;
-		return width >= blockWidth
-			? centerVisible(rowText, width)
-			: fitCenterVisible(rowText, width);
-	});
+	return ctx.sessionManager.getEntries().reduce<UsageTotals>((totals, entry) => {
+		return isAssistantSessionEntry(entry)
+			? mergeUsageTotals(totals, entry)
+			: totals;
+	}, createUsageTotals());
 }

@@ -1,6 +1,8 @@
 # Local Pi/runtime state
 .atl/
+.codegraph/
 .pi/
+.pi-dev/
 .pi-lens/
 openspec/
 sdd/

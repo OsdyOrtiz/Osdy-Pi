@@ -7,7 +7,13 @@ import { registerAudioNotificationFlags } from "./audio-notification-config.js";
 import { createAudioNotificationService } from "./audio-notification-service.js";
 import { createAudioPlaybackAdapter } from "./audio-playback.js";
 import { createAudioSoundSettingsStore } from "./audio-sound-settings.js";
-import { applyOsdyPi, disableOsdyPi, notifyStatus } from "./runtime-helpers.js";
+import {
+	applyOsdyPi,
+	createResponsiveCoordinator,
+	disableOsdyPi,
+	notifyStatus,
+	reconcileResponsiveUi,
+} from "./runtime-helpers.js";
 import { runSoundSetupWizard } from "./sound-setup-wizard.js";
 import type {
 	HeaderVariant,
@@ -34,11 +40,15 @@ function scheduleOsdyRefresh(
 	state: OsdyState,
 	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
+	pendingRefreshes: Set<ReturnType<typeof setTimeout>>,
+	isCurrentSession: () => boolean,
 ): void {
-	setTimeout(() => {
-		if (state.enabled)
+	const timeout = setTimeout(() => {
+		pendingRefreshes.delete(timeout);
+		if (state.enabled && isCurrentSession())
 			applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
 	}, delayMs);
+	pendingRefreshes.add(timeout);
 }
 
 function claimOsdyVisualLayer(
@@ -47,6 +57,8 @@ function claimOsdyVisualLayer(
 	state: OsdyState,
 	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
+	pendingRefreshes: Set<ReturnType<typeof setTimeout>>,
+	isCurrentSession: () => boolean,
 ): void {
 	if (!state.enabled) return;
 	applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
@@ -58,35 +70,10 @@ function claimOsdyVisualLayer(
 			state,
 			workingState,
 			workingTreeState,
+			pendingRefreshes,
+			isCurrentSession,
 		);
 	}
-}
-
-function loadSessionMetadata(
-	pi: ExtensionAPI,
-	ctx: ExtensionContext,
-	state: OsdyState,
-): void {
-	void pi
-		.exec("git", ["branch", "--show-current"], { cwd: ctx.cwd })
-		.then((result) => {
-			state.gitLabel = result.stdout.trim() || "detached";
-		})
-		.catch(() => {
-			state.gitLabel = "no-git";
-		});
-	void pi
-		.exec("find", [ctx.cwd, "-name", "AGENTS.md", "-o", "-name", "AGENTS.MD"], {
-			cwd: ctx.cwd,
-		})
-		.then((result) => {
-			state.agentsLabel = String(
-				result.stdout.split("\n").filter(Boolean).length,
-			);
-		})
-		.catch(() => {
-			state.agentsLabel = "0";
-		});
 }
 
 function parseCommandArgs(args: string): string[] {
@@ -119,8 +106,11 @@ function disableOsdyPiCommand(
 	state: OsdyState,
 	workingTreeState: WorkingTreeState,
 	controller: WorkingController,
+	stopResponsive: () => void,
 ): void {
+	stopResponsive();
 	state.enabled = false;
+	workingTreeState.visible = false;
 	controller.stopWorking();
 	clearWorkingTree(workingTreeState);
 	disableOsdyPi(ctx, state);
@@ -135,8 +125,7 @@ function setHeaderVariant(
 	variant: HeaderVariant,
 ): void {
 	state.headerVariant = variant;
-	if (state.enabled)
-		applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
+	if (state.enabled) applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
 	ctx.ui.notify(`osdy-pi style: ${variant}`, "info");
 }
 
@@ -150,6 +139,7 @@ function getOsdyCommandCompletions(prefix: string) {
 			"status",
 			"sound",
 			"working-tree",
+			"editor",
 			"diff",
 			...HEADER_VARIANTS,
 		].map((value) => ({ value, label: value }));
@@ -167,6 +157,11 @@ function getOsdyCommandCompletions(prefix: string) {
 			"working-tree position bottom",
 		].map((value) => ({ value, label: value }));
 	}
+	if (trimmed === "editor") {
+		return ["editor on", "editor off", "editor toggle", "editor status"].map(
+			(value) => ({ value, label: value }),
+		);
+	}
 	if (parts.length === 1) {
 		const valuePrefix = parts[0] ?? "";
 		return [
@@ -175,6 +170,7 @@ function getOsdyCommandCompletions(prefix: string) {
 			"status",
 			"sound",
 			"working-tree",
+			"editor",
 			"diff",
 			...HEADER_VARIANTS,
 		]
@@ -186,6 +182,15 @@ function getOsdyCommandCompletions(prefix: string) {
 		return ["setup"]
 			.filter((value) => value.startsWith(valuePrefix))
 			.map((value) => ({ value: `sound ${value}`, label: `sound ${value}` }));
+	}
+	if (parts[0] === "editor" && parts.length === 2) {
+		const valuePrefix = parts[1] ?? "";
+		return ["on", "off", "toggle", "status"]
+			.filter((value) => value.startsWith(valuePrefix))
+			.map((value) => ({
+				value: `editor ${value}`,
+				label: `editor ${value}`,
+			}));
 	}
 	if (parts[0] === "working-tree" && parts.length === 2) {
 		const valuePrefix = parts[1] ?? "";
@@ -260,6 +265,51 @@ function handleWorkingTreePositionCommand(
 	);
 }
 
+function handleEditorCommand(
+	action: string | undefined,
+	rest: string[],
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+	workingTreeState: WorkingTreeState,
+): void {
+	if (rest.length > 0) {
+		ctx.ui.notify("Usage: /osdy-pi editor on | off | toggle | status", "warning");
+		return;
+	}
+	if (action === "on") {
+		state.editorEnabled = true;
+		if (state.enabled) reconcileResponsiveUi(pi, ctx, state, workingTreeState);
+		ctx.ui.notify("osdy-pi editor enabled", "info");
+		return;
+	}
+	if (action === "off") {
+		state.editorEnabled = false;
+		if (state.enabled) reconcileResponsiveUi(pi, ctx, state, workingTreeState);
+		ctx.ui.notify("osdy-pi editor disabled", "info");
+		return;
+	}
+	if (action === "toggle") {
+		handleEditorCommand(
+			state.editorEnabled ? "off" : "on",
+			[],
+			pi,
+			ctx,
+			state,
+			workingTreeState,
+		);
+		return;
+	}
+	if (action === "status" || action === undefined) {
+		ctx.ui.notify(
+			`osdy-pi editor ${state.editorEnabled ? "enabled" : "disabled"}`,
+			"info",
+		);
+		return;
+	}
+	ctx.ui.notify("Usage: /osdy-pi editor on | off | toggle | status", "warning");
+}
+
 async function handleWorkingTreeCommand(
 	action: string | undefined,
 	rest: string[],
@@ -283,6 +333,7 @@ async function handleWorkingTreeCommand(
 	if (action === "on") {
 		state.workingTreeEnabled = true;
 		workingTreeState.enabled = true;
+		reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 		await refreshWorkingTree(pi, ctx, workingTreeState);
 		ctx.ui.notify("osdy-pi working tree enabled", "info");
 		return;
@@ -290,6 +341,7 @@ async function handleWorkingTreeCommand(
 	if (action === "off") {
 		state.workingTreeEnabled = false;
 		workingTreeState.enabled = false;
+		reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 		clearWorkingTree(workingTreeState);
 		ctx.ui.notify("osdy-pi working tree disabled", "info");
 		return;
@@ -360,10 +412,12 @@ function registerCommand(
 	workingTreeState: WorkingTreeState,
 	controller: WorkingController,
 	settingsStore: ReturnType<typeof createAudioSoundSettingsStore>,
+	startResponsive: () => void,
+	stopResponsive: () => void,
 ): void {
 	pi.registerCommand("osdy-pi", {
 		description:
-			"Manage the Osdy Pi experience: enable, disable, status, style, sound setup, working tree, or diff panel.",
+			"Manage the Osdy Pi experience: enable, disable, status, editor, style, sound setup, working tree, or diff panel.",
 		getArgumentCompletions: getOsdyCommandCompletions,
 		handler: async (args, ctx) => {
 			const [action = "status", ...rest] = parseCommandArgs(args);
@@ -376,10 +430,17 @@ function registerCommand(
 					workingTreeState,
 					controller,
 				);
+				startResponsive();
 				return;
 			}
 			if (action === "disable") {
-				disableOsdyPiCommand(ctx, state, workingTreeState, controller);
+				disableOsdyPiCommand(
+					ctx,
+					state,
+					workingTreeState,
+					controller,
+					stopResponsive,
+				);
 				return;
 			}
 			if (action === "status") {
@@ -388,6 +449,17 @@ function registerCommand(
 			}
 			if (action === "sound") {
 				await handleSoundCommand(rest, ctx, settingsStore);
+				return;
+			}
+			if (action === "editor") {
+				handleEditorCommand(
+					rest[0],
+					rest.slice(1),
+					pi,
+					ctx,
+					state,
+					workingTreeState,
+				);
 				return;
 			}
 			if (action === "working-tree") {
@@ -407,18 +479,11 @@ function registerCommand(
 				return;
 			}
 			if (isHeaderVariant(action)) {
-				setHeaderVariant(
-					pi,
-					ctx,
-					state,
-					workingState,
-					workingTreeState,
-					action,
-				);
+				setHeaderVariant(pi, ctx, state, workingState, workingTreeState, action);
 				return;
 			}
 			ctx.ui.notify(
-				"Usage: /osdy-pi enable | disable | status | sound setup | working-tree ... | diff | osdy-theme | classic",
+				"Usage: /osdy-pi enable | disable | status | editor on|off|toggle|status | sound setup | working-tree ... | diff | osdy-theme | classic",
 				"warning",
 			);
 		},
@@ -428,14 +493,7 @@ function registerCommand(
 		pi.registerCommand(`osdy-pi-${variant}`, {
 			description: `Switch Osdy Pi header to ${variant}.`,
 			handler: (_args, ctx) => {
-				setHeaderVariant(
-					pi,
-					ctx,
-					state,
-					workingState,
-					workingTreeState,
-					variant,
-				);
+				setHeaderVariant(pi, ctx, state, workingState, workingTreeState, variant);
 				return Promise.resolve();
 			},
 		});
@@ -445,9 +503,11 @@ function registerCommand(
 export function registerOsdyPi(pi: ExtensionAPI): void {
 	const state: OsdyState = {
 		enabled: true,
+		editorEffective: false,
+		editorEnabled: true,
 		headerVariant: "osdy-theme",
-		gitLabel: "-",
-		agentsLabel: "-",
+		smallMode: false,
+		tui: undefined,
 		workingTreeEnabled: true,
 		workingTreePlacement: "aboveEditor",
 	};
@@ -461,6 +521,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	const workingTreeState: WorkingTreeState = {
 		enabled: true,
 		loading: false,
+		visible: true,
 		snapshot: null,
 		error: undefined,
 		tui: undefined,
@@ -475,6 +536,17 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 			settingsStore,
 		),
 	);
+	let responsiveCoordinator:
+		| ReturnType<typeof createResponsiveCoordinator>
+		| undefined;
+	let sessionContext: ExtensionContext | undefined;
+	const pendingOsdyRefreshes = new Set<ReturnType<typeof setTimeout>>();
+	const cancelOsdyRefreshes = (): void => {
+		for (const timeout of pendingOsdyRefreshes) clearTimeout(timeout);
+		pendingOsdyRefreshes.clear();
+	};
+	const startResponsive = (): void => responsiveCoordinator?.start();
+	const stopResponsive = (): void => responsiveCoordinator?.stop();
 
 	pi.on("agent_start", () => {
 		controller.onAgentStart();
@@ -495,12 +567,33 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		}
 	});
 	pi.on("session_shutdown", () => {
+		cancelOsdyRefreshes();
 		controller.onShutdown();
+		stopResponsive();
+		if (sessionContext) disableOsdyPi(sessionContext, state);
 		workingTreeState.tui = undefined;
+		sessionContext = undefined;
 	});
 	pi.on("session_start", (_event, ctx) => {
-		loadSessionMetadata(pi, ctx, state);
-		claimOsdyVisualLayer(pi, ctx, state, workingState, workingTreeState);
+		cancelOsdyRefreshes();
+		stopResponsive();
+		sessionContext = ctx;
+		claimOsdyVisualLayer(
+			pi,
+			ctx,
+			state,
+			workingState,
+			workingTreeState,
+			pendingOsdyRefreshes,
+			() => sessionContext === ctx,
+		);
+		responsiveCoordinator = createResponsiveCoordinator(
+			pi,
+			ctx,
+			state,
+			workingTreeState,
+		);
+		responsiveCoordinator.start();
 		if (state.workingTreeEnabled) {
 			void refreshWorkingTree(pi, ctx, workingTreeState);
 		}
@@ -513,5 +606,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		workingTreeState,
 		controller,
 		settingsStore,
+		startResponsive,
+		stopResponsive,
 	);
 }
