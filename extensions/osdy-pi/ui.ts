@@ -20,22 +20,33 @@ import {
 import { fitBorder } from "./border.js";
 import {
 	ANIMATION_INTERVAL_MS,
+	COMPACT_HEADER_HIDDEN_COLUMNS,
 	headerWidth,
 	HEADER_VARIANTS,
 	INTRO_ANIMATION_FRAMES,
 	MASCOT_GAP,
+	mascotWidthForRows,
+	scaleHeader,
 	scaleMascot,
+	STACKED_CONTENT_MAX_ROWS,
+	STACKED_HEADER_MAX_ROWS,
+	STACKED_HEADER_MIN_ROWS,
+	type ScaledHeaderArt,
 	WORKING_SPINNER_FRAMES,
 } from "./constants.js";
 import { formatPath } from "./format.js";
 import { modelLabel, usageLabel } from "./metrics.js";
-import type { OsdyState, SimpleTheme, WorkingWidgetState } from "./types.js";
+import type {
+	HeaderVariant,
+	OsdyState,
+	SimpleTheme,
+	WorkingWidgetState,
+} from "./types.js";
 import {
 	compactMascotWidthBudget,
 	composeSideBySide,
 	fitCenterVisible,
 	internalLineTarget,
-	isSmallResponsiveMode,
 	sanitizeStatusText,
 } from "./utils.js";
 
@@ -49,6 +60,211 @@ const THINKING_THEME_TOKENS = {
 } satisfies Record<ReturnType<ExtensionAPI["getThinkingLevel"]>, string>;
 
 const PI_LENS_STATUS_KEY = "pi-lens-lsp";
+
+function stackedHeaderRowBudget(terminalRows: number): number {
+	const contentRows = Math.min(terminalRows, STACKED_CONTENT_MAX_ROWS);
+	return Math.min(STACKED_HEADER_MAX_ROWS, Math.floor(contentRows / 3));
+}
+
+type HeaderLayout = {
+	canUseFullHeader: boolean;
+	hasMascot: boolean;
+	compactHeader: ScaledHeaderArt | undefined;
+	fullHeaderWidth: number;
+	mascotRowBudget: number;
+	mascotWidthBudget: number;
+	renderWidth: number;
+};
+
+type HeaderConfig = (typeof HEADER_VARIANTS)[HeaderVariant];
+
+function calculateHeaderLayout(
+	variantName: HeaderVariant,
+	variant: HeaderConfig,
+	width: number,
+	terminalColumns: number,
+	terminalRows: number,
+): HeaderLayout {
+	const renderWidth = Math.max(1, width);
+	const fullHeaderWidth = headerWidth(variantName);
+	const mascotArt = {
+		mascot: variant.mascot ?? [],
+		toneMap: variant.mascotMap ?? [],
+	};
+	const hasMascot = mascotArt.mascot.length > 0 && mascotArt.toneMap.length > 0;
+	const heightLimitedMascotWidth = hasMascot
+		? mascotWidthForRows(mascotArt, terminalRows)
+		: 0;
+	const canUseFullHeader =
+		hasMascot &&
+		renderWidth >= fullHeaderWidth + MASCOT_GAP + heightLimitedMascotWidth &&
+		terminalRows >= variant.header.length;
+	const canShowCompactHeader =
+		!canUseFullHeader &&
+		terminalColumns >= COMPACT_HEADER_HIDDEN_COLUMNS &&
+		renderWidth >= COMPACT_HEADER_HIDDEN_COLUMNS;
+	const compactHeaderRows = stackedHeaderRowBudget(terminalRows);
+	const compactHeader =
+		canShowCompactHeader && compactHeaderRows >= STACKED_HEADER_MIN_ROWS
+			? scaleHeader(variantName, renderWidth, compactHeaderRows)
+			: undefined;
+	const contentRowBudget = Math.min(terminalRows, STACKED_CONTENT_MAX_ROWS);
+	return {
+		canUseFullHeader,
+		hasMascot,
+		compactHeader,
+		fullHeaderWidth,
+		mascotRowBudget: canUseFullHeader
+			? terminalRows
+			: Math.max(1, contentRowBudget - (compactHeader?.header.length ?? 0)),
+		mascotWidthBudget: canUseFullHeader
+			? Math.max(1, renderWidth - fullHeaderWidth - MASCOT_GAP)
+			: compactMascotWidthBudget(renderWidth),
+		renderWidth,
+	};
+}
+
+function renderMascotLines(
+	variant: HeaderConfig,
+	mascotArt: ReturnType<typeof scaleMascot>,
+	frame: number,
+	theme: SimpleTheme,
+	animationStyle: "animated" | "static",
+): string[] {
+	return mascotArt.mascot.map((line, index) => {
+		const toneLine = mascotArt.toneMap[index];
+		if (toneLine && variant.mascotTonePalette) {
+			return animateAsciiLineWithToneMap(
+				line,
+				toneLine,
+				index,
+				frame,
+				theme,
+				variant.mascotTonePalette,
+				animationStyle,
+			);
+		}
+		return animateAsciiLine(
+			line,
+			index,
+			frame,
+			theme,
+			variant.mascotPalette.baseColor,
+			variant.mascotPalette.highlightColor,
+			variant.mascotPalette.trailColor,
+			animationStyle,
+		);
+	});
+}
+
+function renderHeaderLines(
+	variant: HeaderConfig,
+	header: readonly string[],
+	toneMap: readonly string[] | undefined,
+	sourceIndexes: readonly number[],
+	frame: number,
+	theme: SimpleTheme,
+	animationStyle: "animated" | "static",
+): string[] {
+	return header.map((line, index) => {
+		const sourceIndex = sourceIndexes[index] ?? index;
+		const toneLine = toneMap?.[index];
+		if (toneLine && variant.headerTonePalette) {
+			return animateAsciiLineWithToneMap(
+				line,
+				toneLine,
+				index,
+				frame,
+				theme,
+				variant.headerTonePalette,
+				animationStyle,
+			);
+		}
+		const palette = variant.linePalette(sourceIndex);
+		return animateAsciiLine(
+			line,
+			index,
+			frame,
+			theme,
+			palette.baseColor,
+			palette.highlightColor,
+			palette.trailColor,
+			animationStyle,
+		);
+	});
+}
+
+function renderResponsiveHeader(
+	state: OsdyState,
+	width: number,
+	terminalColumns: number,
+	terminalRows: number,
+	frame: number,
+	theme: SimpleTheme,
+	animationStyle: "animated" | "static",
+): string[] {
+	const variant = HEADER_VARIANTS[state.headerVariant];
+	const layout = calculateHeaderLayout(
+		state.headerVariant,
+		variant,
+		width,
+		terminalColumns,
+		terminalRows,
+	);
+	const mascotArt = layout.hasMascot
+		? scaleMascot(
+				{ mascot: variant.mascot ?? [], toneMap: variant.mascotMap ?? [] },
+				layout.mascotWidthBudget,
+				layout.mascotRowBudget,
+			)
+		: { mascot: [], toneMap: [] };
+	const mascotLines = renderMascotLines(
+		variant,
+		mascotArt,
+		frame,
+		theme,
+		animationStyle,
+	);
+	if (!layout.canUseFullHeader && !layout.compactHeader) {
+		return mascotLines.map((line) => fitCenterVisible(line, layout.renderWidth));
+	}
+	const headerArt = layout.compactHeader;
+	const logoLines = layout.canUseFullHeader
+		? renderHeaderLines(
+				variant,
+				variant.header,
+				variant.headerMap,
+				variant.header.map((_line, index) => index),
+				frame,
+				theme,
+				animationStyle,
+			)
+		: renderHeaderLines(
+				variant,
+				headerArt?.header ?? [],
+				headerArt?.toneMap,
+				headerArt?.sourceIndexes ?? [],
+				frame,
+				theme,
+				animationStyle,
+			);
+	if (!layout.canUseFullHeader) {
+		return [...mascotLines, ...logoLines].map((line) =>
+			fitCenterVisible(line, layout.renderWidth),
+		);
+	}
+	const scaledMascotWidth = mascotArt.mascot.reduce(
+		(maximum, line) => Math.max(maximum, visibleWidth(line)),
+		0,
+	);
+	return composeSideBySide(
+		mascotLines,
+		scaledMascotWidth,
+		logoLines,
+		layout.renderWidth,
+		layout.fullHeaderWidth,
+	);
+}
 
 class OsdyFooter implements Component {
 	private readonly pi: ExtensionAPI;
@@ -100,14 +316,18 @@ class OsdyFooter implements Component {
 			width,
 			ellipsis,
 		);
-		const usageLine = truncateToWidth(usageLabel(this.ctx).trim(), width, ellipsis);
+		const usageLine = truncateToWidth(
+			usageLabel(this.ctx).trim(),
+			width,
+			ellipsis,
+		);
 		return statusLine
 			? [
-				thinkingLine,
-				usageLine,
-				locationLine,
-				truncateToWidth(statusLine, width, ellipsis),
-			]
+					thinkingLine,
+					usageLine,
+					locationLine,
+					truncateToWidth(statusLine, width, ellipsis),
+				]
 			: [thinkingLine, usageLine, locationLine];
 	}
 
@@ -161,90 +381,14 @@ export function createHeaderComponent(
 			render(width: number): string[] {
 				const animationStyle =
 					animateAscii && !animationComplete ? "animated" : "static";
-				const variant = HEADER_VARIANTS[state.headerVariant];
-				const terminalColumns = Math.max(1, _tui.terminal.columns);
-				const terminalRows = Math.max(1, _tui.terminal.rows);
-				const mascotSource = variant.mascot ?? [];
-				const mascotMapSource = variant.mascotMap ?? [];
-				const hasMascot = mascotSource.length > 0 && mascotMapSource.length > 0;
-				const fullHeaderWidth = headerWidth(state.headerVariant);
-				const canUseFullHeader = !isSmallResponsiveMode(
-					state.headerVariant,
-					terminalColumns,
-					terminalRows,
-				);
-				const mascotWidthBudget = canUseFullHeader
-					? Math.max(1, width - fullHeaderWidth - MASCOT_GAP)
-					: compactMascotWidthBudget(width);
-				const mascotArt = hasMascot
-					? scaleMascot(
-							{ mascot: mascotSource, toneMap: mascotMapSource },
-							mascotWidthBudget,
-							terminalRows,
-						)
-					: { mascot: [], toneMap: [] };
-				const mascotLines = mascotArt.mascot.map((line, index) => {
-					const toneLine = mascotArt.toneMap[index];
-					if (toneLine && variant.mascotTonePalette) {
-						return animateAsciiLineWithToneMap(
-							line,
-							toneLine,
-							index,
-							frame,
-							theme,
-							variant.mascotTonePalette,
-							animationStyle,
-						);
-					}
-					return animateAsciiLine(
-						line,
-						index,
-						frame,
-						theme,
-						variant.mascotPalette.baseColor,
-						variant.mascotPalette.highlightColor,
-						variant.mascotPalette.trailColor,
-						animationStyle,
-					);
-				});
-				if (!canUseFullHeader) {
-					return mascotLines.map((line) => fitCenterVisible(line, width));
-				}
-				const logoLines = variant.header.map((line, index) => {
-					const toneLine = variant.headerMap?.[index];
-					if (toneLine && variant.headerTonePalette) {
-						return animateAsciiLineWithToneMap(
-							line,
-							toneLine,
-							index,
-							frame,
-							theme,
-							variant.headerTonePalette,
-							animationStyle,
-						);
-					}
-					const palette = variant.linePalette(index);
-					return animateAsciiLine(
-						line,
-						index,
-						frame,
-						theme,
-						palette.baseColor,
-						palette.highlightColor,
-						palette.trailColor,
-						animationStyle,
-					);
-				});
-				const scaledMascotWidth = mascotArt.mascot.reduce(
-					(maximum, line) => Math.max(maximum, visibleWidth(line)),
-					0,
-				);
-				return composeSideBySide(
-					mascotLines,
-					scaledMascotWidth,
-					logoLines,
+				return renderResponsiveHeader(
+					state,
 					width,
-					fullHeaderWidth,
+					Math.max(1, _tui.terminal.columns),
+					Math.max(1, _tui.terminal.rows),
+					frame,
+					theme,
+					animationStyle,
 				);
 			},
 			invalidate() {},
