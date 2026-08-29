@@ -36,6 +36,21 @@ function getAnimatedAsciiColor(
 	return baseColor;
 }
 
+const RAW_HEX_COLOR = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/;
+
+function colorAsciiCharacter(
+	theme: SimpleTheme,
+	color: string,
+	character: string,
+): string {
+	const hexMatch = RAW_HEX_COLOR.exec(color);
+	if (!hexMatch) return theme.fg(color, character);
+	const red = Number.parseInt(hexMatch[1] ?? "", 16);
+	const green = Number.parseInt(hexMatch[2] ?? "", 16);
+	const blue = Number.parseInt(hexMatch[3] ?? "", 16);
+	return `\u001B[38;2;${red};${green};${blue}m${character}\u001B[39m`;
+}
+
 export function animateAsciiLine(
 	line: string,
 	lineIndex: number,
@@ -68,10 +83,11 @@ export function animateAsciiLineWithToneMap(
 	palette: MascotTonePalette,
 	style: AsciiAnimationStyle,
 ): string {
+	const toneCharacters = Array.from(toneMap);
 	return Array.from(line)
 		.map((char, charIndex) => {
 			if (char === " ") return char;
-			const tone = toneMap[charIndex];
+			const tone = toneCharacters[charIndex];
 			if (
 				tone !== "b" &&
 				tone !== "h" &&
@@ -85,12 +101,15 @@ export function animateAsciiLineWithToneMap(
 				return char;
 			}
 			const baseColor = palette[tone];
-			if (style === "static") return theme.fg(baseColor, char);
+			if (style === "static") {
+				return colorAsciiCharacter(theme, baseColor, char);
+			}
 			const wave = positiveModulo(charIndex + lineIndex * 2 - frame * 5, 44);
 			const highlightColor =
 				tone === "b" || tone === "h" || tone === "p" ? palette.h : palette.l;
 			const trailColor = tone === "d" ? palette.m : palette.b;
-			return theme.fg(
+			return colorAsciiCharacter(
+				theme,
 				getAnimatedAsciiColor(wave, baseColor, highlightColor, trailColor),
 				char,
 			);

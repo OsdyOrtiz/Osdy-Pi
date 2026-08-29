@@ -11,6 +11,8 @@ import type {
 	WorkingTreeFileSummary,
 	WorkingTreeSnapshot,
 	WorkingTreeState,
+	WorkingWidgetState,
+	WorkingTreePlacement,
 } from "./types.js";
 import { fitCenterVisible } from "./utils.js";
 
@@ -128,13 +130,16 @@ async function hydrateUntrackedStats(
 ): Promise<void> {
 	await Promise.all(
 		Array.from(fileMap.values()).map(async (file) => {
-			if (!file.untracked || file.additions > 0 || file.removals > 0) return;
+			if (!file.untracked || file.additions > 0 || file.removals > 0) {
+				return undefined;
+			}
 			try {
 				const content = await readFile(resolve(ctx.cwd, file.path), "utf8");
 				file.additions = content.length === 0 ? 0 : content.split("\n").length;
 			} catch {
 				file.additions = 1;
 			}
+			return undefined;
 		}),
 	);
 }
@@ -249,7 +254,7 @@ class WorkingTreeWidget implements Component {
 	) {}
 
 	render(width: number): string[] {
-		if (!this.state.enabled) return [];
+		if (!this.state.enabled || !this.state.visible) return [];
 		if (this.state.loading) {
 			return [
 				fitCenterVisible(
@@ -282,9 +287,23 @@ class WorkingTreeWidget implements Component {
 	invalidate(): void {}
 }
 
-export function createWorkingTreeWidgetFactory(state: WorkingTreeState) {
+export function createWorkingTreeWidgetFactory(
+	state: WorkingTreeState,
+	workingState: WorkingWidgetState,
+	placement: WorkingTreePlacement,
+) {
 	return (tui: TUI, theme: SimpleTheme): Component => {
 		state.tui = tui;
-		return new WorkingTreeWidget(state, theme);
+		const summary = new WorkingTreeWidget(state, theme);
+		return {
+			render(width: number): string[] {
+				const lines = summary.render(width);
+				if (lines.length === 0) return [];
+				const needsLeadingBlank =
+					placement === "belowEditor" || workingState.active;
+				return [...(needsLeadingBlank ? [""] : []), ...lines, ""];
+			},
+			invalidate(): void {},
+		};
 	};
 }

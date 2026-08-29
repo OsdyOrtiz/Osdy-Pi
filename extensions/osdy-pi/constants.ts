@@ -1,7 +1,7 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { HeaderVariant } from "./types.js";
 
-export const THEME_NAME = "osdy-pi-dark";
+export const THEME_NAME = "osdy-pi-new";
 export const ANIMATION_ENABLED = true;
 export const ANIMATION_INTERVAL_MS = 30;
 export const INTRO_ANIMATION_FRAMES = 28;
@@ -19,7 +19,6 @@ export const WORKING_SPINNER_FRAMES = [
 ];
 export const WORKING_WIDGET_KEY = "osdy-pi-working";
 export const WORKING_TREE_WIDGET_KEY = "osdy-pi-working-tree";
-export const MASCOT_MIN_ROWS = 34;
 export const MASCOT_GAP = 0;
 
 const HTML_MASCOT = [
@@ -81,11 +80,11 @@ const HTML_MASCOT_MAP = [
   "  llllmddmddddddddhhhhhhhhhhlhhhhhhhlllmmmm               ",
   "    hllllmddddddmhhhhhhhhhhhhhllllllmmmh                  ",
   "         dmmmmmmmmlllllllllllllmdmmm                      ",
-  "                 mmmmmmmmmmmmmmmlllmm                     ",
+  "                 mmmmmmmmmmmmmmmlllmm       m v c  p      ",
   "               dlmmmmllllmmlmmllllllm    dmllllmmmmmmmm   ",
   "              lllllmmlllllllllllllmmm  lmllllllllhlmmmmm  ",
   "              mlllllmdmlllllllllmmmd  mddmmmmlhhhlllmmmmm ",
-  "              hmmmmmmdmdmmmmmmmmmmm  dddmmmmmmmmlllllmmdmm",
+  "             hhmmmmmmdmdmmmmmmmmmmm  dddmmmmmmmmlllllmmdmm",
   "              mmmlllllhllllmmmmmmmm dmmllllmmmmmmmlllmdm  ",
   "              mlllhhhhhhhhlllllllmmdddmlllhllmmmmmmlmml   ",
   "             llllllhhhhhhhllllllllmmdddmmlllllmmmmdmmd    ",
@@ -132,7 +131,19 @@ type HeaderPalette = {
   trailColor: string;
 };
 
-export type MascotToneKey = "b" | "h" | "l" | "m" | "d" | "p" | "c" | "v";
+export const MASCOT_TONE_KEYS = {
+  background: "b",
+  bright: "h",
+  light: "l",
+  mid: "m",
+  dark: "d",
+  rightEdgeCyan: "p",
+  rightEdgeViolet: "c",
+  rightEdgeSilver: "v",
+} as const;
+
+export type MascotToneKey =
+  (typeof MASCOT_TONE_KEYS)[keyof typeof MASCOT_TONE_KEYS];
 
 export type MascotTonePalette = Record<MascotToneKey, string>;
 
@@ -141,9 +152,6 @@ type HeaderVariantConfig = {
   header: readonly string[];
   headerMap?: readonly string[];
   headerTonePalette?: MascotTonePalette;
-  minRowsForFull?: number;
-  fallbackHeader?: readonly string[];
-  fallbackLinePalette?: (lineIndex: number) => HeaderPalette;
   mascot?: readonly string[];
   mascotMap?: readonly string[];
   linePalette: (lineIndex: number) => HeaderPalette;
@@ -154,30 +162,30 @@ type HeaderVariantConfig = {
 const CLASSIC_PALETTE: HeaderPalette = {
   baseColor: "accent",
   highlightColor: "mdHeading",
-  trailColor: "mdLink",
+  trailColor: "muted",
 };
 
 const CLASSIC_LINK_PALETTE: HeaderPalette = {
-  baseColor: "mdLink",
+  baseColor: "muted",
   highlightColor: "mdHeading",
-  trailColor: "mdLink",
-};
-
-const OSDY_THEME_PINK_PALETTE: HeaderPalette = {
-  baseColor: "accent",
-  highlightColor: "mdHeading",
-  trailColor: "mdLink",
+  trailColor: "accent",
 };
 
 const OSDY_THEME_CYAN_PALETTE: HeaderPalette = {
-  baseColor: "mdLink",
+  baseColor: "accent",
+  highlightColor: "mdHeading",
+  trailColor: "muted",
+};
+
+const OSDY_THEME_SILVER_PALETTE: HeaderPalette = {
+  baseColor: "muted",
   highlightColor: "accent",
   trailColor: "mdHeading",
 };
 
-const OSDY_THEME_PURPLE_PALETTE: HeaderPalette = {
+const OSDY_THEME_VIOLET_PALETTE: HeaderPalette = {
   baseColor: "mdHeading",
-  highlightColor: "mdLink",
+  highlightColor: "muted",
   trailColor: "accent",
 };
 
@@ -188,20 +196,129 @@ const OSDY_THEME_MASCOT_PALETTE: HeaderPalette = {
 };
 
 const HTML_MASCOT_TONES: MascotTonePalette = {
-  b: "mascotBg",
-  h: "mascotBright",
-  l: "mascotLight",
-  m: "mascotMid",
-  d: "mascotDark",
-  p: "htmlPink",
-  c: "mdLink",
-  v: "mdHeading",
+  b: "#F9F7F2",
+  h: "#F0E5D7",
+  l: "#C7B4A1",
+  m: "#7D6F67",
+  d: "#2A2321",
+  p: "#22D3EE",
+  c: "#A78BFA",
+  v: "#CBD5E1",
 };
 
-type MascotArt = {
+const RAW_HEX_COLOR = /^#[0-9A-F]{6}$/;
+
+function assertRawHexPalette(palette: MascotTonePalette): void {
+  for (const [tone, color] of Object.entries(palette)) {
+    if (!RAW_HEX_COLOR.test(color)) {
+      throw new Error(`Mascot tone ${tone} must be a #RRGGBB color.`);
+    }
+  }
+}
+
+export type MascotArt = {
   mascot: readonly string[];
   toneMap: readonly string[];
 };
+
+function mascotCodePointWidth(mascot: readonly string[]): number {
+  return Math.max(...mascot.map((line) => Array.from(line).length));
+}
+
+function trimMascotMargins(art: MascotArt): MascotArt {
+  const rowWidth = Math.max(
+    mascotCodePointWidth(art.mascot),
+    mascotCodePointWidth(art.toneMap),
+  );
+  const rows = art.mascot.map((line, index) => ({
+    mascot: Array.from(line.padEnd(rowWidth, " ")),
+    toneMap: Array.from((art.toneMap[index] ?? "").padEnd(rowWidth, " ")),
+  }));
+  const occupied = (rowIndex: number, columnIndex: number): boolean => {
+    const row = rows[rowIndex];
+    return (
+      row?.mascot[columnIndex] !== " " || row?.toneMap[columnIndex] !== " "
+    );
+  };
+  const rowIndexes = rows
+    .map((_row, rowIndex) => rowIndex)
+    .filter((rowIndex) =>
+      Array.from({ length: rowWidth }, (_value, columnIndex) =>
+        occupied(rowIndex, columnIndex),
+      ).some(Boolean),
+    );
+  const columnIndexes = Array.from(
+    { length: rowWidth },
+    (_value, columnIndex) =>
+      rows.some((_row, rowIndex) => occupied(rowIndex, columnIndex)),
+  );
+  const firstRow = rowIndexes[0] ?? 0;
+  const lastRow = rowIndexes.at(-1) ?? firstRow;
+  const firstColumn = columnIndexes.findIndex(Boolean);
+  const lastColumn = columnIndexes.lastIndexOf(true);
+  if (firstColumn < 0 || lastColumn < firstColumn) return art;
+  return {
+    mascot: rows
+      .slice(firstRow, lastRow + 1)
+      .map((row) => row.mascot.slice(firstColumn, lastColumn + 1).join("")),
+    toneMap: rows
+      .slice(firstRow, lastRow + 1)
+      .map((row) => row.toneMap.slice(firstColumn, lastColumn + 1).join("")),
+  };
+}
+
+function isMascotToneKey(value: string): value is MascotToneKey {
+  return (
+    value === MASCOT_TONE_KEYS.background ||
+    value === MASCOT_TONE_KEYS.bright ||
+    value === MASCOT_TONE_KEYS.light ||
+    value === MASCOT_TONE_KEYS.mid ||
+    value === MASCOT_TONE_KEYS.dark ||
+    value === MASCOT_TONE_KEYS.rightEdgeCyan ||
+    value === MASCOT_TONE_KEYS.rightEdgeViolet ||
+    value === MASCOT_TONE_KEYS.rightEdgeSilver
+  );
+}
+
+function assertMascotStructure(
+  art: MascotArt,
+  palette: MascotTonePalette,
+): void {
+  if (art.mascot.length === 0) {
+    throw new Error("Mascot art must contain at least one row.");
+  }
+  if (art.mascot.length !== art.toneMap.length) {
+    throw new Error("Mascot art and tone map must have the same row count.");
+  }
+
+  for (let rowIndex = 0; rowIndex < art.mascot.length; rowIndex += 1) {
+    const mascotLine = art.mascot[rowIndex] ?? "";
+    const toneLine = art.toneMap[rowIndex] ?? "";
+    const mascotCharacters = Array.from(mascotLine);
+    const toneCharacters = Array.from(toneLine);
+    if (mascotCharacters.length !== toneCharacters.length) {
+      throw new Error(`Mascot row ${rowIndex} and its tone map width differ.`);
+    }
+    for (
+      let columnIndex = 0;
+      columnIndex < toneCharacters.length;
+      columnIndex += 1
+    ) {
+      const tone = toneCharacters[columnIndex] ?? " ";
+      const character = mascotCharacters[columnIndex] ?? " ";
+      if (tone !== " " && !isMascotToneKey(tone)) {
+        throw new Error(
+          `Mascot row ${rowIndex} has an invalid tone key: ${tone}.`,
+        );
+      }
+      if (character !== " " && (!isMascotToneKey(tone) || !palette[tone])) {
+        throw new Error(
+          `Mascot row ${rowIndex} column ${columnIndex} has no usable tone.`,
+        );
+      }
+    }
+  }
+}
 
 function sampleIndex(
   outputIndex: number,
@@ -215,94 +332,88 @@ function sampleIndex(
   );
 }
 
-function sampleLine(
-  line: string,
-  outputWidth: number,
-  inputWidth: number,
-): string {
-  const chars = Array.from(line.padEnd(inputWidth, " "));
+function scaleLine(line: string, outputWidth: number): string {
+  const characters = Array.from(line);
   return Array.from({ length: outputWidth }, (_value, outputIndex) => {
-    const inputIndex = sampleIndex(outputIndex, outputWidth, inputWidth);
-    return chars[inputIndex] ?? " ";
+    const inputIndex = sampleIndex(outputIndex, outputWidth, characters.length);
+    return characters[inputIndex] ?? " ";
   }).join("");
 }
 
-function scaleMascotArt(
-  mascot: readonly string[],
-  toneMap: readonly string[],
-  scale: number,
-): MascotArt {
-  const inputRows = Math.min(mascot.length, toneMap.length);
-  const inputWidth = Math.max(
-    ...mascot.slice(0, inputRows).map((line) => Array.from(line).length),
-    ...toneMap.slice(0, inputRows).map((line) => Array.from(line).length),
-  );
-  const outputRows = Math.max(1, Math.round(inputRows * scale));
-  const outputWidth = Math.max(1, Math.round(inputWidth * scale));
-
-  return Array.from({ length: outputRows }, (_value, outputIndex) => {
-    const inputIndex = sampleIndex(outputIndex, outputRows, inputRows);
-    return {
-      mascot: sampleLine(mascot[inputIndex] ?? "", outputWidth, inputWidth),
-      toneMap: sampleLine(toneMap[inputIndex] ?? "", outputWidth, inputWidth),
-    };
-  }).reduce<MascotArt>(
-    (accumulator, line) => ({
-      mascot: [...accumulator.mascot, line.mascot],
-      toneMap: [...accumulator.toneMap, line.toneMap],
-    }),
-    { mascot: [], toneMap: [] },
-  );
-}
-
-function addRightEdgeGlow(
-  mascot: readonly string[],
-  toneMap: readonly string[],
-): readonly string[] {
-  return toneMap.map((lineMap, lineIndex) => {
-    const chars = Array.from(lineMap);
-    const mascotLine = mascot[lineIndex] ?? "";
-    const rightEdgeIndex = Math.max(
-      ...Array.from(mascotLine).map((char, index) =>
-        char === " " ? -1 : index,
-      ),
-    );
-    if (rightEdgeIndex < 0) return lineMap;
-    const glowTones = ["p", "c", "v"] as const;
-    for (let offset = 0; offset < glowTones.length; offset += 1) {
-      const glowTone = glowTones[offset];
-      const index = rightEdgeIndex - offset;
-      if (
-        glowTone &&
-        index >= 0 &&
-        index < chars.length &&
-        chars[index] !== " "
+function addRightEdgeGlow(art: MascotArt): MascotArt {
+  return {
+    mascot: art.mascot,
+    toneMap: art.toneMap.map((lineMap, lineIndex) => {
+      const tones = Array.from(lineMap);
+      const mascotLine = Array.from(art.mascot[lineIndex] ?? "");
+      let glowIndex = 0;
+      for (
+        let index = mascotLine.length - 1;
+        index >= 0 && glowIndex < 3;
+        index -= 1
       ) {
-        chars[index] = glowTone;
+        if (mascotLine[index] !== " ") {
+          const glowTone = ["p", "c", "v"] as const;
+          tones[index] =
+            glowTone[glowIndex] ?? MASCOT_TONE_KEYS.rightEdgeSilver;
+          glowIndex += 1;
+        }
       }
-    }
-    return chars.join("");
-  });
+      return tones.join("");
+    }),
+  };
 }
 
-const OSDY_THEME_MASCOT_ART = scaleMascotArt(HTML_MASCOT, HTML_MASCOT_MAP, 0.9);
-const OSDY_THEME_MASCOT_MAP = addRightEdgeGlow(
-  OSDY_THEME_MASCOT_ART.mascot,
-  OSDY_THEME_MASCOT_ART.toneMap,
-);
+const ROSE_MASCOT = addRightEdgeGlow({
+  mascot: HTML_MASCOT,
+  toneMap: HTML_MASCOT_MAP,
+});
+
+assertRawHexPalette(HTML_MASCOT_TONES);
+assertMascotStructure(ROSE_MASCOT, HTML_MASCOT_TONES);
+
+export function scaleMascot(
+  art: MascotArt,
+  maximumWidth: number,
+  maximumRows: number,
+): MascotArt {
+  assertMascotStructure(art, HTML_MASCOT_TONES);
+  const trimmed = trimMascotMargins(art);
+  const inputWidth = mascotCodePointWidth(trimmed.mascot);
+  const inputRows = trimmed.mascot.length;
+  const scale = Math.min(
+    1,
+    Math.max(1, Math.floor(maximumWidth)) / inputWidth,
+    Math.max(1, Math.floor(maximumRows)) / inputRows,
+  );
+  const outputWidth = Math.max(1, Math.floor(inputWidth * scale));
+  const outputRows = Math.max(1, Math.floor(inputRows * scale));
+  const scaled = {
+    mascot: Array.from({ length: outputRows }, (_value, outputIndex) => {
+      const inputIndex = sampleIndex(outputIndex, outputRows, inputRows);
+      return scaleLine(trimmed.mascot[inputIndex] ?? "", outputWidth);
+    }),
+    toneMap: Array.from({ length: outputRows }, (_value, outputIndex) => {
+      const inputIndex = sampleIndex(outputIndex, outputRows, inputRows);
+      return scaleLine(trimmed.toneMap[inputIndex] ?? "", outputWidth);
+    }),
+  };
+  assertMascotStructure(scaled, HTML_MASCOT_TONES);
+  return scaled;
+}
 
 function osdyThemePalette(lineIndex: number): HeaderPalette {
-  if (lineIndex < 4) return OSDY_THEME_PINK_PALETTE;
-  if (lineIndex < 8) return OSDY_THEME_CYAN_PALETTE;
-  return OSDY_THEME_PURPLE_PALETTE;
+  if (lineIndex < 4) return OSDY_THEME_CYAN_PALETTE;
+  if (lineIndex < 8) return OSDY_THEME_SILVER_PALETTE;
+  return OSDY_THEME_VIOLET_PALETTE;
 }
 
 export const HEADER_VARIANTS: Record<HeaderVariant, HeaderVariantConfig> = {
   "osdy-theme": {
     label: "OsdyTheme",
     header: HEADER_SIMPLE,
-    mascot: OSDY_THEME_MASCOT_ART.mascot,
-    mascotMap: OSDY_THEME_MASCOT_MAP,
+    mascot: ROSE_MASCOT.mascot,
+    mascotMap: ROSE_MASCOT.toneMap,
     linePalette: osdyThemePalette,
     mascotPalette: OSDY_THEME_MASCOT_PALETTE,
     mascotTonePalette: HTML_MASCOT_TONES,
@@ -310,8 +421,8 @@ export const HEADER_VARIANTS: Record<HeaderVariant, HeaderVariantConfig> = {
   classic: {
     label: "Classic",
     header: HEADER_CLASSIC,
-    mascot: HTML_MASCOT,
-    mascotMap: HTML_MASCOT_MAP,
+    mascot: ROSE_MASCOT.mascot,
+    mascotMap: ROSE_MASCOT.toneMap,
     linePalette: (lineIndex) =>
       lineIndex >= 6 ? CLASSIC_LINK_PALETTE : CLASSIC_PALETTE,
     mascotPalette: OSDY_THEME_MASCOT_PALETTE,
@@ -325,15 +436,3 @@ export function headerWidth(variant: HeaderVariant): number {
     0,
   );
 }
-
-export function mascotWidth(variant: HeaderVariant): number {
-  return (HEADER_VARIANTS[variant].mascot ?? []).reduce(
-    (maxWidth, line) => Math.max(maxWidth, visibleWidth(line)),
-    0,
-  );
-}
-
-export const HEADER_FALLBACK = [
-  "OSDY - PI",
-  "</> Compilador de ideas",
-] as const;

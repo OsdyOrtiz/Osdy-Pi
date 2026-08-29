@@ -8,10 +8,12 @@ export type WorkingTreePlacement = "aboveEditor" | "belowEditor";
 
 export type OsdyState = {
 	enabled: boolean;
+	editorEffective: boolean;
+	editorEnabled: boolean;
 	headerVariant: HeaderVariant;
 	previousThemeName?: string;
-	gitLabel: string;
-	agentsLabel: string;
+	smallMode: boolean;
+	tui: TUI | undefined;
 	workingTreeEnabled: boolean;
 	workingTreePlacement: WorkingTreePlacement;
 };
@@ -46,6 +48,7 @@ export type WorkingTreeSnapshot = {
 export type WorkingTreeState = {
 	enabled: boolean;
 	loading: boolean;
+	visible: boolean;
 	snapshot: WorkingTreeSnapshot | null;
 	error: string | undefined;
 	tui: TUI | undefined;
@@ -70,13 +73,6 @@ export type AssistantSessionEntry = {
 		role?: string;
 		usage?: AssistantUsage;
 	};
-};
-
-export type HeaderMetaRow = {
-	leftLabel: string;
-	leftValue: string;
-	rightLabel: string;
-	rightValue: string;
 };
 
 export type SimpleTheme = {

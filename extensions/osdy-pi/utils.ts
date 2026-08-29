@@ -1,6 +1,7 @@
 import type { TUI } from "@earendil-works/pi-tui";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { MASCOT_GAP } from "./constants.js";
+import { headerWidth, HEADER_VARIANTS, MASCOT_GAP } from "./constants.js";
+import type { HeaderVariant } from "./types.js";
 
 export function sanitizeStatusText(text: string): string {
 	return text
@@ -47,6 +48,47 @@ export function composeSideBySide(
 		composedRows.push(`${leftPad}${left}${" ".repeat(MASCOT_GAP)}${right}`);
 	}
 	return composedRows;
+}
+
+export function isSmallResponsiveMode(
+	variant: HeaderVariant,
+	columns: number,
+	rows: number,
+): boolean {
+	const header = HEADER_VARIANTS[variant];
+	const hasMascot =
+		(header.mascot?.length ?? 0) > 0 && (header.mascotMap?.length ?? 0) > 0;
+	return (
+		!hasMascot ||
+		columns < headerWidth(variant) + MASCOT_GAP + 1 ||
+		rows < header.header.length
+	);
+}
+
+// In mascot-only mode, phone-sized terminals use roughly four-fifths of the
+// available width while wider compact terminals gradually recover more detail.
+const COMPACT_MASCOT_BASE_RATIO = 0.7938;
+const COMPACT_MASCOT_MAX_RATIO = 0.87318;
+const COMPACT_MASCOT_RATIO_RAMP_START_COLUMNS = 60;
+const COMPACT_MASCOT_RATIO_RAMP_COLUMNS = 40;
+
+export function compactMascotWidthBudget(availableWidth: number): number {
+	const normalizedWidth = Math.max(1, Math.floor(availableWidth));
+	const ratioProgress = Math.max(
+		0,
+		Math.min(
+			1,
+			(normalizedWidth - COMPACT_MASCOT_RATIO_RAMP_START_COLUMNS) /
+				COMPACT_MASCOT_RATIO_RAMP_COLUMNS,
+		),
+	);
+	const widthRatio =
+		COMPACT_MASCOT_BASE_RATIO +
+		(COMPACT_MASCOT_MAX_RATIO - COMPACT_MASCOT_BASE_RATIO) * ratioProgress;
+	return Math.min(
+		normalizedWidth,
+		Math.max(1, Math.round(normalizedWidth * widthRatio)),
+	);
 }
 
 export function internalLineTarget(tui: TUI): number {
