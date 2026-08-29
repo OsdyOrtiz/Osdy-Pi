@@ -48,6 +48,8 @@ const THINKING_THEME_TOKENS = {
 	xhigh: "thinkingXhigh",
 } satisfies Record<ReturnType<ExtensionAPI["getThinkingLevel"]>, string>;
 
+const PI_LENS_STATUS_KEY = "pi-lens-lsp";
+
 class OsdyFooter implements Component {
 	private readonly pi: ExtensionAPI;
 	private readonly ctx: ExtensionContext;
@@ -80,7 +82,9 @@ class OsdyFooter implements Component {
 			ellipsis,
 		);
 		const statuses = this.footerData.getExtensionStatuses?.() ?? new Map();
-		const statusEntries = Array.from(statuses.entries());
+		const statusEntries = Array.from(statuses.entries()).filter(
+			([key]) => !this.state.smallMode || key !== PI_LENS_STATUS_KEY,
+		);
 		const statusLine = statusEntries
 			.sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
 			.map(([, text]) => sanitizeStatusText(text))

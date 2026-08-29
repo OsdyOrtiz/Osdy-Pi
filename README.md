@@ -79,9 +79,9 @@ Animation is enabled by default with an intro animation. Configure it through `O
 | Terminal mode | Header and mascot | Editor and Git | Footer |
 | --- | --- | --- | --- |
 | Normal | Full selected header and mascot | Framed editor when the desired editor toggle is on; Git summary when the desired working-tree toggle is on | Path/branch, then dynamic extension statuses |
-| Small | Mascot only; art and tone map scale proportionally | Pi native editor; Git summary hidden | Model + styled thinking level, usage, path/branch, then dynamic extension statuses |
+| Small | Mascot only; art and tone map scale proportionally | Pi native editor; Git summary hidden | Model + styled thinking level, usage, path/branch, then dynamic extension statuses (except Pi Lens) |
 
-Small mode trims only fully empty mascot-art and tone-map margins before applying one proportional width-and-height scale; compact terminals start near four-fifths of the available width. Its footer places the model and styled bare thinking level above usage, path/branch, and dynamic extension statuses. Usage includes input/output/cache-read/cache-write tokens, cost, and context. Extension statuses are supplied dynamically by Pi/extensions and may include Osdy Pi, MCP, or LSP; they are not hardcoded.
+Small mode trims only fully empty mascot-art and tone-map margins before applying one proportional width-and-height scale; compact terminals start near four-fifths of the available width. Its footer places the model and styled bare thinking level above usage, path/branch, and dynamic extension statuses. Pi Lens's footer status is hidden in small mode, but Pi Lens continues running. Usage includes input/output/cache-read/cache-write tokens, cost, and context. Extension statuses are supplied dynamically by Pi/extensions and may include Osdy Pi, MCP, or LSP; they are not hardcoded.
 
 The editor and working-tree controls record the desired state for the current session. Their desired settings and working-tree placement are restored when the terminal moves normal → small → normal.
 
