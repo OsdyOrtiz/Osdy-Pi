@@ -20,6 +20,10 @@ export const WORKING_SPINNER_FRAMES = [
 export const WORKING_WIDGET_KEY = "osdy-pi-working";
 export const WORKING_TREE_WIDGET_KEY = "osdy-pi-working-tree";
 export const MASCOT_GAP = 0;
+export const COMPACT_HEADER_HIDDEN_COLUMNS = 72;
+export const STACKED_CONTENT_MAX_ROWS = 32;
+export const STACKED_HEADER_MAX_ROWS = 8;
+export const STACKED_HEADER_MIN_ROWS = 4;
 
 const HTML_MASCOT = [
   "                                         ▓▓▓▓▒            ",
@@ -372,30 +376,55 @@ const ROSE_MASCOT = addRightEdgeGlow({
 assertRawHexPalette(HTML_MASCOT_TONES);
 assertMascotStructure(ROSE_MASCOT, HTML_MASCOT_TONES);
 
+type PreparedMascotArt = {
+  art: MascotArt;
+  width: number;
+  rows: number;
+};
+
+function prepareMascotArt(art: MascotArt): PreparedMascotArt {
+  assertMascotStructure(art, HTML_MASCOT_TONES);
+  const trimmed = trimMascotMargins(art);
+  return {
+    art: trimmed,
+    width: mascotCodePointWidth(trimmed.mascot),
+    rows: trimmed.mascot.length,
+  };
+}
+
+export function mascotWidthForRows(
+  art: MascotArt,
+  maximumRows: number,
+): number {
+  const prepared = prepareMascotArt(art);
+  const heightScale = Math.min(
+    1,
+    Math.max(1, Math.floor(maximumRows)) / prepared.rows,
+  );
+  return Math.max(1, Math.floor(prepared.width * heightScale));
+}
+
 export function scaleMascot(
   art: MascotArt,
   maximumWidth: number,
   maximumRows: number,
 ): MascotArt {
-  assertMascotStructure(art, HTML_MASCOT_TONES);
-  const trimmed = trimMascotMargins(art);
-  const inputWidth = mascotCodePointWidth(trimmed.mascot);
-  const inputRows = trimmed.mascot.length;
+  const prepared = prepareMascotArt(art);
   const scale = Math.min(
     1,
-    Math.max(1, Math.floor(maximumWidth)) / inputWidth,
-    Math.max(1, Math.floor(maximumRows)) / inputRows,
+    Math.max(1, Math.floor(maximumWidth)) / prepared.width,
+    Math.max(1, Math.floor(maximumRows)) / prepared.rows,
   );
-  const outputWidth = Math.max(1, Math.floor(inputWidth * scale));
-  const outputRows = Math.max(1, Math.floor(inputRows * scale));
+  const outputWidth = Math.max(1, Math.floor(prepared.width * scale));
+  const outputRows = Math.max(1, Math.floor(prepared.rows * scale));
   const scaled = {
     mascot: Array.from({ length: outputRows }, (_value, outputIndex) => {
-      const inputIndex = sampleIndex(outputIndex, outputRows, inputRows);
-      return scaleLine(trimmed.mascot[inputIndex] ?? "", outputWidth);
+      const inputIndex = sampleIndex(outputIndex, outputRows, prepared.rows);
+      return scaleLine(prepared.art.mascot[inputIndex] ?? "", outputWidth);
     }),
     toneMap: Array.from({ length: outputRows }, (_value, outputIndex) => {
-      const inputIndex = sampleIndex(outputIndex, outputRows, inputRows);
-      return scaleLine(trimmed.toneMap[inputIndex] ?? "", outputWidth);
+      const inputIndex = sampleIndex(outputIndex, outputRows, prepared.rows);
+      return scaleLine(prepared.art.toneMap[inputIndex] ?? "", outputWidth);
     }),
   };
   assertMascotStructure(scaled, HTML_MASCOT_TONES);
@@ -430,9 +459,54 @@ export const HEADER_VARIANTS: Record<HeaderVariant, HeaderVariantConfig> = {
   },
 };
 
+export type ScaledHeaderArt = {
+  header: readonly string[];
+  toneMap: readonly string[] | undefined;
+  sourceIndexes: number[];
+};
+
 export function headerWidth(variant: HeaderVariant): number {
   return HEADER_VARIANTS[variant].header.reduce(
     (maxWidth, line) => Math.max(maxWidth, visibleWidth(line)),
     0,
   );
+}
+
+export function scaleHeader(
+  variant: HeaderVariant,
+  maximumWidth: number,
+  maximumRows: number,
+): ScaledHeaderArt {
+  const source = HEADER_VARIANTS[variant];
+  const inputWidth = headerWidth(variant);
+  const inputRows = source.header.length;
+  if (maximumWidth >= inputWidth && maximumRows >= inputRows) {
+    return {
+      header: source.header,
+      toneMap: source.headerMap,
+      sourceIndexes: source.header.map((_line, index) => index),
+    };
+  }
+  const scale = Math.min(
+    1,
+    Math.max(1, Math.floor(maximumWidth)) / inputWidth,
+    Math.max(1, Math.floor(maximumRows)) / inputRows,
+  );
+  const outputWidth = Math.max(1, Math.floor(inputWidth * scale));
+  const outputRows = Math.max(1, Math.floor(inputRows * scale));
+  const sourceIndexes = Array.from(
+    { length: outputRows },
+    (_value, outputIndex) => sampleIndex(outputIndex, outputRows, inputRows),
+  );
+  return {
+    header: sourceIndexes.map((sourceIndex) =>
+      scaleLine(source.header[sourceIndex] ?? "", outputWidth),
+    ),
+    toneMap: source.headerMap
+      ? sourceIndexes.map((sourceIndex) =>
+          scaleLine(source.headerMap?.[sourceIndex] ?? "", outputWidth),
+        )
+      : undefined,
+    sourceIndexes,
+  };
 }
