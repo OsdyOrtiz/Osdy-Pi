@@ -36,7 +36,8 @@
 			"./themes/osdy-pi-catppuccin-frappe.json",
 			"./themes/osdy-pi-catppuccin-macchiato.json",
 			"./themes/osdy-pi-catppuccin-mocha.json",
-			"./themes/osdy-pi-matrix.json"
+			"./themes/osdy-pi-matrix.json",
+			"./themes/osdy-pi-lucent-orange.json"
 		],
 		"extensions": [
 			"./extensions/osdy-pi.ts"
