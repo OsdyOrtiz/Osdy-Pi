@@ -66,7 +66,7 @@ Or set the theme in Pi's `settings.json`:
 
 ### Header, mascot, and animation
 
-`osdy-theme` is the default header style; `classic` is the alternative. In normal mode, both styles render their full selected header and mascot. Use `/osdy-pi osdy-theme` or `/osdy-pi classic`, or their direct aliases `/osdy-pi-osdy-theme` and `/osdy-pi-classic`.
+`osdy-theme` is the default header style; `classic` is the alternative. In normal mode, both styles render their full selected header and mascot. The header animation and mascot edge glow resolve through the active theme, so `osdy-pi-sexy` uses its neon pink accents while `osdy-pi-tokyo-night` uses its blue, purple, and cyan palette. Use `/osdy-pi osdy-theme` or `/osdy-pi classic`, or their direct aliases `/osdy-pi-osdy-theme` and `/osdy-pi-classic`.
 
 Animation is enabled by default with an intro animation. Configure it through `OSDY_PI_ANIMATION`:
 
