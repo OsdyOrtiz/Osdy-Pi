@@ -27,7 +27,15 @@
 			"./themes/osdy-pi-new.json",
 			"./themes/osdy-pi-dark.json",
 			"./themes/osdy-pi-sexy.json",
-			"./themes/osdy-pi-tokyo-night.json"
+			"./themes/osdy-pi-tokyo-night.json",
+			"./themes/osdy-pi-kanagawa-wave.json",
+			"./themes/osdy-pi-kanagawa-dragon.json",
+			"./themes/osdy-pi-kanagawa-lotus.json",
+			"./themes/osdy-pi-dracula.json",
+			"./themes/osdy-pi-catppuccin-latte.json",
+			"./themes/osdy-pi-catppuccin-frappe.json",
+			"./themes/osdy-pi-catppuccin-macchiato.json",
+			"./themes/osdy-pi-catppuccin-mocha.json"
 		],
 		"extensions": [
 			"./extensions/osdy-pi.ts"

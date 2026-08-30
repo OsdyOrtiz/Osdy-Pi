@@ -30,7 +30,7 @@ On session start, Osdy Pi enables its UI when a UI is available and preserves yo
 
 | Area | Included behavior |
 | --- | --- |
-| Themes | `osdy-pi-new`, `osdy-pi-dark`, `osdy-pi-sexy`, and `osdy-pi-tokyo-night` |
+| Themes | 12 built-in themes, including Osdy, Kanagawa, Dracula, and Catppuccin palettes |
 | Header | Selectable `osdy-theme` and `classic` header/mascot styles |
 | Input | Framed editor in normal mode, with Pi's native editor as the small-mode fallback |
 | Status | Custom working spinner, responsive footer metrics, and dynamic extension statuses |
@@ -49,6 +49,14 @@ On session start, Osdy Pi enables its UI when a UI is available and preserves yo
 | `osdy-pi-dark` | Dark alternative. |
 | `osdy-pi-sexy` | Gentleman neon pink palette. |
 | `osdy-pi-tokyo-night` | Tokyo Night dark palette. |
+| `osdy-pi-kanagawa-wave` | Kanagawa Wave dark palette. |
+| `osdy-pi-kanagawa-dragon` | Kanagawa Dragon dark palette. |
+| `osdy-pi-kanagawa-lotus` | Kanagawa Lotus light palette. |
+| `osdy-pi-dracula` | Dracula Classic dark palette. |
+| `osdy-pi-catppuccin-latte` | Catppuccin Latte light palette. |
+| `osdy-pi-catppuccin-frappe` | Catppuccin Frappé dark palette. |
+| `osdy-pi-catppuccin-macchiato` | Catppuccin Macchiato dark palette. |
+| `osdy-pi-catppuccin-mocha` | Catppuccin Mocha dark palette. |
 
 Osdy Pi preserves your selected Pi theme when it enables, reapplies, or disables its UI. Choose any theme in Pi:
 
@@ -66,7 +74,7 @@ Or set the theme in Pi's `settings.json`:
 
 ### Header, mascot, and animation
 
-`osdy-theme` is the default header style; `classic` is the alternative. In normal mode, both styles render their full selected header and mascot. The header animation and mascot edge glow resolve through the active theme, so `osdy-pi-sexy` uses its neon pink accents while `osdy-pi-tokyo-night` uses its blue, purple, and cyan palette. Use `/osdy-pi osdy-theme` or `/osdy-pi classic`, or their direct aliases `/osdy-pi-osdy-theme` and `/osdy-pi-classic`.
+`osdy-theme` is the default header style; `classic` is the alternative. In normal mode, both styles render their full selected header and mascot. The header animation and mascot edge glow resolve through the active theme, so each installed palette supplies its own accents. Use `/osdy-pi osdy-theme` or `/osdy-pi classic`, or their direct aliases `/osdy-pi-osdy-theme` and `/osdy-pi-classic`.
 
 Animation is enabled by default with an intro animation. Configure it through `OSDY_PI_ANIMATION`:
 
