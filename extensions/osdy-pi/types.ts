@@ -11,7 +11,6 @@ export type OsdyState = {
 	editorEffective: boolean;
 	editorEnabled: boolean;
 	headerVariant: HeaderVariant;
-	previousThemeName?: string;
 	smallMode: boolean;
 	tui: TUI | undefined;
 	workingTreeEnabled: boolean;

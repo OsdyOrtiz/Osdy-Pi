@@ -38,6 +38,18 @@ function getAnimatedAsciiColor(
 
 const RAW_HEX_COLOR = /^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/;
 
+const GLOW_HIGHLIGHT_TONES = {
+	p: "c",
+	c: "v",
+	v: "p",
+} as const;
+
+const GLOW_TRAIL_TONES = {
+	p: "v",
+	c: "p",
+	v: "c",
+} as const;
+
 function colorAsciiCharacter(
 	theme: SimpleTheme,
 	color: string,
@@ -105,8 +117,19 @@ export function animateAsciiLineWithToneMap(
 				return colorAsciiCharacter(theme, baseColor, char);
 			}
 			const wave = positiveModulo(charIndex + lineIndex * 2 - frame * 5, 44);
-			const highlightColor =
-				tone === "b" || tone === "h" || tone === "p" ? palette.h : palette.l;
+			if (tone === "p" || tone === "c" || tone === "v") {
+				return colorAsciiCharacter(
+					theme,
+					getAnimatedAsciiColor(
+						wave,
+						baseColor,
+						palette[GLOW_HIGHLIGHT_TONES[tone]],
+						palette[GLOW_TRAIL_TONES[tone]],
+					),
+					char,
+				);
+			}
+			const highlightColor = tone === "b" || tone === "h" ? palette.h : palette.l;
 			const trailColor = tone === "d" ? palette.m : palette.b;
 			return colorAsciiCharacter(
 				theme,

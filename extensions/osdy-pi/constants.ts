@@ -1,7 +1,6 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { HeaderVariant } from "./types.js";
 
-export const THEME_NAME = "osdy-pi-new";
 export const ANIMATION_ENABLED = true;
 export const ANIMATION_INTERVAL_MS = 30;
 export const INTRO_ANIMATION_FRAMES = 28;
@@ -166,11 +165,11 @@ type HeaderVariantConfig = {
 const CLASSIC_PALETTE: HeaderPalette = {
   baseColor: "accent",
   highlightColor: "mdHeading",
-  trailColor: "muted",
+  trailColor: "mdLink",
 };
 
 const CLASSIC_LINK_PALETTE: HeaderPalette = {
-  baseColor: "muted",
+  baseColor: "mdLink",
   highlightColor: "mdHeading",
   trailColor: "accent",
 };
@@ -178,18 +177,18 @@ const CLASSIC_LINK_PALETTE: HeaderPalette = {
 const OSDY_THEME_CYAN_PALETTE: HeaderPalette = {
   baseColor: "accent",
   highlightColor: "mdHeading",
-  trailColor: "muted",
+  trailColor: "mdLink",
 };
 
 const OSDY_THEME_SILVER_PALETTE: HeaderPalette = {
-  baseColor: "muted",
+  baseColor: "mdLink",
   highlightColor: "accent",
   trailColor: "mdHeading",
 };
 
 const OSDY_THEME_VIOLET_PALETTE: HeaderPalette = {
   baseColor: "mdHeading",
-  highlightColor: "muted",
+  highlightColor: "mdLink",
   trailColor: "accent",
 };
 
@@ -205,16 +204,23 @@ const HTML_MASCOT_TONES: MascotTonePalette = {
   l: "#C7B4A1",
   m: "#7D6F67",
   d: "#2A2321",
-  p: "#22D3EE",
-  c: "#A78BFA",
-  v: "#CBD5E1",
+  p: "accent",
+  c: "mdHeading",
+  v: "mdLink",
 };
 
+const RAW_BODY_TONE_KEYS = [
+  MASCOT_TONE_KEYS.background,
+  MASCOT_TONE_KEYS.bright,
+  MASCOT_TONE_KEYS.light,
+  MASCOT_TONE_KEYS.mid,
+  MASCOT_TONE_KEYS.dark,
+] as const;
 const RAW_HEX_COLOR = /^#[0-9A-F]{6}$/;
 
 function assertRawHexPalette(palette: MascotTonePalette): void {
-  for (const [tone, color] of Object.entries(palette)) {
-    if (!RAW_HEX_COLOR.test(color)) {
+  for (const tone of RAW_BODY_TONE_KEYS) {
+    if (!RAW_HEX_COLOR.test(palette[tone])) {
       throw new Error(`Mascot tone ${tone} must be a #RRGGBB color.`);
     }
   }

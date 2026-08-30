@@ -1,6 +1,6 @@
 # Osdy Pi — a themed, responsive Pi workspace
 
-Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a cyan, violet, silver, and navy terminal presentation with a responsive header, editor, working indicator, and Git view. Visit the [Osdy landing page](https://landing-osdy.vercel.app/).
+Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive terminal presentation with a header, editor, working indicator, and Git view. Visit the [Osdy landing page](https://landing-osdy.vercel.app/).
 
 <img width="1857" height="847" alt="Osdy Pi interface" src="https://github.com/user-attachments/assets/028eeb14-3f43-4f1c-9603-0c55a8d2856d" />
 
@@ -24,13 +24,13 @@ Start Pi normally:
 pi
 ```
 
-On session start, Osdy Pi enables its UI and selects the default `osdy-pi-new` theme when a UI is available.
+On session start, Osdy Pi enables its UI when a UI is available and preserves your selected Pi theme.
 
 ## What ships
 
 | Area | Included behavior |
 | --- | --- |
-| Themes | `osdy-pi-new` default and `osdy-pi-dark` alternative |
+| Themes | `osdy-pi-new`, `osdy-pi-dark`, `osdy-pi-sexy`, and `osdy-pi-tokyo-night` |
 | Header | Selectable `osdy-theme` and `classic` header/mascot styles |
 | Input | Framed editor in normal mode, with Pi's native editor as the small-mode fallback |
 | Status | Custom working spinner, responsive footer metrics, and dynamic extension statuses |
@@ -45,10 +45,12 @@ On session start, Osdy Pi enables its UI and selects the default `osdy-pi-new` t
 
 | Theme | Use |
 | --- | --- |
-| `osdy-pi-new` | Default landing palette: cyan, violet, silver, and navy. |
+| `osdy-pi-new` | Landing palette: cyan, violet, silver, and navy. |
 | `osdy-pi-dark` | Dark alternative. |
+| `osdy-pi-sexy` | Gentleman neon pink palette. |
+| `osdy-pi-tokyo-night` | Tokyo Night dark palette. |
 
-Choose either theme in Pi:
+Osdy Pi preserves your selected Pi theme when it enables, reapplies, or disables its UI. Choose any theme in Pi:
 
 ```text
 /settings
@@ -58,7 +60,7 @@ Or set the theme in Pi's `settings.json`:
 
 ```json
 {
-  "theme": "osdy-pi-new"
+  "theme": "osdy-pi-sexy"
 }
 ```
 
@@ -101,7 +103,7 @@ The editor and working-tree controls record the desired state for the current se
 | Alias | `/osdy-pi-osdy-theme` |
 | Alias | `/osdy-pi-classic` |
 
-`/osdy-pi` reports status. `enable` applies the Osdy Pi UI and default theme; `disable` restores Pi's built-in header, editor, footer, and working row, then restores the previous theme when available (otherwise `dark`). UI toggles are current-session desired state; only sound configuration persists globally.
+`/osdy-pi` reports status. `enable` applies the Osdy Pi UI without changing the selected Pi theme; `disable` restores Pi's built-in header, editor, footer, and working row while preserving that theme. UI toggles are current-session desired state; only sound configuration persists globally.
 
 ## Editor and working indicator
 

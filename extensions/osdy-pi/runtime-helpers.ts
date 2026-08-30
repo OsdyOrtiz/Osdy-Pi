@@ -3,11 +3,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { asciiAnimationMode } from "./animation.js";
-import {
-	THEME_NAME,
-	WORKING_TREE_WIDGET_KEY,
-	WORKING_WIDGET_KEY,
-} from "./constants.js";
+import { WORKING_TREE_WIDGET_KEY, WORKING_WIDGET_KEY } from "./constants.js";
 import { modelLabel, usageLabel } from "./metrics.js";
 import type {
 	OsdyState,
@@ -24,40 +20,6 @@ import { createWorkingTreeWidgetFactory } from "./working-tree.js";
 import { isSmallResponsiveMode } from "./utils.js";
 
 const RESPONSIVE_WATCH_INTERVAL_MS = 150;
-
-function shouldRememberTheme(
-	previousThemeName: string | undefined,
-	currentTheme: string | undefined,
-): currentTheme is string {
-	return (
-		previousThemeName === undefined &&
-		currentTheme !== undefined &&
-		currentTheme !== THEME_NAME
-	);
-}
-
-export function rememberPreviousTheme(
-	ctx: ExtensionContext,
-	state: OsdyState,
-): void {
-	const currentTheme = ctx.ui.theme.name;
-	if (shouldRememberTheme(state.previousThemeName, currentTheme)) {
-		state.previousThemeName = currentTheme;
-	}
-}
-
-export function applyOsdyTheme(ctx: ExtensionContext): void {
-	const osdyTheme = ctx.ui.getTheme(THEME_NAME);
-	const themeResult = osdyTheme
-		? ctx.ui.setTheme(osdyTheme)
-		: ctx.ui.setTheme(THEME_NAME);
-	if (!themeResult.success) {
-		ctx.ui.notify(
-			`osdy-pi theme failed: ${themeResult.error ?? "unknown error"}`,
-			"warning",
-		);
-	}
-}
 
 function workingTreeEffective(state: OsdyState): boolean {
 	return state.workingTreeEnabled && !state.smallMode && state.enabled;
@@ -171,8 +133,6 @@ export function applyOsdyPi(
 	notify = false,
 ): void {
 	if (!ctx.hasUI) return;
-	rememberPreviousTheme(ctx, state);
-	applyOsdyTheme(ctx);
 	mountOsdyUi(pi, ctx, state, workingState, workingTreeState);
 	if (notify) ctx.ui.notify("osdy-pi enabled", "info");
 }
@@ -188,9 +148,6 @@ export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 	state.editorEffective = false;
 	state.smallMode = false;
 	state.tui = undefined;
-	const targetTheme = state.previousThemeName ?? "dark";
-	const result = ctx.ui.setTheme(targetTheme);
-	if (!result.success && targetTheme !== "dark") ctx.ui.setTheme("dark");
 	ctx.ui.notify("osdy-pi disabled", "info");
 }
 

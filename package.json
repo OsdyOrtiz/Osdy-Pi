@@ -25,7 +25,9 @@
 	"pi": {
 		"themes": [
 			"./themes/osdy-pi-new.json",
-			"./themes/osdy-pi-dark.json"
+			"./themes/osdy-pi-dark.json",
+			"./themes/osdy-pi-sexy.json",
+			"./themes/osdy-pi-tokyo-night.json"
 		],
 		"extensions": [
 			"./extensions/osdy-pi.ts"
