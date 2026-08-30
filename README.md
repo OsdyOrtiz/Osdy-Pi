@@ -30,7 +30,7 @@ On session start, Osdy Pi enables its UI when a UI is available and preserves yo
 
 | Area | Included behavior |
 | --- | --- |
-| Themes | 12 built-in themes, including Osdy, Kanagawa, Dracula, and Catppuccin palettes |
+| Themes | 13 built-in themes, including Osdy, Kanagawa, Dracula, Catppuccin, and Matrix palettes |
 | Header | Selectable `osdy-theme` and `classic` header/mascot styles |
 | Input | Framed editor in normal mode, with Pi's native editor as the small-mode fallback |
 | Status | Custom working spinner, responsive footer metrics, and dynamic extension statuses |
@@ -57,6 +57,7 @@ On session start, Osdy Pi enables its UI when a UI is available and preserves yo
 | `osdy-pi-catppuccin-frappe` | Catppuccin Frappé dark palette. |
 | `osdy-pi-catppuccin-macchiato` | Catppuccin Macchiato dark palette. |
 | `osdy-pi-catppuccin-mocha` | Catppuccin Mocha dark palette. |
+| `osdy-pi-matrix` | OpenCode Matrix dark palette. |
 
 Osdy Pi preserves your selected Pi theme when it enables, reapplies, or disables its UI. Choose any theme in Pi:
 
