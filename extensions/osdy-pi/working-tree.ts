@@ -236,8 +236,8 @@ function renderSummaryLine(
 	}
 	const parts = [
 		theme.fg("mdLink", `Git changes · ${snapshot.totalFiles} files`),
-		theme.fg("success", `+${snapshot.additions}`),
-		theme.fg("error", `-${snapshot.removals}`),
+		theme.fg("toolDiffAdded", `+${snapshot.additions}`),
+		theme.fg("toolDiffRemoved", `-${snapshot.removals}`),
 		theme.fg("mdLink", `staged ${snapshot.stagedFiles}`),
 		theme.fg("mdLink", `unstaged ${snapshot.unstagedFiles}`),
 	];

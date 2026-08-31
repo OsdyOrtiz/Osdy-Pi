@@ -16,11 +16,14 @@ import {
 	reconcileResponsiveUi,
 } from "./runtime-helpers.js";
 import { runSoundSetupWizard } from "./sound-setup-wizard.js";
-import type {
-	HeaderVariant,
-	OsdyState,
-	WorkingTreeState,
-	WorkingWidgetState,
+import {
+	DEFAULT_EDITOR_MODE,
+	EDITOR_MODES,
+	type EditorMode,
+	type HeaderVariant,
+	type OsdyState,
+	type WorkingTreeState,
+	type WorkingWidgetState,
 } from "./types.js";
 import { WORKING_TREE_WIDGET_KEY, WORKING_WIDGET_KEY } from "./constants.js";
 import {
@@ -159,9 +162,15 @@ function getOsdyCommandCompletions(prefix: string) {
 		].map((value) => ({ value, label: value }));
 	}
 	if (trimmed === "editor") {
-		return ["editor on", "editor off", "editor toggle", "editor status"].map(
-			(value) => ({ value, label: value }),
-		);
+		return [
+			"editor auto",
+			"editor extended",
+			"editor simple",
+			"editor on",
+			"editor off",
+			"editor toggle",
+			"editor status",
+		].map((value) => ({ value, label: value }));
 	}
 	if (parts.length === 1) {
 		const valuePrefix = parts[0] ?? "";
@@ -186,7 +195,7 @@ function getOsdyCommandCompletions(prefix: string) {
 	}
 	if (parts[0] === "editor" && parts.length === 2) {
 		const valuePrefix = parts[1] ?? "";
-		return ["on", "off", "toggle", "status"]
+		return ["auto", "extended", "simple", "on", "off", "toggle", "status"]
 			.filter((value) => value.startsWith(valuePrefix))
 			.map((value) => ({
 				value: `editor ${value}`,
@@ -266,6 +275,18 @@ function handleWorkingTreePositionCommand(
 	);
 }
 
+function setEditorMode(
+	mode: EditorMode,
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+	workingTreeState: WorkingTreeState,
+): void {
+	state.editorMode = mode;
+	if (state.enabled) reconcileResponsiveUi(pi, ctx, state, workingTreeState);
+	ctx.ui.notify(`osdy-pi editor mode: ${mode}`, "info");
+}
+
 function handleEditorCommand(
 	action: string | undefined,
 	rest: string[],
@@ -275,25 +296,29 @@ function handleEditorCommand(
 	workingTreeState: WorkingTreeState,
 ): void {
 	if (rest.length > 0) {
-		ctx.ui.notify("Usage: /osdy-pi editor on | off | toggle | status", "warning");
+		ctx.ui.notify(
+			"Usage: /osdy-pi editor auto | extended | simple | on | off | toggle | status",
+			"warning",
+		);
 		return;
 	}
-	if (action === "on") {
-		state.editorEnabled = true;
-		if (state.enabled) reconcileResponsiveUi(pi, ctx, state, workingTreeState);
-		ctx.ui.notify("osdy-pi editor enabled", "info");
-		return;
-	}
-	if (action === "off") {
-		state.editorEnabled = false;
-		if (state.enabled) reconcileResponsiveUi(pi, ctx, state, workingTreeState);
-		ctx.ui.notify("osdy-pi editor disabled", "info");
+	const modeForAction: Record<string, EditorMode> = {
+		auto: EDITOR_MODES.AUTO,
+		extended: EDITOR_MODES.EXTENDED,
+		simple: EDITOR_MODES.SIMPLE,
+		on: EDITOR_MODES.EXTENDED,
+		off: EDITOR_MODES.SIMPLE,
+	};
+	const mode = action ? modeForAction[action] : undefined;
+	if (mode) {
+		setEditorMode(mode, pi, ctx, state, workingTreeState);
 		return;
 	}
 	if (action === "toggle") {
-		handleEditorCommand(
-			state.editorEnabled ? "off" : "on",
-			[],
+		setEditorMode(
+			state.editorMode === EDITOR_MODES.EXTENDED
+				? EDITOR_MODES.SIMPLE
+				: EDITOR_MODES.EXTENDED,
 			pi,
 			ctx,
 			state,
@@ -303,12 +328,15 @@ function handleEditorCommand(
 	}
 	if (action === "status" || action === undefined) {
 		ctx.ui.notify(
-			`osdy-pi editor ${state.editorEnabled ? "enabled" : "disabled"}`,
+			`osdy-pi editor mode ${state.editorMode}, effective ${state.editorEffective ? "extended" : "simple/native"}`,
 			"info",
 		);
 		return;
 	}
-	ctx.ui.notify("Usage: /osdy-pi editor on | off | toggle | status", "warning");
+	ctx.ui.notify(
+		"Usage: /osdy-pi editor auto | extended | simple | on | off | toggle | status",
+		"warning",
+	);
 }
 
 async function handleWorkingTreeCommand(
@@ -484,7 +512,7 @@ function registerCommand(
 				return;
 			}
 			ctx.ui.notify(
-				"Usage: /osdy-pi enable | disable | status | editor on|off|toggle|status | sound setup | working-tree ... | diff | osdy-theme | classic",
+				"Usage: /osdy-pi enable | disable | status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff | osdy-theme | classic",
 				"warning",
 			);
 		},
@@ -505,7 +533,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	const state: OsdyState = {
 		enabled: true,
 		editorEffective: false,
-		editorEnabled: true,
+		editorMode: DEFAULT_EDITOR_MODE,
 		headerVariant: "osdy-theme",
 		smallMode: false,
 		tui: undefined,

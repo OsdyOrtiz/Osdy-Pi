@@ -2,6 +2,24 @@ import type { TUI } from "@earendil-works/pi-tui";
 
 export type AnimationMode = "off" | "intro" | "continuous";
 
+export const EDITOR_MODES = {
+	AUTO: "auto",
+	EXTENDED: "extended",
+	SIMPLE: "simple",
+} as const;
+
+export type EditorMode = (typeof EDITOR_MODES)[keyof typeof EDITOR_MODES];
+
+export const DEFAULT_EDITOR_MODE = EDITOR_MODES.AUTO;
+
+export function resolveEffectiveEditorMode(
+	mode: EditorMode,
+	smallMode: boolean,
+): EditorMode {
+	if (smallMode || mode === EDITOR_MODES.SIMPLE) return EDITOR_MODES.SIMPLE;
+	return EDITOR_MODES.EXTENDED;
+}
+
 export type HeaderVariant = "osdy-theme" | "classic";
 
 export type WorkingTreePlacement = "aboveEditor" | "belowEditor";
@@ -9,7 +27,7 @@ export type WorkingTreePlacement = "aboveEditor" | "belowEditor";
 export type OsdyState = {
 	enabled: boolean;
 	editorEffective: boolean;
-	editorEnabled: boolean;
+	editorMode: EditorMode;
 	headerVariant: HeaderVariant;
 	smallMode: boolean;
 	tui: TUI | undefined;

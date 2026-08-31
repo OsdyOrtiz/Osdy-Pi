@@ -300,7 +300,7 @@ class WorkingTreeDiffPanel implements Component {
 					entry.file.path,
 					Math.max(12, innerWidth - 34),
 				);
-				const stats = `${this.theme.fg("success", `+${entry.file.additions}`)}/${this.theme.fg("error", `-${entry.file.removals}`)}`;
+				const stats = `${this.theme.fg("toolDiffAdded", `+${entry.file.additions}`)}/${this.theme.fg("toolDiffRemoved", `-${entry.file.removals}`)}`;
 				const badges = fileFlags(this.theme, entry.file);
 				return `${marker} ${this.theme.fg(isSelected ? "accent" : "toolOutput", path)} ${badges} ${stats}`;
 			});
@@ -336,9 +336,9 @@ class WorkingTreeDiffPanel implements Component {
 			.slice(this.scrollOffset, this.scrollOffset + availablePatchHeight)
 			.map((line) => {
 				if (line.startsWith("+") && !line.startsWith("+++"))
-					return this.theme.fg("success", line);
+					return this.theme.fg("toolDiffAdded", line);
 				if (line.startsWith("-") && !line.startsWith("---"))
-					return this.theme.fg("error", line);
+					return this.theme.fg("toolDiffRemoved", line);
 				if (line.startsWith("@@")) return this.theme.fg("accent", line);
 				return this.theme.fg("toolOutput", line);
 			});

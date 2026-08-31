@@ -5,10 +5,11 @@ import type {
 import { asciiAnimationMode } from "./animation.js";
 import { WORKING_TREE_WIDGET_KEY, WORKING_WIDGET_KEY } from "./constants.js";
 import { modelLabel, usageLabel } from "./metrics.js";
-import type {
-	OsdyState,
-	WorkingTreeState,
-	WorkingWidgetState,
+import {
+	resolveEffectiveEditorMode,
+	type OsdyState,
+	type WorkingTreeState,
+	type WorkingWidgetState,
 } from "./types.js";
 import {
 	createEditorComponent,
@@ -46,7 +47,8 @@ export function reconcileResponsiveUi(
 	const nextSmallMode = desiredSmallMode(state);
 	const smallModeChanged = nextSmallMode !== state.smallMode;
 	state.smallMode = nextSmallMode;
-	const editorEffective = state.editorEnabled && !state.smallMode;
+	const editorEffective =
+		resolveEffectiveEditorMode(state.editorMode, state.smallMode) === "extended";
 	if (state.editorEffective !== editorEffective) {
 		state.editorEffective = editorEffective;
 		if (editorEffective) mountOsdyEditor(pi, ctx);
@@ -153,7 +155,7 @@ export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 
 export function notifyStatus(ctx: ExtensionContext, state: OsdyState): void {
 	ctx.ui.notify(
-		`osdy-pi ${state.enabled ? "enabled" : "disabled"} · editor desired ${state.editorEnabled ? "on" : "off"}, effective ${state.editorEffective ? "framed" : "native"} · working-tree desired ${state.workingTreeEnabled ? "on" : "off"}, effective ${workingTreeEffective(state) ? "visible" : "hidden"} · widget ${state.workingTreePlacement === "aboveEditor" ? "top" : "bottom"} · theme ${ctx.ui.theme.name ?? "unknown"} · style ${state.headerVariant} · animation ${asciiAnimationMode()} · ${modelLabel(ctx)} · ${usageLabel(ctx).trim()}`,
+		`osdy-pi ${state.enabled ? "enabled" : "disabled"} · editor ${state.editorMode}, effective ${state.editorEffective ? "extended" : "simple/native"} · working-tree desired ${state.workingTreeEnabled ? "on" : "off"}, effective ${workingTreeEffective(state) ? "visible" : "hidden"} · widget ${state.workingTreePlacement === "aboveEditor" ? "top" : "bottom"} · theme ${ctx.ui.theme.name ?? "unknown"} · style ${state.headerVariant} · animation ${asciiAnimationMode()} · ${modelLabel(ctx)} · ${usageLabel(ctx).trim()}`,
 		"info",
 	);
 }

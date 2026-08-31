@@ -32,7 +32,7 @@ On session start, Osdy Pi enables its UI when a UI is available and preserves yo
 | --- | --- |
 | Themes | 14 built-in themes, including Osdy, Kanagawa, Dracula, Catppuccin, Matrix, and Lucent Orange palettes |
 | Header | Selectable `osdy-theme` and `classic` header/mascot styles |
-| Input | Framed editor in normal mode, with Pi's native editor as the small-mode fallback |
+| Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
 | Status | Custom working spinner, responsive footer metrics, and dynamic extension statuses |
 | Git | Working-tree summary and a centered, filterable diff panel |
 | Audio | Optional event sounds on macOS and Windows |
@@ -90,13 +90,13 @@ Animation is enabled by default with an intro animation. Configure it through `O
 
 | Terminal mode | Header and mascot | Editor and Git | Footer |
 | --- | --- | --- | --- |
-| Normal | Full selected header and mascot side by side | Framed editor when the desired editor toggle is on; Git summary when the desired working-tree toggle is on | Path/branch, then dynamic extension statuses |
-| Compact (72+ columns) | Proportionally scaled mascot above a readable header, reduced only when needed | Existing normal/small editor and Git behavior | Existing normal/small footer behavior |
-| Small (<72 columns) | Mascot only; art and tone map scale proportionally | Pi native editor; Git summary hidden | Model + styled thinking level, usage, path/branch, then dynamic extension statuses (except Pi Lens) |
+| Normal | Full selected header and mascot side by side | Auto mode shows the framed editor by default; simple selects Pi's native editor and extended selects the framed editor; Git summary when enabled | Path/branch, then dynamic extension statuses |
+| Compact (72+ columns) | Proportionally scaled mascot above a readable header, reduced only when needed | Selected editor mode and Git behavior | Existing normal/small footer behavior |
+| Small (<72 columns) | Mascot only; art and tone map scale proportionally | Pi native editor for every editor mode; Git summary hidden | Model + styled thinking level, usage, path/branch, then dynamic extension statuses (except Pi Lens) |
 
 Small and compact modes trim only fully empty mascot-art and tone-map margins before applying one proportional width-and-height scale; mascot width starts near four-fifths of the available width. The header moves below the mascot as soon as side-by-side width would force the mascot into an additional width-limited reduction. Compact headers retain their source art when it fits and reduce proportionally only when a width or row bound requires it. Compact headers and mascots share a bounded terminal-row budget, so the header is omitted rather than collapsed into an unreadable one-row logo when there is not enough vertical space. The small-mode footer places the model and styled bare thinking level above usage, path/branch, and dynamic extension statuses. Pi Lens's footer status is hidden in small mode, but Pi Lens continues running. Usage includes input/output/cache-read/cache-write tokens, cost, and context. Extension statuses are supplied dynamically by Pi/extensions and may include Osdy Pi, MCP, or LSP; they are not hardcoded.
 
-The editor and working-tree controls record the desired state for the current session. Their desired settings and working-tree placement are restored when the terminal moves normal → small → normal.
+The editor mode and working-tree controls record the desired state for the current session. The selected editor mode and working-tree placement are restored when the terminal moves normal → small → normal.
 
 ## Commands
 
@@ -105,7 +105,7 @@ The editor and working-tree controls record the desired state for the current se
 | Main | `/osdy-pi` |
 | Main | `/osdy-pi enable\|disable\|status` |
 | Header | `/osdy-pi osdy-theme\|classic` |
-| Editor | `/osdy-pi editor on\|off\|toggle\|status` |
+| Editor | `/osdy-pi editor auto\|extended\|simple\|on\|off\|toggle\|status` |
 | Working tree | `/osdy-pi working-tree on\|off\|toggle\|status` |
 | Working tree | `/osdy-pi working-tree position top\|bottom\|status` |
 | Audio | `/osdy-pi sound setup` |
@@ -117,9 +117,11 @@ The editor and working-tree controls record the desired state for the current se
 
 ## Editor and working indicator
 
-In normal mode, the framed editor shows the model and thinking level in its title and session usage in its footer. Usage covers input, output, cache read, cache write when present, cost, and context. If Pi supports autocomplete, the editor uses Pi's native autocomplete rendering while the completion UI is visible.
+The default `auto` editor mode preserves the responsive behavior: it uses the framed editor when space permits and Pi's native editor on small terminals. Select `simple` for Pi's native editor at every width, or `extended` to request the framed editor explicitly: `/osdy-pi editor auto|extended|simple`. Small terminals always use Pi's native editor, including when `extended` is selected. The legacy commands remain compatible where feasible: `on` maps to `extended`, `off` maps to `simple`, and `toggle` switches between extended and simple.
 
-A custom spinner appears above the editor while work is active. Osdy Pi hides Pi's built-in working row while enabled to avoid a duplicate indicator. Small mode always uses Pi's native editor.
+In auto or extended mode at a non-small width, the framed editor shows the model and thinking level in its title and session usage in its footer. It uses the currently active Pi/Osdy theme palette; no separate editor theme selector exists. Usage covers input, output, cache read, cache write when present, cost, and context. If Pi supports autocomplete, the editor uses Pi's native autocomplete rendering while the completion UI is visible.
+
+A custom spinner appears above the editor while work is active. Osdy Pi hides Pi's built-in working row while enabled to avoid a duplicate indicator.
 
 ## Working tree and diff
 
