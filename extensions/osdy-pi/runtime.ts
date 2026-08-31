@@ -6,6 +6,7 @@ import { createAudioEventRouter } from "./audio-event-router.js";
 import { registerAudioNotificationFlags } from "./audio-notification-config.js";
 import { createAudioNotificationService } from "./audio-notification-service.js";
 import { createAudioPlaybackAdapter } from "./audio-playback.js";
+import { subscribeQuestionPromptAudioNotification } from "./plugin-events.js";
 import { createAudioSoundSettingsStore } from "./audio-sound-settings.js";
 import {
 	applyOsdyPi,
@@ -547,6 +548,12 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	};
 	const startResponsive = (): void => responsiveCoordinator?.start();
 	const stopResponsive = (): void => responsiveCoordinator?.stop();
+
+	subscribeQuestionPromptAudioNotification(
+		pi,
+		{ getCurrentSessionContext: () => sessionContext },
+		audioRouter,
+	);
 
 	pi.on("agent_start", () => {
 		controller.onAgentStart();

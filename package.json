@@ -13,6 +13,7 @@
 	"scripts": {
 		"typecheck": "tsc --noEmit",
 		"lint": "eslint .",
+		"test": "node --test --experimental-strip-types extensions/osdy-pi/*.test.ts",
 		"pi:dev": "node ./scripts/pi-dev.mjs"
 	},
 	"files": [
