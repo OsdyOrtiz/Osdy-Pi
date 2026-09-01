@@ -8,6 +8,7 @@ import { createAudioNotificationService } from "./audio-notification-service.js"
 import { createAudioPlaybackAdapter } from "./audio-playback.js";
 import { subscribeQuestionPromptAudioNotification } from "./plugin-events.js";
 import { createAudioSoundSettingsStore } from "./audio-sound-settings.js";
+import { createEditorSettingsStore } from "./editor-settings.js";
 import {
 	applyOsdyPi,
 	createResponsiveCoordinator,
@@ -275,26 +276,33 @@ function handleWorkingTreePositionCommand(
 	);
 }
 
-function setEditorMode(
+async function setEditorMode(
 	mode: EditorMode,
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	state: OsdyState,
 	workingTreeState: WorkingTreeState,
-): void {
+	settingsStore: ReturnType<typeof createEditorSettingsStore>,
+): Promise<void> {
 	state.editorMode = mode;
 	if (state.enabled) reconcileResponsiveUi(pi, ctx, state, workingTreeState);
-	ctx.ui.notify(`osdy-pi editor mode: ${mode}`, "info");
+	try {
+		await settingsStore.save({ version: 1, editorMode: mode });
+		ctx.ui.notify(`osdy-pi editor mode: ${mode}`, "info");
+	} catch {
+		ctx.ui.notify("osdy-pi editor mode changed but could not be saved", "warning");
+	}
 }
 
-function handleEditorCommand(
+async function handleEditorCommand(
 	action: string | undefined,
 	rest: string[],
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	state: OsdyState,
 	workingTreeState: WorkingTreeState,
-): void {
+	settingsStore: ReturnType<typeof createEditorSettingsStore>,
+): Promise<void> {
 	if (rest.length > 0) {
 		ctx.ui.notify(
 			"Usage: /osdy-pi editor auto | extended | simple | on | off | toggle | status",
@@ -311,11 +319,11 @@ function handleEditorCommand(
 	};
 	const mode = action ? modeForAction[action] : undefined;
 	if (mode) {
-		setEditorMode(mode, pi, ctx, state, workingTreeState);
+		await setEditorMode(mode, pi, ctx, state, workingTreeState, settingsStore);
 		return;
 	}
 	if (action === "toggle") {
-		setEditorMode(
+		await setEditorMode(
 			state.editorMode === EDITOR_MODES.EXTENDED
 				? EDITOR_MODES.SIMPLE
 				: EDITOR_MODES.EXTENDED,
@@ -323,6 +331,7 @@ function handleEditorCommand(
 			ctx,
 			state,
 			workingTreeState,
+			settingsStore,
 		);
 		return;
 	}
@@ -441,6 +450,7 @@ function registerCommand(
 	workingTreeState: WorkingTreeState,
 	controller: WorkingController,
 	settingsStore: ReturnType<typeof createAudioSoundSettingsStore>,
+	editorSettingsStore: ReturnType<typeof createEditorSettingsStore>,
 	startResponsive: () => void,
 	stopResponsive: () => void,
 ): void {
@@ -481,13 +491,14 @@ function registerCommand(
 				return;
 			}
 			if (action === "editor") {
-				handleEditorCommand(
+				await handleEditorCommand(
 					rest[0],
 					rest.slice(1),
 					pi,
 					ctx,
 					state,
 					workingTreeState,
+					editorSettingsStore,
 				);
 				return;
 			}
@@ -557,6 +568,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	};
 	const controller = createWorkingController(state, workingState);
 	const settingsStore = createAudioSoundSettingsStore();
+	const editorSettingsStore = createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
 	const audioRouter = createAudioEventRouter(
 		createAudioNotificationService(
@@ -609,10 +621,12 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		workingTreeState.tui = undefined;
 		sessionContext = undefined;
 	});
-	pi.on("session_start", (_event, ctx) => {
+	pi.on("session_start", async (_event, ctx) => {
 		cancelOsdyRefreshes();
 		stopResponsive();
 		sessionContext = ctx;
+		state.editorMode = (await editorSettingsStore.load()).editorMode;
+		if (sessionContext !== ctx) return;
 		claimOsdyVisualLayer(
 			pi,
 			ctx,
@@ -641,6 +655,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		workingTreeState,
 		controller,
 		settingsStore,
+		editorSettingsStore,
 		startResponsive,
 		stopResponsive,
 	);

@@ -12,12 +12,21 @@ export type EditorMode = (typeof EDITOR_MODES)[keyof typeof EDITOR_MODES];
 
 export const DEFAULT_EDITOR_MODE = EDITOR_MODES.AUTO;
 
+export interface GlobalEditorSettings {
+	version: number;
+	editorMode: EditorMode;
+}
+
 export function resolveEffectiveEditorMode(
 	mode: EditorMode,
 	smallMode: boolean,
 ): EditorMode {
 	if (smallMode || mode === EDITOR_MODES.SIMPLE) return EDITOR_MODES.SIMPLE;
 	return EDITOR_MODES.EXTENDED;
+}
+
+export function shouldShowFooterMetadata(editorEffective: boolean): boolean {
+	return !editorEffective;
 }
 
 export type HeaderVariant = "osdy-theme" | "classic";

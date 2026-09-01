@@ -36,11 +36,12 @@ import {
 } from "./constants.js";
 import { formatPath } from "./format.js";
 import { modelLabel, usageLabel } from "./metrics.js";
-import type {
-	HeaderVariant,
-	OsdyState,
-	SimpleTheme,
-	WorkingWidgetState,
+import {
+	shouldShowFooterMetadata,
+	type HeaderVariant,
+	type OsdyState,
+	type SimpleTheme,
+	type WorkingWidgetState,
 } from "./types.js";
 import {
 	compactMascotWidthBudget,
@@ -305,7 +306,7 @@ class OsdyFooter implements Component {
 			.sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
 			.map(([, text]) => sanitizeStatusText(text))
 			.join(" ");
-		if (!this.state.smallMode) {
+		if (!shouldShowFooterMetadata(this.state.editorEffective)) {
 			return statusLine
 				? [locationLine, truncateToWidth(statusLine, width, ellipsis)]
 				: [locationLine];
