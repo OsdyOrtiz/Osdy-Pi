@@ -15,6 +15,7 @@ export const DEFAULT_EDITOR_MODE = EDITOR_MODES.AUTO;
 export interface GlobalEditorSettings {
 	version: number;
 	editorMode: EditorMode;
+	workingTreeEnabled: boolean;
 }
 
 export function resolveEffectiveEditorMode(

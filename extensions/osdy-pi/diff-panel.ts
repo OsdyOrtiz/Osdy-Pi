@@ -38,9 +38,7 @@ async function runGit(
 function normalizePatchLines(output: string): string[] {
 	return output
 		.split("\n")
-		.filter(
-			(line, index, lines) => !(index === lines.length - 1 && line === ""),
-		);
+		.filter((line, index, lines) => !(index === lines.length - 1 && line === ""));
 }
 
 async function loadUntrackedPatch(
@@ -284,10 +282,7 @@ class WorkingTreeDiffPanel implements Component {
 			const innerWidth = Math.max(20, width - 4);
 			const listStart = Math.max(
 				0,
-				Math.min(
-					this.selectedIndex - 4,
-					Math.max(0, filteredFiles.length - 10),
-				),
+				Math.min(this.selectedIndex - 4, Math.max(0, filteredFiles.length - 10)),
 			);
 			const listEntries = filteredFiles.slice(listStart, listStart + 10);
 			const listLines = listEntries.map((entry, index) => {
@@ -296,10 +291,7 @@ class WorkingTreeDiffPanel implements Component {
 				const marker = isSelected
 					? this.theme.fg("accent", "❯")
 					: this.theme.fg("muted", "·");
-				const path = truncateMiddle(
-					entry.file.path,
-					Math.max(12, innerWidth - 34),
-				);
+				const path = truncateMiddle(entry.file.path, Math.max(12, innerWidth - 34));
 				const stats = `${this.theme.fg("toolDiffAdded", `+${entry.file.additions}`)}/${this.theme.fg("toolDiffRemoved", `-${entry.file.removals}`)}`;
 				const badges = fileFlags(this.theme, entry.file);
 				return `${marker} ${this.theme.fg(isSelected ? "accent" : "toolOutput", path)} ${badges} ${stats}`;

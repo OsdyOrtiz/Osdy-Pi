@@ -23,7 +23,11 @@ function getAgentDir(): string {
 }
 
 function createDefaultEditorSettings(): GlobalEditorSettings {
-	return { version: EDITOR_SETTINGS_VERSION, editorMode: DEFAULT_EDITOR_MODE };
+	return {
+		version: EDITOR_SETTINGS_VERSION,
+		editorMode: DEFAULT_EDITOR_MODE,
+		workingTreeEnabled: true,
+	};
 }
 
 function isEditorMode(value: unknown): value is EditorMode {
@@ -43,6 +47,10 @@ export function normalizeEditorSettings(value: unknown): GlobalEditorSettings {
 		editorMode: isEditorMode(recordValue.editorMode)
 			? recordValue.editorMode
 			: DEFAULT_EDITOR_MODE,
+		workingTreeEnabled:
+			typeof recordValue.workingTreeEnabled === "boolean"
+				? recordValue.workingTreeEnabled
+				: true,
 	};
 }
 

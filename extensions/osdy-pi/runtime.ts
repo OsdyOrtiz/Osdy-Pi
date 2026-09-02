@@ -287,10 +287,17 @@ async function setEditorMode(
 	state.editorMode = mode;
 	if (state.enabled) reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 	try {
-		await settingsStore.save({ version: 1, editorMode: mode });
+		await settingsStore.save({
+			version: 1,
+			editorMode: mode,
+			workingTreeEnabled: state.workingTreeEnabled,
+		});
 		ctx.ui.notify(`osdy-pi editor mode: ${mode}`, "info");
 	} catch {
-		ctx.ui.notify("osdy-pi editor mode changed but could not be saved", "warning");
+		ctx.ui.notify(
+			"osdy-pi editor mode changed but could not be saved",
+			"warning",
+		);
 	}
 }
 
@@ -348,6 +355,22 @@ async function handleEditorCommand(
 	);
 }
 
+async function saveWorkingTreePreference(
+	state: OsdyState,
+	settingsStore: ReturnType<typeof createEditorSettingsStore>,
+): Promise<boolean> {
+	try {
+		await settingsStore.save({
+			version: 1,
+			editorMode: state.editorMode,
+			workingTreeEnabled: state.workingTreeEnabled,
+		});
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 async function handleWorkingTreeCommand(
 	action: string | undefined,
 	rest: string[],
@@ -356,6 +379,7 @@ async function handleWorkingTreeCommand(
 	state: OsdyState,
 	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
+	settingsStore: ReturnType<typeof createEditorSettingsStore>,
 ): Promise<void> {
 	if (action === "position") {
 		handleWorkingTreePositionCommand(
@@ -372,8 +396,14 @@ async function handleWorkingTreeCommand(
 		state.workingTreeEnabled = true;
 		workingTreeState.enabled = true;
 		reconcileResponsiveUi(pi, ctx, state, workingTreeState);
+		const saved = await saveWorkingTreePreference(state, settingsStore);
 		await refreshWorkingTree(pi, ctx, workingTreeState);
-		ctx.ui.notify("osdy-pi working tree enabled", "info");
+		ctx.ui.notify(
+			saved
+				? "osdy-pi working tree enabled"
+				: "osdy-pi working tree enabled but could not be saved",
+			saved ? "info" : "warning",
+		);
 		return;
 	}
 	if (action === "off") {
@@ -381,7 +411,13 @@ async function handleWorkingTreeCommand(
 		workingTreeState.enabled = false;
 		reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 		clearWorkingTree(workingTreeState);
-		ctx.ui.notify("osdy-pi working tree disabled", "info");
+		const saved = await saveWorkingTreePreference(state, settingsStore);
+		ctx.ui.notify(
+			saved
+				? "osdy-pi working tree disabled"
+				: "osdy-pi working tree disabled but could not be saved",
+			saved ? "info" : "warning",
+		);
 		return;
 	}
 	if (action === "toggle") {
@@ -394,6 +430,7 @@ async function handleWorkingTreeCommand(
 			state,
 			workingState,
 			workingTreeState,
+			settingsStore,
 		);
 		return;
 	}
@@ -511,6 +548,7 @@ function registerCommand(
 					state,
 					workingState,
 					workingTreeState,
+					editorSettingsStore,
 				);
 				return;
 			}
@@ -609,7 +647,11 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	pi.on("tool_execution_end", (event, ctx) => {
 		controller.onToolEnd();
 		audioRouter.onToolExecutionEnd(event.isError === true, ctx);
-		if (event.isError !== true && shouldRefreshWorkingTree(event.toolName)) {
+		if (
+			state.workingTreeEnabled &&
+			event.isError !== true &&
+			shouldRefreshWorkingTree(event.toolName)
+		) {
 			void refreshWorkingTree(pi, ctx, workingTreeState);
 		}
 	});
@@ -625,7 +667,10 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		cancelOsdyRefreshes();
 		stopResponsive();
 		sessionContext = ctx;
-		state.editorMode = (await editorSettingsStore.load()).editorMode;
+		const editorSettings = await editorSettingsStore.load();
+		state.editorMode = editorSettings.editorMode;
+		state.workingTreeEnabled = editorSettings.workingTreeEnabled;
+		workingTreeState.enabled = editorSettings.workingTreeEnabled;
 		if (sessionContext !== ctx) return;
 		claimOsdyVisualLayer(
 			pi,

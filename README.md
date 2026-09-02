@@ -96,7 +96,7 @@ Animation is enabled by default with an intro animation. Configure it through `O
 
 Small and compact modes trim only fully empty mascot-art and tone-map margins before applying one proportional width-and-height scale; mascot width starts near four-fifths of the available width. The header moves below the mascot as soon as side-by-side width would force the mascot into an additional width-limited reduction. Compact headers retain their source art when it fits and reduce proportionally only when a width or row bound requires it. Compact headers and mascots share a bounded terminal-row budget, so the header is omitted rather than collapsed into an unreadable one-row logo when there is not enough vertical space. The small-mode footer places the model and styled bare thinking level above usage, path/branch, and dynamic extension statuses. Pi Lens's footer status is hidden in small mode, but Pi Lens continues running. Usage includes input/output/cache-read/cache-write tokens, cost, and context. Extension statuses are supplied dynamically by Pi/extensions and may include Osdy Pi, MCP, or LSP; they are not hardcoded.
 
-The editor mode persists globally across Pi reloads and sessions, shared by all projects. It is saved in `$PI_CODING_AGENT_DIR/extensions/osdy-pi/settings.json`, or `~/.pi/agent/extensions/osdy-pi/settings.json` when `PI_CODING_AGENT_DIR` is unset. The working-tree controls remain current-session state; the selected editor mode and working-tree placement are restored when the terminal moves normal → small → normal.
+The editor mode and working-tree visibility preference persist globally across Pi reloads and sessions, shared by all projects. They are saved in `$PI_CODING_AGENT_DIR/extensions/osdy-pi/settings.json`, or `~/.pi/agent/extensions/osdy-pi/settings.json` when `PI_CODING_AGENT_DIR` is unset. The selected editor mode and working-tree placement are restored when the terminal moves normal → small → normal.
 
 ## Commands
 
@@ -113,7 +113,7 @@ The editor mode persists globally across Pi reloads and sessions, shared by all 
 | Alias | `/osdy-pi-osdy-theme` |
 | Alias | `/osdy-pi-classic` |
 
-`/osdy-pi` reports status. `enable` applies the Osdy Pi UI without changing the selected Pi theme; `disable` restores Pi's built-in header, editor, footer, and working row while preserving that theme. The editor mode and sound configuration persist globally; other UI toggles are current-session desired state.
+`/osdy-pi` reports status. `enable` applies the Osdy Pi UI without changing the selected Pi theme; `disable` restores Pi's built-in header, editor, footer, and working row while preserving that theme. The editor mode, working-tree visibility, and sound configuration persist globally; other UI toggles are current-session desired state.
 
 ## Editor and working indicator
 
