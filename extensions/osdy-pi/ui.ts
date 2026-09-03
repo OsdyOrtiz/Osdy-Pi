@@ -37,6 +37,11 @@ import {
 import { formatPath } from "./format.js";
 import { modelLabel, usageLabel } from "./metrics.js";
 import {
+	formatModelMetadata,
+	resolveActiveProfileLabel,
+	resolveEditorTitleLabel,
+} from "./profile-label.js";
+import {
 	shouldShowFooterMetadata,
 	type HeaderVariant,
 	type OsdyState,
@@ -58,6 +63,7 @@ const THINKING_THEME_TOKENS = {
 	medium: "thinkingMedium",
 	high: "thinkingHigh",
 	xhigh: "thinkingXhigh",
+	max: "thinkingXhigh",
 } satisfies Record<ReturnType<ExtensionAPI["getThinkingLevel"]>, string>;
 
 const PI_LENS_STATUS_KEY = "pi-lens-lsp";
@@ -313,7 +319,14 @@ class OsdyFooter implements Component {
 		}
 		const thinkingLevel = this.pi.getThinkingLevel();
 		const thinkingLine = truncateToWidth(
-			`${modelLabel(this.ctx)} · think ${this.theme.fg(THINKING_THEME_TOKENS[thinkingLevel], `\u001B[1m${thinkingLevel}\u001B[22m`)}`,
+			formatModelMetadata(
+				modelLabel(this.ctx),
+				this.theme.fg(
+					THINKING_THEME_TOKENS[thinkingLevel],
+					`\u001B[1m${thinkingLevel}\u001B[22m`,
+				),
+				resolveActiveProfileLabel(),
+			),
 			width,
 			ellipsis,
 		);
@@ -459,7 +472,10 @@ export function createEditorComponent(
 				const padding = " ".repeat(Math.max(0, innerWidth - visibleWidth(content)));
 				lines[index] = `${side}${content}${padding}${side}`;
 			}
-			const topLeft = ctx.ui.theme.fg("mdLink", " Osdy-Pi ");
+			const topLeft = ctx.ui.theme.fg(
+				"mdLink",
+				` ${resolveEditorTitleLabel(resolveActiveProfileLabel())} `,
+			);
 			const topRight = ctx.ui.theme.fg(
 				"muted",
 				` ${modelLabel(ctx)} · think ${pi.getThinkingLevel()} `,

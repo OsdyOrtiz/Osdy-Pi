@@ -9,6 +9,7 @@ import { createAudioPlaybackAdapter } from "./audio-playback.js";
 import { subscribeQuestionPromptAudioNotification } from "./plugin-events.js";
 import { createAudioSoundSettingsStore } from "./audio-sound-settings.js";
 import { createEditorSettingsStore } from "./editor-settings.js";
+import { registerAccountProfilesCommand } from "./account-profiles.js";
 import {
 	applyOsdyPi,
 	createResponsiveCoordinator,
@@ -608,6 +609,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	const settingsStore = createAudioSoundSettingsStore();
 	const editorSettingsStore = createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
+	registerAccountProfilesCommand(pi);
 	const audioRouter = createAudioEventRouter(
 		createAudioNotificationService(
 			pi,

@@ -3,16 +3,25 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
 	{
-		ignores: [
-			"node_modules/**",
-			"dist/**",
-			"scripts/**",
-			"*.tgz",
-			"eslint.config.js",
-		],
+		ignores: ["node_modules/**", "dist/**", "*.tgz", "eslint.config.js"],
 	},
 	js.configs.recommended,
-	...tseslint.configs.recommendedTypeChecked,
+	...tseslint.configs.recommendedTypeChecked.map((config) => ({
+		...config,
+		files: ["extensions/**/*.ts"],
+	})),
+	{
+		files: ["bin/osdy-pi.mjs", "scripts/osdy-pi*.mjs", "scripts/pi-dev*.mjs"],
+		languageOptions: {
+			globals: {
+				console: "readonly",
+				process: "readonly",
+			},
+			parserOptions: {
+				project: false,
+			},
+		},
+	},
 	{
 		files: ["extensions/**/*.ts"],
 		languageOptions: {

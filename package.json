@@ -10,15 +10,20 @@
 		"theme",
 		"extension"
 	],
+	"bin": {
+		"osdy-pi": "./bin/osdy-pi.mjs"
+	},
 	"scripts": {
 		"typecheck": "tsc --noEmit",
 		"lint": "eslint .",
-		"test": "node --test --experimental-strip-types extensions/osdy-pi/*.test.ts",
+		"test": "node --test --experimental-strip-types extensions/osdy-pi/*.test.ts && node --test scripts/*.test.mjs",
 		"pi:dev": "node ./scripts/pi-dev.mjs"
 	},
 	"files": [
 		"README.md",
 		"LICENSE",
+		"bin",
+		"scripts/osdy-pi-account-profiles.mjs",
 		"themes",
 		"extensions",
 		"mapche1.png"
@@ -50,8 +55,8 @@
 		"@earendil-works/pi-tui": "*"
 	},
 	"devDependencies": {
-		"@earendil-works/pi-coding-agent": "^0.74.1",
-		"@earendil-works/pi-tui": "^0.74.1",
+		"@earendil-works/pi-coding-agent": "^0.84.4",
+		"@earendil-works/pi-tui": "^0.84.4",
 		"@eslint/js": "^9.39.1",
 		"@types/node": "^25.8.0",
 		"eslint": "^9.39.1",

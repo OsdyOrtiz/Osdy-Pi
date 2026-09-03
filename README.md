@@ -26,6 +26,79 @@ pi
 
 On session start, Osdy Pi enables its UI when a UI is available and preserves your selected Pi theme.
 
+## OpenAI account profiles
+
+Osdy Pi can keep multiple ChatGPT Plus/Pro accounts authenticated and let you choose which one starts Pi. `personal` and `work` are only examples—you can create as many named profiles as you need.
+
+### Create and use profiles
+
+**In Pi, run `/osdy-account`** to open the complete account manager:
+
+| Action | Behavior |
+| --- | --- |
+| **Switch** | Restarts Pi safely with another profile, resumes the current saved session, and makes that profile the default. |
+| **Add** | Creates an isolated profile without restarting or changing the default. Select it with **Switch**, then run `/login`. |
+| **Default** | Shows, changes, or clears the profile used by future `osdy-pi` and `npm run pi:dev` launches. It does not switch the current process. |
+| **Rename** | Renames an inactive profile. The default follows the new name when applicable. |
+| **Remove** | Permanently deletes an inactive profile after exact-name confirmation. Removing the default requires a replacement. |
+| **Account info** | Shows the available profiles and marks the active and default profiles without reading credentials. |
+
+Pi does not expose a supported API for extensions to invoke its OAuth login dialog. After switching to a newly created profile, run Pi's native `/login` and choose **ChatGPT Plus/Pro (Codex)**. This is the only step that remains a separate Pi command; it does not require leaving Pi or opening another terminal.
+
+Terminal commands remain available as recovery and automation alternatives:
+
+```bash
+# Create a profile without launching or changing the default.
+osdy-pi account create personal
+
+# Legacy recovery flow: create a profile and open Pi for /login.
+osdy-pi account add work
+
+# List profiles, choose the default, or launch one now.
+osdy-pi account list
+osdy-pi account default personal
+osdy-pi account default
+osdy-pi account use personal
+
+# Rename a profile, or permanently remove an inactive profile.
+osdy-pi account rename work consulting
+osdy-pi account remove consulting --confirm consulting
+
+# Removing the default requires an existing replacement.
+osdy-pi account remove personal --confirm personal --replacement work
+
+# Remove the preference without removing any profile.
+osdy-pi account default --clear
+```
+
+Profile names accept lowercase letters, numbers, and hyphens, up to 63 characters. Spaces, paths, uppercase letters, and the reserved names `default`, `profiles`, and `auth.json` are rejected. `account add` opens a profile for login but does not change the default.
+
+### See and switch the active account
+
+When Pi was launched through a profile, Osdy Pi shows its profile name in the editor:
+
+- **Simple/native editor:** beside the model, for example `gpt-5.6-sol · personal · think high`.
+- **Extended/framed editor:** `personal` replaces the `Osdy-Pi` title.
+- **No managed profile:** the existing model line and `Osdy-Pi` title remain unchanged.
+
+`account use <name>` saves that existing profile as the default before it starts Pi. Inside Pi, `/osdy-account` does the same after you select another profile. Osdy Pi waits for active work to finish, starts the replacement Pi with the current saved session, confirms that the new Pi process started, and only then closes the previous process. This is a controlled restart, not an in-process credential swap.
+
+To resume a specific session directly from the terminal:
+
+```bash
+osdy-pi account use work -- --session /absolute/path/to/session.jsonl
+```
+
+> **Privacy:** only Pi's managed `auth.json` is isolated per profile. Session history, settings, installed packages, and extension resources are shared, so every profile can access that local state. Osdy Pi never reads, copies, prints, or passes OAuth credentials. It keeps Pi's canonical `openai-codex` provider and delegates authentication to Pi's built-in `/login` flow.
+
+### Rename and permanently remove profiles
+
+Use `osdy-pi account rename <old> <new>` to rename an existing inactive profile. If it was the default, its default selection follows the new name.
+
+Use `osdy-pi account remove <name> --confirm <name>` for a non-default profile. This permanently deletes its isolated profile directory. Removing the default additionally requires `--replacement <other>`; the existing, different replacement becomes the default before deletion. A replacement is rejected for non-default removal.
+
+Before rename or removal, close this Pi process when it uses the target and **manually close every other Pi process using that target profile**. Osdy Pi does not scan or stop other processes. Inside Pi, use `/osdy-account` (or `/osdy-account rename` / `remove`); the guided flow shows the active profile but refuses changes to it until you Switch first, asks for a new default when needed, and requires typing the exact profile name. Cancellation changes nothing. Do not start two Pi processes with the same `--session` path.
+
 ## What ships
 
 | Area | Included behavior |
@@ -104,6 +177,7 @@ The editor mode and working-tree visibility preference persist globally across P
 | --- | --- |
 | Main | `/osdy-pi` |
 | Main | `/osdy-pi enable\|disable\|status` |
+| Accounts | `/osdy-account` |
 | Header | `/osdy-pi osdy-theme\|classic` |
 | Editor | `/osdy-pi editor auto\|extended\|simple\|on\|off\|toggle\|status` |
 | Working tree | `/osdy-pi working-tree on\|off\|toggle\|status` |
@@ -119,7 +193,7 @@ The editor mode and working-tree visibility preference persist globally across P
 
 The default `auto` editor mode preserves the responsive behavior: it uses the framed editor when space permits and Pi's native editor on small terminals. Select `simple` for Pi's native editor at every width, or `extended` to request the framed editor explicitly: `/osdy-pi editor auto|extended|simple`. Small terminals always use Pi's native editor, including when `extended` is selected. The legacy commands remain compatible where feasible: `on` maps to `extended`, `off` maps to `simple`, and `toggle` switches between extended and simple.
 
-In auto or extended mode at a non-small width, the framed editor shows the model and thinking level in its title and session usage in its footer. When the native editor is effective (simple mode or any small terminal), the Osdy footer instead shows those same model/thinking and usage rows before its path/branch and status rows. It uses the currently active Pi/Osdy theme palette; no separate editor theme selector exists. Usage covers input, output, cache read, cache write when present, cost, and context. If Pi supports autocomplete, the editor uses Pi's native autocomplete rendering while the completion UI is visible.
+In auto or extended mode at a non-small width, the framed editor shows the model and thinking level in its title and session usage in its footer. For an account-profile launch, the left title shows the active profile name instead of `Osdy-Pi`. When the native editor is effective (simple mode or any small terminal), the Osdy footer instead shows model, active profile when present, thinking, and usage rows before its path/branch and status rows. It uses the currently active Pi/Osdy theme palette; no separate editor theme selector exists. Usage covers input, output, cache read, cache write when present, cost, and context. If Pi supports autocomplete, the editor uses Pi's native autocomplete rendering while the completion UI is visible.
 
 A custom spinner appears above the editor while work is active. Osdy Pi hides Pi's built-in working row while enabled to avoid a duplicate indicator.
 
@@ -172,16 +246,34 @@ Precedence is startup flag, then saved global setting, then unconfigured. Empty 
 
 ## Local install and development
 
-For an isolated local launcher, use:
+For the normal in-Pi development flow, no global `osdy-pi` link is required:
+
+1. Start the local extension:
+
+   ```bash
+   npm run pi:dev
+   ```
+
+2. Inside Pi, run `/osdy-account`.
+3. Choose **Add**, enter a profile name, then choose **Switch** and select it.
+4. After the managed restart, run `/login` and choose **ChatGPT Plus/Pro (Codex)**.
+5. From then on, `npm run pi:dev` starts the default profile automatically. Use `/osdy-account` for every profile-management action.
+
+The terminal interface remains available for recovery and automated testing:
 
 ```bash
-npm run pi:dev
+npm run pi:dev -- account create personal
+npm run pi:dev -- account list
+npm run pi:dev -- account use personal
+npm run pi:dev -- account default personal
+npm run pi:dev -- account rename personal private
+npm run pi:dev -- account remove private --confirm private
 ```
 
-It launches `pi -e .` with `PI_CODING_AGENT_DIR=.pi-dev`, separating local Pi configuration, packages, and extensions from a global installation. The manual equivalent is:
+`npm run pi:dev` launches `pi -e <absolute repository root>` with `PI_CODING_AGENT_DIR=<absolute repository root>/.pi-dev` when no default is set. If its `.pi-dev` metadata names a valid profile, it routes through this checkout's local launcher and starts that profile while retaining `-e <absolute repository root>`. Installed `osdy-pi` follows the same preference: no arguments starts a valid default profile, while no default starts ordinary unmanaged `pi`. Account commands use this checkout's local launcher, so no global `osdy-pi` link is needed. The development extension root is inherited by profile launches, keeping the local extension loaded after an `/osdy-account` handoff. The manual equivalent is:
 
 ```bash
-PI_CODING_AGENT_DIR="$PWD/.pi-dev" pi -e .
+PI_CODING_AGENT_DIR="$PWD/.pi-dev" OSDY_PI_DEV_EXTENSION_ROOT="$PWD" pi -e "$PWD"
 ```
 
 Install a local checkout into Pi with:

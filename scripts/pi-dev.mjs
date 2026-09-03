@@ -1,17 +1,15 @@
 import { mkdir } from "node:fs/promises";
-import { resolve } from "node:path";
 import { spawn } from "node:child_process";
+import { planPiDevLaunch } from "./pi-dev-plan.mjs";
 
-const devAgentDir = resolve(process.cwd(), ".pi-dev");
+const plan = await planPiDevLaunch(process.cwd(), process.argv.slice(2));
+if (plan.warning) console.error(plan.warning);
 
-await mkdir(devAgentDir, { recursive: true });
+await mkdir(plan.env.PI_CODING_AGENT_DIR, { recursive: true });
 
-const child = spawn("pi", ["-e", "."], {
+const child = spawn(plan.command, plan.args, {
 	stdio: "inherit",
-	env: {
-		...process.env,
-		PI_CODING_AGENT_DIR: devAgentDir,
-	},
+	env: { ...process.env, ...plan.env },
 });
 
 child.on("exit", (code, signal) => {
