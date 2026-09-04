@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
+import { fstatSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import type { ChildProcess } from "node:child_process";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore Node's native TypeScript runner resolves test-only TypeScript source imports.
-import { handoffToAccount, handoffToDefaultAccountOnStartup, manageAccountProfile, manageAccountProfiles, parseDefaultAccountResult, waitForLauncherReady } from "./account-profiles.ts";
+import { handoffToAccount, handoffToDefaultAccountOnStartup, manageAccountProfile, manageAccountProfiles, parseDefaultAccountResult, spawnBundledLauncher, waitForLauncherReady } from "./account-profiles.ts";
 
 class FakeLauncher extends EventEmitter {
 	disconnected = false;
@@ -22,6 +26,56 @@ class FakeLauncher extends EventEmitter {
 		return this as unknown as ChildProcess;
 	}
 }
+
+interface DescriptorIdentity {
+	dev: number;
+	ino: number;
+}
+
+interface LauncherStdioMessage {
+	type: "stdio";
+	stdin: DescriptorIdentity;
+	stdout: DescriptorIdentity;
+	stderr: DescriptorIdentity;
+}
+
+function descriptorIdentity(descriptor: number): DescriptorIdentity {
+	const stats = fstatSync(descriptor);
+	return { dev: stats.dev, ino: stats.ino };
+}
+
+function isLauncherStdioMessage(value: unknown): value is LauncherStdioMessage {
+	return typeof value === "object" && value !== null && "type" in value && value.type === "stdio";
+}
+
+void test("bundled launcher inherits terminal streams while retaining IPC", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "osdy-pi-launcher-"));
+	const launcher = join(directory, "launcher.mjs");
+	try {
+		await writeFile(
+			launcher,
+			`import { fstatSync } from "node:fs";
+const identity = (descriptor) => { const stats = fstatSync(descriptor); return { dev: stats.dev, ino: stats.ino }; };
+process.send?.({ type: "stdio", stdin: identity(0), stdout: identity(1), stderr: identity(2) });`,
+		);
+		const child = spawnBundledLauncher(launcher, []);
+		const message = await new Promise<unknown>((resolveMessage, reject) => {
+			const onError = (error: Error): void => reject(error);
+			child.once("error", onError);
+			child.once("message", (value: unknown) => {
+				child.removeListener("error", onError);
+				resolveMessage(value);
+			});
+		});
+		assert.ok(isLauncherStdioMessage(message));
+		assert.deepEqual(message.stdin, descriptorIdentity(0));
+		assert.deepEqual(message.stdout, descriptorIdentity(1));
+		assert.deepEqual(message.stderr, descriptorIdentity(2));
+		await once(child, "exit");
+	} finally {
+		await rm(directory, { force: true, recursive: true });
+	}
+});
 
 void test("auto-hands off a startup session to a valid default only after replacement readiness", async () => {
 	const events: string[] = [];

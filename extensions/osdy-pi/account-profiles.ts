@@ -202,6 +202,16 @@ function bundledLauncherPath(): string {
 	return fileURLToPath(new URL("../../bin/osdy-pi.mjs", import.meta.url));
 }
 
+export function spawnBundledLauncher(
+	launcher: string,
+	args: string[],
+): ChildProcess {
+	return spawnChild(process.execPath, [launcher, ...args], {
+		detached: true,
+		stdio: ["inherit", "inherit", "inherit", "ipc"],
+	});
+}
+
 function validProfileName(value: string): boolean {
 	return isProfileName(value);
 }
@@ -269,12 +279,7 @@ export async function handoffToDefaultAccountOnStartup(
 	const spawn = (command: string, args: string[]) =>
 		dependencies.spawn
 			? dependencies.spawn(command, args)
-			: waitForLauncherReady(
-					spawnChild(process.execPath, [command, ...args], {
-						detached: true,
-						stdio: ["ignore", "ignore", "ignore", "ipc"],
-					}),
-				);
+			: waitForLauncherReady(spawnBundledLauncher(command, args));
 	let result: { code: number; stdout: string; stderr: string };
 	try {
 		result = await run(["account", "default"]);
