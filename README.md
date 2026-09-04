@@ -24,7 +24,7 @@ Start Pi normally:
 pi
 ```
 
-On session start, Osdy Pi enables its UI when a UI is available and preserves your selected Pi theme.
+`pi install` installs Osdy Pi's extension resources. When you later run plain `pi`, a valid Osdy default account automatically hands off once to the bundled launcher and resumes the saved session under that profile. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi enables its UI when a UI is available and preserves your selected Pi theme.
 
 ## OpenAI account profiles
 
@@ -38,7 +38,7 @@ Osdy Pi can keep multiple ChatGPT Plus/Pro accounts authenticated and let you ch
 | --- | --- |
 | **Switch** | Restarts Pi safely with another profile, resumes the current saved session, and makes that profile the default. |
 | **Add** | Creates an isolated profile without restarting or changing the default. Select it with **Switch**, then run `/login`. |
-| **Default** | Shows, changes, or clears the profile used by future `osdy-pi` and `npm run pi:dev` launches. It does not switch the current process. |
+| **Default** | Shows, changes, or clears the profile used by future plain installed `pi` and `npm run pi:dev` launches. It does not switch the current process. |
 | **Rename** | Renames an inactive profile. The default follows the new name when applicable. |
 | **Remove** | Permanently deletes an inactive profile after exact-name confirmation. Removing the default requires a replacement. |
 | **Account info** | Shows the available profiles and marks the active and default profiles without reading credentials. |
@@ -270,7 +270,7 @@ npm run pi:dev -- account rename personal private
 npm run pi:dev -- account remove private --confirm private
 ```
 
-`npm run pi:dev` launches `pi -e <absolute repository root>` with `PI_CODING_AGENT_DIR=<absolute repository root>/.pi-dev` when no default is set. If its `.pi-dev` metadata names a valid profile, it routes through this checkout's local launcher and starts that profile while retaining `-e <absolute repository root>`. Installed `osdy-pi` follows the same preference: no arguments starts a valid default profile, while no default starts ordinary unmanaged `pi`. Account commands use this checkout's local launcher, so no global `osdy-pi` link is needed. The development extension root is inherited by profile launches, keeping the local extension loaded after an `/osdy-account` handoff. The manual equivalent is:
+`npm run pi:dev` launches `pi -e <absolute repository root>` with `PI_CODING_AGENT_DIR=<absolute repository root>/.pi-dev` when no default is set. If its `.pi-dev` metadata names a valid profile, it routes through this checkout's local launcher and starts that profile while retaining `-e <absolute repository root>`. The development `.pi-dev` profile store and the installed Pi profile store are separate. For an installed package, plain `pi` loads extension resources; at startup Osdy Pi hands off through its bundled launcher when the installed store has a valid default, while no default leaves ordinary unmanaged Pi running. Account commands use this checkout's local launcher, so no global `osdy-pi` link is needed. The development extension root is inherited by profile launches, keeping the local extension loaded after an `/osdy-account` handoff. The manual equivalent is:
 
 ```bash
 PI_CODING_AGENT_DIR="$PWD/.pi-dev" OSDY_PI_DEV_EXTENSION_ROOT="$PWD" pi -e "$PWD"
