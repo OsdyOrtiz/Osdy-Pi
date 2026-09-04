@@ -28,21 +28,6 @@ export interface AccountHandoffDependencies {
 	launcher?: string;
 }
 
-export type StartupAccountContext = Pick<
-	ExtensionContext,
-	"hasUI" | "shutdown"
-> & {
-	sessionManager: Pick<ExtensionContext["sessionManager"], "getSessionFile">;
-	ui: Pick<ExtensionContext["ui"], "notify">;
-};
-
-export interface StartupAccountHandoffDependencies {
-	activeProfile?: string | undefined;
-	run?(args: string[]): Promise<{ code: number; stdout: string; stderr: string }>;
-	spawn?(command: string, args: string[]): Promise<void>;
-	launcher?: string;
-}
-
 export interface AccountManagementDependencies {
 	profiles(): Promise<string[]>;
 	run(args: string[]): Promise<{ code: number; stdout: string; stderr: string }>;
@@ -202,16 +187,6 @@ function bundledLauncherPath(): string {
 	return fileURLToPath(new URL("../../bin/osdy-pi.mjs", import.meta.url));
 }
 
-export function spawnBundledLauncher(
-	launcher: string,
-	args: string[],
-): ChildProcess {
-	return spawnChild(process.execPath, [launcher, ...args], {
-		detached: true,
-		stdio: ["inherit", "inherit", "inherit", "ipc"],
-	});
-}
-
 function validProfileName(value: string): boolean {
 	return isProfileName(value);
 }
@@ -247,79 +222,6 @@ export function parseDefaultAccountResult(result: {
 		status: "error",
 		message: `unexpected default account output: ${output.replaceAll(/[\r\n]+/g, " ").slice(0, 180) || "(empty)"}`,
 	};
-}
-
-export async function handoffToDefaultAccountOnStartup(
-	ctx: StartupAccountContext,
-	reason: string,
-	dependencies: StartupAccountHandoffDependencies,
-): Promise<boolean> {
-	if (reason !== "startup" || !ctx.hasUI) return false;
-	const activeProfile = dependencies.activeProfile;
-	if (activeProfile) {
-		if (!isProfileName(activeProfile)) {
-			ctx.ui.notify(
-				"Osdy Pi did not switch accounts because OSDY_PI_PROFILE_NAME is invalid.",
-				"warning",
-			);
-		}
-		return false;
-	}
-	const sessionPath = ctx.sessionManager.getSessionFile();
-	if (!sessionPath || !isAbsolute(sessionPath)) {
-		ctx.ui.notify(
-			"Osdy Pi cannot switch to the default account because this session is not saved to an absolute path.",
-			"warning",
-		);
-		return false;
-	}
-	const run = (args: string[]) =>
-		dependencies.run ? dependencies.run(args) : runBundledCommand(args);
-	const launcher = dependencies.launcher ?? bundledLauncherPath();
-	const spawn = (command: string, args: string[]) =>
-		dependencies.spawn
-			? dependencies.spawn(command, args)
-			: waitForLauncherReady(spawnBundledLauncher(command, args));
-	let result: { code: number; stdout: string; stderr: string };
-	try {
-		result = await run(["account", "default"]);
-	} catch {
-		ctx.ui.notify(
-			"Osdy Pi could not read the default account; keeping this Pi session unmanaged.",
-			"warning",
-		);
-		return false;
-	}
-	const defaultState = parseDefaultAccountResult(result);
-	if (defaultState.status === "unset") return false;
-	if (defaultState.status !== "valid") {
-		ctx.ui.notify(
-			defaultState.status === "invalid"
-				? "Osdy Pi could not safely select the default account; use /osdy-account to clear or fix it."
-				: "Osdy Pi could not read the default account; keeping this Pi session unmanaged.",
-			"warning",
-		);
-		return false;
-	}
-	ctx.ui.notify(`Starting default account ${defaultState.profile}…`, "info");
-	try {
-		await spawn(launcher, [
-			"account",
-			"use",
-			defaultState.profile,
-			"--",
-			"--session",
-			sessionPath,
-		]);
-	} catch {
-		ctx.ui.notify(
-			"Cannot switch accounts: unable to start the replacement Pi process.",
-			"warning",
-		);
-		return false;
-	}
-	ctx.shutdown();
-	return true;
 }
 
 async function runManagementCommand(

@@ -9,10 +9,7 @@ import { createAudioPlaybackAdapter } from "./audio-playback.js";
 import { subscribeQuestionPromptAudioNotification } from "./plugin-events.js";
 import { createAudioSoundSettingsStore } from "./audio-sound-settings.js";
 import { createEditorSettingsStore } from "./editor-settings.js";
-import {
-	handoffToDefaultAccountOnStartup,
-	registerAccountProfilesCommand,
-} from "./account-profiles.js";
+import { registerAccountProfilesCommand } from "./account-profiles.js";
 import {
 	applyOsdyPi,
 	createResponsiveCoordinator,
@@ -668,13 +665,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		workingTreeState.tui = undefined;
 		sessionContext = undefined;
 	});
-	pi.on("session_start", async (event, ctx) => {
-		if (
-			await handoffToDefaultAccountOnStartup(ctx, event.reason, {
-				activeProfile: process.env.OSDY_PI_PROFILE_NAME,
-			})
-		)
-			return;
+	pi.on("session_start", async (_event, ctx) => {
 		cancelOsdyRefreshes();
 		stopResponsive();
 		sessionContext = ctx;

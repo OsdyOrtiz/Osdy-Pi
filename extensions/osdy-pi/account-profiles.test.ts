@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
-import { EventEmitter, once } from "node:events";
-import { fstatSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 import type { ChildProcess } from "node:child_process";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore Node's native TypeScript runner resolves test-only TypeScript source imports.
-import { handoffToAccount, handoffToDefaultAccountOnStartup, manageAccountProfile, manageAccountProfiles, parseDefaultAccountResult, spawnBundledLauncher, waitForLauncherReady } from "./account-profiles.ts";
+import { handoffToAccount, manageAccountProfile, manageAccountProfiles, parseDefaultAccountResult, waitForLauncherReady } from "./account-profiles.ts";
 
 class FakeLauncher extends EventEmitter {
 	disconnected = false;
@@ -26,135 +22,6 @@ class FakeLauncher extends EventEmitter {
 		return this as unknown as ChildProcess;
 	}
 }
-
-interface DescriptorIdentity {
-	dev: number;
-	ino: number;
-}
-
-interface LauncherStdioMessage {
-	type: "stdio";
-	stdin: DescriptorIdentity;
-	stdout: DescriptorIdentity;
-	stderr: DescriptorIdentity;
-}
-
-function descriptorIdentity(descriptor: number): DescriptorIdentity {
-	const stats = fstatSync(descriptor);
-	return { dev: stats.dev, ino: stats.ino };
-}
-
-function isLauncherStdioMessage(value: unknown): value is LauncherStdioMessage {
-	return typeof value === "object" && value !== null && "type" in value && value.type === "stdio";
-}
-
-void test("bundled launcher inherits terminal streams while retaining IPC", async () => {
-	const directory = await mkdtemp(join(tmpdir(), "osdy-pi-launcher-"));
-	const launcher = join(directory, "launcher.mjs");
-	try {
-		await writeFile(
-			launcher,
-			`import { fstatSync } from "node:fs";
-const identity = (descriptor) => { const stats = fstatSync(descriptor); return { dev: stats.dev, ino: stats.ino }; };
-process.send?.({ type: "stdio", stdin: identity(0), stdout: identity(1), stderr: identity(2) });`,
-		);
-		const child = spawnBundledLauncher(launcher, []);
-		const message = await new Promise<unknown>((resolveMessage, reject) => {
-			const onError = (error: Error): void => reject(error);
-			child.once("error", onError);
-			child.once("message", (value: unknown) => {
-				child.removeListener("error", onError);
-				resolveMessage(value);
-			});
-		});
-		assert.ok(isLauncherStdioMessage(message));
-		assert.deepEqual(message.stdin, descriptorIdentity(0));
-		assert.deepEqual(message.stdout, descriptorIdentity(1));
-		assert.deepEqual(message.stderr, descriptorIdentity(2));
-		await once(child, "exit");
-	} finally {
-		await rm(directory, { force: true, recursive: true });
-	}
-});
-
-void test("auto-hands off a startup session to a valid default only after replacement readiness", async () => {
-	const events: string[] = [];
-	const handled = await handoffToDefaultAccountOnStartup(
-		{
-			hasUI: true,
-			shutdown: () => events.push("shutdown"),
-			sessionManager: { getSessionFile: () => "/tmp/current.jsonl" },
-			ui: { notify: (message: string) => events.push(message) },
-		},
-		"startup",
-		{
-			activeProfile: undefined,
-			run: (args) => {
-				events.push(args.join(" "));
-				return Promise.resolve({ code: 0, stdout: "work\n", stderr: "" });
-			},
-			spawn: (command, args) =>
-				Promise.resolve().then(() => {
-					events.push(`${command} ${args.join(" ")}`);
-				}),
-			launcher: "/package/bin/osdy-pi.mjs",
-		},
-	);
-	assert.equal(handled, true);
-	assert.deepEqual(events, [
-		"account default",
-		"Starting default account work…",
-		"/package/bin/osdy-pi.mjs account use work -- --session /tmp/current.jsonl",
-		"shutdown",
-	]);
-});
-
-void test("startup auto-selection returns false without handoff for every guarded branch", async (t) => {
-	const cases = [
-		["active profile", "startup", "work", "/tmp/current.jsonl", { code: 0, stdout: "other\n", stderr: "" }, [], 0],
-		["invalid active profile", "startup", "INVALID", "/tmp/current.jsonl", { code: 0, stdout: "work\n", stderr: "" }, ["Osdy Pi did not switch accounts because OSDY_PI_PROFILE_NAME is invalid."], 0],
-		["non-startup reason", "reload", undefined, "/tmp/current.jsonl", { code: 0, stdout: "work\n", stderr: "" }, [], 0],
-		["unset default", "startup", undefined, "/tmp/current.jsonl", { code: 0, stdout: "No default account.\n", stderr: "" }, [], 1],
-		["invalid default", "startup", undefined, "/tmp/current.jsonl", { code: 0, stdout: "Default account metadata is invalid; no account selected.\n", stderr: "" }, ["Osdy Pi could not safely select the default account; use /osdy-account to clear or fix it."], 1],
-		["default command failure", "startup", undefined, "/tmp/current.jsonl", { code: 1, stdout: "", stderr: "failed" }, ["Osdy Pi could not read the default account; keeping this Pi session unmanaged."], 1],
-		["missing session", "startup", undefined, undefined, { code: 0, stdout: "work\n", stderr: "" }, ["Osdy Pi cannot switch to the default account because this session is not saved to an absolute path."], 0],
-		["relative session", "startup", undefined, "current.jsonl", { code: 0, stdout: "work\n", stderr: "" }, ["Osdy Pi cannot switch to the default account because this session is not saved to an absolute path."], 0],
-	] as const;
-	for (const [name, reason, activeProfile, sessionPath, result, expectedNotices, expectedRunCalls] of cases) {
-		await t.test(name, async () => {
-			const notices: string[] = [];
-			let runCalls = 0;
-			const handled = await handoffToDefaultAccountOnStartup(
-				{
-					hasUI: true,
-					shutdown: () => assert.fail("must not shut down"),
-					sessionManager: { getSessionFile: () => sessionPath },
-					ui: { notify: (message: string) => notices.push(message) },
-				},
-				reason,
-				{
-					activeProfile,
-					run: () => { runCalls += 1; return Promise.resolve(result); },
-					spawn: () => Promise.resolve().then(() => assert.fail("must not launch")),
-				},
-			);
-			assert.equal(handled, false);
-			assert.deepEqual(notices, expectedNotices);
-			assert.equal(runCalls, expectedRunCalls);
-		});
-	}
-});
-
-void test("startup auto-selection keeps Pi alive when replacement readiness fails", async () => {
-	const notices: string[] = [];
-	const handled = await handoffToDefaultAccountOnStartup(
-		{ hasUI: true, shutdown: () => assert.fail("must not shut down"), sessionManager: { getSessionFile: () => "/tmp/current.jsonl" }, ui: { notify: (message: string) => notices.push(message) } },
-		"startup",
-		{ activeProfile: undefined, run: () => Promise.resolve({ code: 0, stdout: "work\n", stderr: "" }), spawn: () => Promise.reject(new Error("not ready")) },
-	);
-	assert.equal(handled, false);
-	assert.deepEqual(notices, ["Starting default account work…", "Cannot switch accounts: unable to start the replacement Pi process."]);
-});
 
 void test("parses default account command output without treating status text as a profile", () => {
 	assert.deepEqual(
