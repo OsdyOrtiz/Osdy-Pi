@@ -22,8 +22,11 @@ import { isSmallResponsiveMode } from "./utils.js";
 
 const RESPONSIVE_WATCH_INTERVAL_MS = 150;
 
-function workingTreeEffective(state: OsdyState): boolean {
-	return state.workingTreeEnabled && !state.smallMode && state.enabled;
+function workingTreeEffective(
+	state: OsdyState,
+): "visible" | "hidden" | "unmounted" {
+	if (!state.enabled || !state.workingTreeEnabled) return "unmounted";
+	return state.smallMode ? "hidden" : "visible";
 }
 
 function desiredSmallMode(state: OsdyState): boolean {
@@ -96,6 +99,27 @@ export function unmountOsdyEditor(ctx: ExtensionContext): void {
 	ctx.ui.setEditorComponent(undefined);
 }
 
+export function syncWorkingTreeWidget(
+	ctx: ExtensionContext,
+	state: OsdyState,
+	workingState: WorkingWidgetState,
+	workingTreeState: WorkingTreeState,
+): void {
+	if (!state.enabled || !state.workingTreeEnabled) {
+		ctx.ui.setWidget(WORKING_TREE_WIDGET_KEY, undefined);
+		return;
+	}
+	ctx.ui.setWidget(
+		WORKING_TREE_WIDGET_KEY,
+		createWorkingTreeWidgetFactory(
+			workingTreeState,
+			workingState,
+			state.workingTreePlacement,
+		),
+		{ placement: state.workingTreePlacement },
+	);
+}
+
 export function mountOsdyUi(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
@@ -114,15 +138,7 @@ export function mountOsdyUi(
 		createWorkingWidgetFactory(workingState),
 		{ placement: "aboveEditor" },
 	);
-	ctx.ui.setWidget(
-		WORKING_TREE_WIDGET_KEY,
-		createWorkingTreeWidgetFactory(
-			workingTreeState,
-			workingState,
-			state.workingTreePlacement,
-		),
-		{ placement: state.workingTreePlacement },
-	);
+	syncWorkingTreeWidget(ctx, state, workingState, workingTreeState);
 	reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 }
 
@@ -155,7 +171,7 @@ export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 
 export function notifyStatus(ctx: ExtensionContext, state: OsdyState): void {
 	ctx.ui.notify(
-		`osdy-pi ${state.enabled ? "enabled" : "disabled"} · editor ${state.editorMode}, effective ${state.editorEffective ? "extended" : "simple/native"} · working-tree desired ${state.workingTreeEnabled ? "on" : "off"}, effective ${workingTreeEffective(state) ? "visible" : "hidden"} · widget ${state.workingTreePlacement === "aboveEditor" ? "top" : "bottom"} · theme ${ctx.ui.theme.name ?? "unknown"} · style ${state.headerVariant} · animation ${asciiAnimationMode()} · ${modelLabel(ctx)} · ${usageLabel(ctx).trim()}`,
+		`osdy-pi ${state.enabled ? "enabled" : "disabled"} · editor ${state.editorMode}, effective ${state.editorEffective ? "extended" : "simple/native"} · working-tree desired ${state.workingTreeEnabled ? "on" : "off"}, effective ${workingTreeEffective(state)} · widget ${state.workingTreePlacement === "aboveEditor" ? "top" : "bottom"} · theme ${ctx.ui.theme.name ?? "unknown"} · style ${state.headerVariant} · animation ${asciiAnimationMode()} · ${modelLabel(ctx)} · ${usageLabel(ctx).trim()}`,
 		"info",
 	);
 }

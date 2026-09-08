@@ -16,6 +16,7 @@ import {
 	disableOsdyPi,
 	notifyStatus,
 	reconcileResponsiveUi,
+	syncWorkingTreeWidget,
 } from "./runtime-helpers.js";
 import { runSoundSetupWizard } from "./sound-setup-wizard.js";
 import {
@@ -396,6 +397,7 @@ async function handleWorkingTreeCommand(
 	if (action === "on") {
 		state.workingTreeEnabled = true;
 		workingTreeState.enabled = true;
+		syncWorkingTreeWidget(ctx, state, workingState, workingTreeState);
 		reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 		const saved = await saveWorkingTreePreference(state, settingsStore);
 		await refreshWorkingTree(pi, ctx, workingTreeState);
@@ -410,6 +412,7 @@ async function handleWorkingTreeCommand(
 	if (action === "off") {
 		state.workingTreeEnabled = false;
 		workingTreeState.enabled = false;
+		syncWorkingTreeWidget(ctx, state, workingState, workingTreeState);
 		reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 		clearWorkingTree(workingTreeState);
 		const saved = await saveWorkingTreePreference(state, settingsStore);

@@ -191,7 +191,7 @@ The editor mode and working-tree visibility preference persist globally across P
 
 ## Editor and working indicator
 
-The default `auto` editor mode preserves the responsive behavior: it uses the framed editor when space permits and Pi's native editor on small terminals. Select `simple` for Pi's native editor at every width, or `extended` to request the framed editor explicitly: `/osdy-pi editor auto|extended|simple`. Small terminals always use Pi's native editor, including when `extended` is selected. The legacy commands remain compatible where feasible: `on` maps to `extended`, `off` maps to `simple`, and `toggle` switches between extended and simple.
+The default `auto` editor mode preserves the responsive behavior: it uses the framed editor when space permits and Pi's native editor on small terminals. Select `simple` for Pi's native editor at every width, or `extended` to request the framed editor explicitly: `/osdy-pi editor auto|extended|simple`. Simple mode actually unmounts the custom editor component rather than hiding it. Small terminals always use Pi's native editor, including when `extended` is selected. The legacy commands remain compatible where feasible: `on` maps to `extended`, `off` maps to `simple`, and `toggle` switches between extended and simple.
 
 In auto or extended mode at a non-small width, the framed editor shows the model and thinking level in its title and session usage in its footer. For an account-profile launch, the left title shows the active profile name instead of `Osdy-Pi`. When the native editor is effective (simple mode or any small terminal), the Osdy footer instead shows model, active profile when present, thinking, and usage rows before its path/branch and status rows. It uses the currently active Pi/Osdy theme palette; no separate editor theme selector exists. Usage covers input, output, cache read, cache write when present, cost, and context. If Pi supports autocomplete, the editor uses Pi's native autocomplete rendering while the completion UI is visible.
 
@@ -199,7 +199,7 @@ A custom spinner appears above the editor while work is active. Osdy Pi hides Pi
 
 ## Working tree and diff
 
-The working-tree summary is enabled by default. It reads the repository state at session start, including existing changes, and reports staged, unstaged, and untracked counts with total `+/-` changes. It also has clean and unavailable states. After successful `edit`, `write`, `ast_grep_replace`, or `bash` tool execution, it refreshes.
+The working-tree summary is enabled by default. It reads the repository state at session start, including existing changes, and reports staged, unstaged, and untracked counts with total `+/-` changes. It also has clean and unavailable states. `working-tree off` unregisters the widget completely, and a persisted disabled preference leaves it unmounted when the next session starts. `working-tree on` remounts and refreshes it without requiring a restart. After successful `edit`, `write`, `ast_grep_replace`, or `bash` tool execution, it refreshes.
 
 Use `working-tree position top` or `bottom` to place the summary above or below the editor. The widget supplies trailing blank space and adds leading separation when it is below the editor or the spinner is active, keeping the surrounding layout readable without promising a fixed number of blank lines in every state.
 
