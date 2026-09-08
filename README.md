@@ -34,7 +34,9 @@ To persistently load a local Gentle checkout while keeping Osdy Pi's UI authorit
 osdy-pi gentle setup /absolute/path/to/gentle-pi
 ```
 
-The command validates that the absolute source is a readable `gentle-pi` package with Gentle's conflicting shell, todo, and agents extensions before atomically updating `$PI_CODING_AGENT_DIR/settings.json` (or `~/.pi/agent/settings.json`). It registers the local package with exclusions for Gentle's `gentle-shell.ts`, `gentle-todo.ts`, and `gentle-agents.ts`, plus `themes: []`. Restart Pi or run `/reload` after setup.
+The command validates that the absolute source is a readable `gentle-pi` package with Gentle's todo and agents extensions before atomically updating `$PI_CODING_AGENT_DIR/settings.json` (or `~/.pi/agent/settings.json`). It registers the local package immediately before the first configured Osdy Pi package entry, so Gentle Shell initializes first, with exclusions only for Gentle's `gentle-todo.ts` and `gentle-agents.ts`, plus `themes: []`. Restart Pi or run `/reload` after setup.
+
+Gentle Shell intentionally remains fully active underneath Osdy, including its footer and widgets. While Osdy is enabled, Osdy claims the footer and editor; disabling Osdy restores the editor Gentle Shell provided at session startup. Gentle's changes widget may coexist with Osdy's visual widgets.
 
 This intentionally leaves `pi-subagents-j0k3r`, `@juicesharp/rpiv-todo`, and `@juicesharp/rpiv-ask-user-question` package entries untouched, so their external todo, subagent, and question plugins remain authoritative.
 

@@ -50,7 +50,13 @@ registerHooks({
 	},
 });
 
-const { mountOsdyUi, syncWorkingTreeWidget, unmountOsdyEditor } = await import(
+const {
+	disableOsdyPi,
+	mountOsdyEditor,
+	mountOsdyUi,
+	syncWorkingTreeWidget,
+	unmountOsdyEditor,
+} = await import(
 	// @ts-expect-error The test hook maps production .js specifiers to TypeScript sources.
 	"./runtime-helpers.ts"
 );
@@ -69,6 +75,7 @@ function createState(overrides: Partial<OsdyState> = {}): OsdyState {
 		enabled: true,
 		editorEffective: false,
 		editorMode: EDITOR_MODES.SIMPLE,
+		fallbackEditorFactory: undefined,
 		headerVariant: "osdy-theme",
 		smallMode: false,
 		tui: undefined,
@@ -106,6 +113,7 @@ function createContext(widgetCalls: WidgetCall[], editorCalls: unknown[]) {
 			setEditorComponent(component: unknown): void {
 				editorCalls.push(component);
 			},
+			notify(): void {},
 			setFooter(): void {},
 			setHeader(): void {},
 			setWorkingVisible(): void {},
@@ -134,13 +142,27 @@ void test("auto editor mode is the default and small terminals use the native ed
 	);
 });
 
-void test("unmountOsdyEditor removes the custom editor component", () => {
+void test("unmountOsdyEditor removes the custom editor without restoring the fallback", () => {
 	const editorCalls: unknown[] = [];
 	const ctx = createContext([], editorCalls);
 
 	unmountOsdyEditor(ctx);
 
 	assert.deepEqual(editorCalls, [undefined]);
+});
+
+void test("disableOsdyPi restores the captured editor and Osdy can reclaim it", () => {
+	const editorCalls: unknown[] = [];
+	const ctx = createContext([], editorCalls);
+	const fallbackEditorFactory = (() => ({})) as unknown as OsdyState["fallbackEditorFactory"];
+	const state = createState({ fallbackEditorFactory });
+
+	disableOsdyPi(ctx, state);
+	mountOsdyEditor({} as ExtensionAPI, ctx, state);
+
+	assert.equal(editorCalls[0], fallbackEditorFactory);
+	assert.equal(typeof editorCalls[1], "function");
+	assert.notEqual(editorCalls[1], fallbackEditorFactory);
 });
 
 void test("syncWorkingTreeWidget unmounts a disabled widget", () => {

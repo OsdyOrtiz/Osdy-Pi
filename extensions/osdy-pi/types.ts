@@ -1,4 +1,10 @@
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { TUI } from "@earendil-works/pi-tui";
+
+type EditorFactory = Exclude<
+	ReturnType<ExtensionContext["ui"]["getEditorComponent"]>,
+	undefined
+>;
 import type { CodexUsageSnapshot } from "./codex-usage.js";
 
 export type AnimationMode = "off" | "intro" | "continuous";
@@ -46,6 +52,7 @@ export type OsdyState = {
 	enabled: boolean;
 	editorEffective: boolean;
 	editorMode: EditorMode;
+	fallbackEditorFactory: EditorFactory | undefined;
 	headerVariant: HeaderVariant;
 	smallMode: boolean;
 	tui: TUI | undefined;

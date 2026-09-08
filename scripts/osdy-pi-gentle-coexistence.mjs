@@ -11,12 +11,8 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
 const GENTLE_PACKAGE_NAME = "gentle-pi";
-const CONFLICTING_EXTENSIONS = [
-	"gentle-shell.ts",
-	"gentle-todo.ts",
-	"gentle-agents.ts",
-];
-const EXCLUDED_EXTENSIONS = CONFLICTING_EXTENSIONS.map(
+const REQUIRED_EXTENSIONS = ["gentle-todo.ts", "gentle-agents.ts"];
+const EXCLUDED_EXTENSIONS = REQUIRED_EXTENSIONS.map(
 	(extension) => `-extensions/${extension}`,
 );
 
@@ -27,15 +23,22 @@ function isRecord(value) {
 }
 
 function isGentleNpmSource(value) {
-	return typeof value === "string" && /^npm:gentle-pi(?:@[^\s]+)?$/.test(value);
+	return typeof value === "string" && /^npm:gentle-pi(?:@[^\s]+)?$/i.test(value);
+}
+
+function isOsdyPackageSource(value) {
+	return (
+		typeof value === "string" &&
+		(/^(?:git:github\.com\/osdyortiz\/osdy-pi|npm:osdy-pi(?:@[^\s]+)?)$/i.test(
+			value.trim(),
+		))
+	);
 }
 
 function packageSource(entry) {
-	return typeof entry === "string"
-		? entry
-		: isRecord(entry) && typeof entry.source === "string"
-			? entry.source
-			: undefined;
+	if (typeof entry === "string") return entry;
+	if (isRecord(entry) && typeof entry.source === "string") return entry.source;
+	return undefined;
 }
 
 function canonicalPackage(sourcePath) {
@@ -62,9 +65,16 @@ export function reconcileGentlePackages(settings, sourcePath) {
 		const source = packageSource(entry);
 		return source !== sourcePath && !isGentleNpmSource(source);
 	});
+	const canonicalGentle = canonicalPackage(sourcePath);
+	const firstOsdyIndex = retained.findIndex((entry) =>
+		isOsdyPackageSource(packageSource(entry)),
+	);
+	const nextPackages = [...retained];
+	if (firstOsdyIndex === -1) nextPackages.push(canonicalGentle);
+	else nextPackages.splice(firstOsdyIndex, 0, canonicalGentle);
 	const nextSettings = {
 		...settings,
-		packages: [...retained, canonicalPackage(sourcePath)],
+		packages: nextPackages,
 	};
 	const changed = JSON.stringify(nextSettings) !== JSON.stringify(settings);
 	return { changed, settings: changed ? nextSettings : settings };
@@ -101,7 +111,7 @@ async function validateGentleSource(sourcePath, fileSystem) {
 	if (!isRecord(packageJson) || packageJson.name !== GENTLE_PACKAGE_NAME)
 		throw new Error('Gentle source package name must be exactly "gentle-pi".');
 
-	for (const extension of CONFLICTING_EXTENSIONS) {
+	for (const extension of REQUIRED_EXTENSIONS) {
 		const extensionPath = join(resolvedSource, "extensions", extension);
 		try {
 			await fileSystem.access(extensionPath, constants.R_OK);

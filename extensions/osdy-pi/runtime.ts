@@ -651,6 +651,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		enabled: true,
 		editorEffective: false,
 		editorMode: DEFAULT_EDITOR_MODE,
+		fallbackEditorFactory: undefined,
 		headerVariant: "osdy-theme",
 		smallMode: false,
 		tui: undefined,
@@ -754,6 +755,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		state.workingTreeEnabled = editorSettings.workingTreeEnabled;
 		workingTreeState.enabled = editorSettings.workingTreeEnabled;
 		if (sessionContext !== ctx) return;
+		state.fallbackEditorFactory = ctx.ui.getEditorComponent();
 		claimOsdyVisualLayer(
 			pi,
 			ctx,

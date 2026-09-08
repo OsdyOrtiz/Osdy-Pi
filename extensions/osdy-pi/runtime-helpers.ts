@@ -162,7 +162,7 @@ export function applyOsdyPi(
 export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 	if (!ctx.hasUI) return;
 	ctx.ui.setHeader(undefined);
-	ctx.ui.setEditorComponent(undefined);
+	ctx.ui.setEditorComponent(state.fallbackEditorFactory);
 	ctx.ui.setFooter(undefined);
 	ctx.ui.setWidget(WORKING_WIDGET_KEY, undefined);
 	ctx.ui.setWidget(WORKING_TREE_WIDGET_KEY, undefined);
