@@ -742,7 +742,6 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		cancelOsdyRefreshes();
 		controller.onShutdown();
 		stopResponsive();
-		if (sessionContext) disableOsdyPi(sessionContext, state);
 		workingTreeState.tui = undefined;
 		sessionContext = undefined;
 	});

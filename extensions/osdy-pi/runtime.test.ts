@@ -88,6 +88,16 @@ void test("Codex refresh discards prior usage snapshots and shutdown resets usag
 	);
 });
 
+void test("session shutdown does not restore the captured fallback editor", () => {
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+	const shutdownHandler = source.match(
+		/pi\.on\("session_shutdown", \(\) => \{([\s\S]*?)\n\t\}\);/,
+	)?.[1];
+
+	assert.ok(shutdownHandler);
+	assert.doesNotMatch(shutdownHandler, /disableOsdyPi|setEditorComponent/);
+});
+
 void test("question prompts subscribe through the plugin event bus", () => {
 	const api = new TestExtensionApi();
 	const sessionContextProvider = new TestSessionContextProvider();
