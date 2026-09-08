@@ -98,6 +98,42 @@ void test("session shutdown does not restore the captured fallback editor", () =
 	assert.doesNotMatch(shutdownHandler, /disableOsdyPi|setEditorComponent/);
 });
 
+void test("persisted disabled startup leaves Gentle UI unclaimed and simple startup stays native", () => {
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+	const sessionStartHandler = source.match(
+		/pi\.on\("session_start", async \(_event, ctx\) => \{([\s\S]*?)\n\t\}\);/,
+	)?.[1];
+
+	assert.ok(sessionStartHandler);
+	assert.match(
+		sessionStartHandler,
+		/state\.fallbackEditorFactory = ctx\.ui\.getEditorComponent\(\);[\s\S]*?state\.enabled = editorSettings\.enabled;[\s\S]*?if \(!state\.enabled\) return;/,
+	);
+	assert.match(
+		sessionStartHandler,
+		/state\.editorMode = editorSettings\.editorMode;[\s\S]*?claimOsdyVisualLayer\(/,
+	);
+	assert.match(
+		sessionStartHandler,
+		/if \(!state\.enabled\) return;[\s\S]*?startResponsive\(\)/,
+	);
+	assert.match(
+		source,
+		/const startResponsive = \(\): void => \{[\s\S]*?responsiveCoordinator = createResponsiveCoordinator\(/,
+	);
+});
+
+void test("enable, disable, and their on/off aliases persist the complete visual settings", () => {
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+
+	assert.match(source, /\["enable", "on"\]\.includes\(action\)/);
+	assert.match(source, /\["disable", "off"\]\.includes\(action\)/);
+	assert.match(
+		source,
+		/settingsStore\.save\(\{[\s\S]*?enabled: state\.enabled,[\s\S]*?editorMode: state\.editorMode,[\s\S]*?workingTreeEnabled: state\.workingTreeEnabled,[\s\S]*?\}\)/,
+	);
+});
+
 void test("question prompts subscribe through the plugin event bus", () => {
 	const api = new TestExtensionApi();
 	const sessionContextProvider = new TestSessionContextProvider();

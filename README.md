@@ -24,7 +24,7 @@ Start Pi normally:
 pi
 ```
 
-`pi install` installs Osdy Pi's extension resources. When you later run plain `pi`, a valid Osdy default account automatically hands off once to the bundled launcher and resumes the saved session under that profile. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi enables its UI when a UI is available and preserves your selected Pi theme.
+`pi install` installs Osdy Pi's extension resources. When you later run plain `pi`, a valid Osdy default account automatically hands off once to the bundled launcher and resumes the saved session under that profile. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
 
 ## Gentle coexistence setup
 
@@ -183,14 +183,14 @@ Animation is enabled by default with an intro animation. Configure it through `O
 
 Small and compact modes trim only fully empty mascot-art and tone-map margins before applying one proportional width-and-height scale; mascot width starts near four-fifths of the available width. The header moves below the mascot as soon as side-by-side width would force the mascot into an additional width-limited reduction. Compact headers retain their source art when it fits and reduce proportionally only when a width or row bound requires it. Compact headers and mascots share a bounded terminal-row budget, so the header is omitted rather than collapsed into an unreadable one-row logo when there is not enough vertical space. The small-mode footer places the model and styled bare thinking level above usage, path/branch, and dynamic extension statuses. Pi Lens's footer status is hidden in small mode, but Pi Lens continues running. Usage includes input/output/cache-read/cache-write tokens, cost, and context. Extension statuses are supplied dynamically by Pi/extensions and may include Osdy Pi, MCP, or LSP; they are not hardcoded.
 
-The editor mode and working-tree visibility preference persist globally across Pi reloads and sessions, shared by all projects. They are saved in `$PI_CODING_AGENT_DIR/extensions/osdy-pi/settings.json`, or `~/.pi/agent/extensions/osdy-pi/settings.json` when `PI_CODING_AGENT_DIR` is unset. The selected editor mode and working-tree placement are restored when the terminal moves normal → small → normal.
+The enabled state, editor mode, and working-tree visibility preference persist globally across Pi reloads and sessions, shared by all projects. They are saved in `$PI_CODING_AGENT_DIR/extensions/osdy-pi/settings.json`, or `~/.pi/agent/extensions/osdy-pi/settings.json` when `PI_CODING_AGENT_DIR` is unset. The selected editor mode and working-tree placement are restored when the terminal moves normal → small → normal.
 
 ## Commands
 
 | Group | Command |
 | --- | --- |
 | Main | `/osdy-pi` |
-| Main | `/osdy-pi enable\|disable\|status` |
+| Main | `/osdy-pi enable\|disable\|on\|off\|status` |
 | Accounts | `/osdy-account` |
 | Header | `/osdy-pi osdy-theme\|classic` |
 | Editor | `/osdy-pi editor auto\|extended\|simple\|on\|off\|toggle\|status` |
@@ -202,7 +202,7 @@ The editor mode and working-tree visibility preference persist globally across P
 | Alias | `/osdy-pi-osdy-theme` |
 | Alias | `/osdy-pi-classic` |
 
-`/osdy-pi` reports status. `enable` applies the Osdy Pi UI without changing the selected Pi theme; `disable` restores Pi's built-in header, editor, footer, and working row while preserving that theme. The editor mode, working-tree visibility, and sound configuration persist globally; other UI toggles are current-session desired state.
+`/osdy-pi` reports status. `enable` (or `on`) applies the Osdy Pi UI without changing the selected Pi theme; `disable` (or `off`) restores the Gentle Shell or Pi UI captured at session startup while preserving that theme. The enabled state, editor mode, working-tree visibility, and sound configuration persist globally.
 
 ### Codex subscription usage
 
@@ -333,11 +333,14 @@ npm run pi:dev
 
 ## Disable, uninstall, and license
 
-Temporarily turn off the custom UI:
+Turn off the custom UI persistently (including across `/reload`):
 
 ```text
 /osdy-pi disable
+# Alias: /osdy-pi off
 ```
+
+Restore it with `/osdy-pi enable` or `/osdy-pi on`.
 
 To remove the package, use Pi's package-management command for installed packages.
 

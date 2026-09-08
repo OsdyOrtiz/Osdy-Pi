@@ -46,6 +46,7 @@ void test("editor settings normalize only supported versioned modes", () => {
 		normalizeEditorSettings({ version: 1, editorMode: "simple" }),
 		{
 			version: 1,
+			enabled: true,
 			editorMode: EDITOR_MODES.SIMPLE,
 			workingTreeEnabled: true,
 		},
@@ -54,6 +55,7 @@ void test("editor settings normalize only supported versioned modes", () => {
 		normalizeEditorSettings({ version: 1, editorMode: "invalid" }),
 		{
 			version: 1,
+			enabled: true,
 			editorMode: EDITOR_MODES.AUTO,
 			workingTreeEnabled: true,
 		},
@@ -62,14 +64,45 @@ void test("editor settings normalize only supported versioned modes", () => {
 		normalizeEditorSettings({ version: 2, editorMode: "extended" }),
 		{
 			version: 1,
+			enabled: true,
 			editorMode: EDITOR_MODES.AUTO,
 			workingTreeEnabled: true,
 		},
 	);
 	assert.deepEqual(normalizeEditorSettings(null), {
 		version: 1,
+		enabled: true,
 		editorMode: EDITOR_MODES.AUTO,
 		workingTreeEnabled: true,
+	});
+});
+
+void test("enabled defaults safely and persists globally", async () => {
+	assert.equal(
+		normalizeEditorSettings({ version: 1, editorMode: "simple" }).enabled,
+		true,
+	);
+	assert.equal(
+		normalizeEditorSettings({ version: 1, enabled: "no" }).enabled,
+		true,
+	);
+
+	const fileSystem = new MemoryEditorSettingsFileSystem();
+	const store = createEditorSettingsStore(
+		"/agent/extensions/osdy-pi/settings.json",
+		fileSystem,
+	);
+	await store.save({
+		version: 1,
+		enabled: false,
+		editorMode: EDITOR_MODES.SIMPLE,
+		workingTreeEnabled: false,
+	});
+	assert.deepEqual(await store.load(), {
+		version: 1,
+		enabled: false,
+		editorMode: EDITOR_MODES.SIMPLE,
+		workingTreeEnabled: false,
 	});
 });
 
@@ -98,6 +131,7 @@ void test("working-tree visibility defaults safely and persists globally", async
 	);
 	await firstStore.save({
 		version: 1,
+		enabled: true,
 		editorMode: EDITOR_MODES.AUTO,
 		workingTreeEnabled: false,
 	});
@@ -125,6 +159,7 @@ void test("editor settings load safely and save atomically", async () => {
 
 	await store.save({
 		version: 1,
+		enabled: true,
 		editorMode: EDITOR_MODES.SIMPLE,
 		workingTreeEnabled: true,
 	});
@@ -152,6 +187,7 @@ void test("new editor settings stores load their own persisted mode", async () =
 
 	await firstStore.save({
 		version: 1,
+		enabled: true,
 		editorMode: EDITOR_MODES.EXTENDED,
 		workingTreeEnabled: true,
 	});

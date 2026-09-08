@@ -25,6 +25,7 @@ function getAgentDir(): string {
 function createDefaultEditorSettings(): GlobalEditorSettings {
 	return {
 		version: EDITOR_SETTINGS_VERSION,
+		enabled: true,
 		editorMode: DEFAULT_EDITOR_MODE,
 		workingTreeEnabled: true,
 	};
@@ -44,6 +45,8 @@ export function normalizeEditorSettings(value: unknown): GlobalEditorSettings {
 	}
 	return {
 		version: EDITOR_SETTINGS_VERSION,
+		enabled:
+			typeof recordValue.enabled === "boolean" ? recordValue.enabled : true,
 		editorMode: isEditorMode(recordValue.editorMode)
 			? recordValue.editorMode
 			: DEFAULT_EDITOR_MODE,

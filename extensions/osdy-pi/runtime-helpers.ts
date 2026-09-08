@@ -152,11 +152,9 @@ export function applyOsdyPi(
 	state: OsdyState,
 	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
-	notify = false,
 ): void {
 	if (!ctx.hasUI) return;
 	mountOsdyUi(pi, ctx, state, workingState, workingTreeState);
-	if (notify) ctx.ui.notify("osdy-pi enabled", "info");
 }
 
 export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
@@ -170,7 +168,6 @@ export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 	state.editorEffective = false;
 	state.smallMode = false;
 	state.tui = undefined;
-	ctx.ui.notify("osdy-pi disabled", "info");
 }
 
 export function notifyStatus(ctx: ExtensionContext, state: OsdyState): void {
