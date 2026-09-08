@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { configureGentleCoexistence } from "../scripts/osdy-pi-gentle-coexistence.mjs";
 import {
 	clearDefaultAccount,
 	ensureProfileLayout,
@@ -25,7 +26,7 @@ function writeStderr(message) {
 
 function printUsage() {
 	writeStderr(
-		"Usage: osdy-pi account list | create <name> | add <name> | rename <old> <new> | remove <name> --confirm <name> [--replacement <other>] | use <name> [-- <pi args...] | default [<name> | --clear]",
+		"Usage: osdy-pi gentle setup <absolute-source-path> | account list | create <name> | add <name> | rename <old> <new> | remove <name> --confirm <name> [--replacement <other>] | use <name> [-- <pi args...] | default [<name> | --clear]",
 	);
 }
 
@@ -65,13 +66,21 @@ function startPi(plan) {
 
 try {
 	const args = process.argv.slice(2);
-	const sharedAgentDir = getSharedAgentDir();
-	if (args.length === 0) {
+	if (args[0] === "gentle") {
+		if (args[1] !== "setup" || args.length !== 3)
+			throw new Error("Usage: osdy-pi gentle setup <absolute-source-path>");
+		const result = await configureGentleCoexistence(args[2]);
+		writeStdout(
+			`Gentle coexistence ${result.status}. Restart Pi or run /reload to apply it.`,
+		);
+	} else if (args.length === 0) {
+		const sharedAgentDir = getSharedAgentDir();
 		const result = await planDefaultLaunch(sharedAgentDir);
 		if (result.defaultAccount.status === "invalid")
 			writeStderr("Ignoring invalid Osdy Pi default account metadata.");
 		startPi(result.plan);
 	} else {
+		const sharedAgentDir = getSharedAgentDir();
 		const command = parseAccountCommand(args);
 		if (command.action === "list") {
 			const profiles = await listProfiles(sharedAgentDir);

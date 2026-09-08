@@ -26,6 +26,18 @@ pi
 
 `pi install` installs Osdy Pi's extension resources. When you later run plain `pi`, a valid Osdy default account automatically hands off once to the bundled launcher and resumes the saved session under that profile. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi enables its UI when a UI is available and preserves your selected Pi theme.
 
+## Gentle coexistence setup
+
+To persistently load a local Gentle checkout while keeping Osdy Pi's UI authoritative, run:
+
+```bash
+osdy-pi gentle setup /absolute/path/to/gentle-pi
+```
+
+The command validates that the absolute source is a readable `gentle-pi` package with Gentle's conflicting shell, todo, and agents extensions before atomically updating `$PI_CODING_AGENT_DIR/settings.json` (or `~/.pi/agent/settings.json`). It registers the local package with exclusions for Gentle's `gentle-shell.ts`, `gentle-todo.ts`, and `gentle-agents.ts`, plus `themes: []`. Restart Pi or run `/reload` after setup.
+
+This intentionally leaves `pi-subagents-j0k3r`, `@juicesharp/rpiv-todo`, and `@juicesharp/rpiv-ask-user-question` package entries untouched, so their external todo, subagent, and question plugins remain authoritative.
+
 ## OpenAI account profiles
 
 Osdy Pi can keep multiple ChatGPT Plus/Pro accounts authenticated and let you choose which one starts Pi. `personal` and `work` are only examples—you can create as many named profiles as you need.
