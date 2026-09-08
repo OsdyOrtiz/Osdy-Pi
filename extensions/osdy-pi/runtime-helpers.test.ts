@@ -65,6 +65,7 @@ type WidgetCall = {
 
 function createState(overrides: Partial<OsdyState> = {}): OsdyState {
 	return {
+		codexUsage: { kind: "idle" },
 		enabled: true,
 		editorEffective: false,
 		editorMode: EDITOR_MODES.SIMPLE,

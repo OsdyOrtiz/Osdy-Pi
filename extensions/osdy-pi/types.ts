@@ -1,4 +1,5 @@
 import type { TUI } from "@earendil-works/pi-tui";
+import type { CodexUsageSnapshot } from "./codex-usage.js";
 
 export type AnimationMode = "off" | "intro" | "continuous";
 
@@ -34,7 +35,14 @@ export type HeaderVariant = "osdy-theme" | "classic";
 
 export type WorkingTreePlacement = "aboveEditor" | "belowEditor";
 
+export type CodexUsageState =
+	| { kind: "idle" }
+	| { kind: "loading"; snapshot: CodexUsageSnapshot | undefined }
+	| { kind: "ready"; snapshot: CodexUsageSnapshot }
+	| { kind: "error"; message: string; snapshot: CodexUsageSnapshot | undefined };
+
 export type OsdyState = {
+	codexUsage: CodexUsageState;
 	enabled: boolean;
 	editorEffective: boolean;
 	editorMode: EditorMode;

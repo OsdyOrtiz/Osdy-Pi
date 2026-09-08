@@ -35,6 +35,10 @@ import {
 	shouldRefreshWorkingTree,
 } from "./working-tree.js";
 import { showWorkingTreeDiffPanel } from "./diff-panel.js";
+import { extractCodexAccountId, fetchCodexUsage } from "./codex-usage.js";
+import { showCodexUsagePanel } from "./codex-usage-ui.js";
+import { modelLabel } from "./metrics.js";
+import { resolveActiveProfileLabel } from "./profile-label.js";
 import {
 	createWorkingController,
 	type WorkingController,
@@ -484,6 +488,65 @@ async function openDiffCommand(
 	}
 }
 
+async function refreshCodexUsage(
+	ctx: ExtensionContext,
+	state: OsdyState,
+	abort: AbortController,
+): Promise<void> {
+	state.codexUsage = { kind: "loading", snapshot: undefined };
+	state.tui?.requestRender();
+	try {
+		const providerAuth = await ctx.modelRegistry.getProviderAuth("openai-codex");
+		const accessToken = providerAuth?.auth.apiKey;
+		if (!accessToken) throw new Error("Codex login is required");
+		const snapshot = await fetchCodexUsage(
+			{ accessToken, accountId: extractCodexAccountId(accessToken) },
+			{ signal: abort.signal },
+		);
+		if (abort.signal.aborted) return;
+		state.codexUsage = { kind: "ready", snapshot };
+	} catch (error) {
+		if (abort.signal.aborted) return;
+		state.codexUsage = {
+			kind: "error",
+			message:
+				error instanceof Error ? error.message : "Codex usage is unavailable",
+			snapshot: undefined,
+		};
+	}
+	state.tui?.requestRender();
+}
+
+function registerUsageCommand(
+	pi: ExtensionAPI,
+	state: OsdyState,
+	getSessionContext: () => ExtensionContext | undefined,
+	startRefresh: (ctx: ExtensionContext) => Promise<void>,
+): void {
+	pi.registerCommand("usage", {
+		description: "Show current Codex subscription usage.",
+		handler: async (_args, ctx) => {
+			if (!ctx.hasUI) {
+				ctx.ui.notify("Codex usage requires the interactive UI", "warning");
+				return;
+			}
+			await showCodexUsagePanel(
+				ctx,
+				() => state.codexUsage,
+				async () => {
+					const active = getSessionContext();
+					if (active === ctx) await startRefresh(ctx);
+				},
+				{
+					profile: resolveActiveProfileLabel(),
+					provider: ctx.model?.provider ?? "unknown",
+					model: modelLabel(ctx),
+				},
+			);
+		},
+	});
+}
+
 function registerCommand(
 	pi: ExtensionAPI,
 	state: OsdyState,
@@ -584,6 +647,7 @@ function registerCommand(
 
 export function registerOsdyPi(pi: ExtensionAPI): void {
 	const state: OsdyState = {
+		codexUsage: { kind: "idle" },
 		enabled: true,
 		editorEffective: false,
 		editorMode: DEFAULT_EDITOR_MODE,
@@ -624,6 +688,16 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		| ReturnType<typeof createResponsiveCoordinator>
 		| undefined;
 	let sessionContext: ExtensionContext | undefined;
+	let codexUsageAbort: AbortController | undefined;
+	const refreshCurrentCodexUsage = async (
+		ctx: ExtensionContext,
+	): Promise<void> => {
+		codexUsageAbort?.abort();
+		const abort = new AbortController();
+		codexUsageAbort = abort;
+		await refreshCodexUsage(ctx, state, abort);
+		if (codexUsageAbort === abort) codexUsageAbort = undefined;
+	};
 	const pendingOsdyRefreshes = new Set<ReturnType<typeof setTimeout>>();
 	const cancelOsdyRefreshes = (): void => {
 		for (const timeout of pendingOsdyRefreshes) clearTimeout(timeout);
@@ -661,6 +735,9 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		}
 	});
 	pi.on("session_shutdown", () => {
+		codexUsageAbort?.abort();
+		codexUsageAbort = undefined;
+		state.codexUsage = { kind: "idle" };
 		cancelOsdyRefreshes();
 		controller.onShutdown();
 		stopResponsive();
@@ -696,8 +773,15 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		if (state.workingTreeEnabled) {
 			void refreshWorkingTree(pi, ctx, workingTreeState);
 		}
+		void refreshCurrentCodexUsage(ctx);
 	});
 
+	registerUsageCommand(
+		pi,
+		state,
+		() => sessionContext,
+		refreshCurrentCodexUsage,
+	);
 	registerCommand(
 		pi,
 		state,

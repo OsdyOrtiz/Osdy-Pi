@@ -54,7 +54,7 @@ export function reconcileResponsiveUi(
 		resolveEffectiveEditorMode(state.editorMode, state.smallMode) === "extended";
 	if (state.editorEffective !== editorEffective) {
 		state.editorEffective = editorEffective;
-		if (editorEffective) mountOsdyEditor(pi, ctx);
+		if (editorEffective) mountOsdyEditor(pi, ctx, state);
 		else unmountOsdyEditor(ctx);
 	}
 	const treeVisible = state.workingTreeEnabled && !state.smallMode;
@@ -91,8 +91,12 @@ export function createResponsiveCoordinator(
 	};
 }
 
-export function mountOsdyEditor(pi: ExtensionAPI, ctx: ExtensionContext): void {
-	ctx.ui.setEditorComponent(createEditorComponent(pi, ctx));
+export function mountOsdyEditor(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+): void {
+	ctx.ui.setEditorComponent(createEditorComponent(pi, ctx, state));
 }
 
 export function unmountOsdyEditor(ctx: ExtensionContext): void {

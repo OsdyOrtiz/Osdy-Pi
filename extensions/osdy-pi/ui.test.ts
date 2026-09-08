@@ -38,6 +38,13 @@ void test("places a managed profile beside the model in simple mode and preserve
 	);
 });
 
+void test("wires themed Codex quota bars below both native footer and extended editor", () => {
+	const source = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+	assert.match(source, /renderCompactCodexQuotaBars/);
+	assert.equal((source.match(/renderCompactCodexQuotaBars\(/g) ?? []).length, 2);
+	assert.doesNotMatch(source, /formatCodexUsageMetadata/);
+});
+
 void test("replaces the extended editor Osdy-Pi title with a managed profile or preserves its fallback", () => {
 	assert.equal(profileLabel.resolveEditorTitleLabel("work"), "work");
 	assert.equal(

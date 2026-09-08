@@ -106,7 +106,7 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 | Themes | 14 built-in themes, including Osdy, Kanagawa, Dracula, Catppuccin, Matrix, and Lucent Orange palettes |
 | Header | Selectable `osdy-theme` and `classic` header/mascot styles |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
-| Status | Custom working spinner, responsive footer metrics, and dynamic extension statuses |
+| Status | Custom working spinner, responsive footer metrics, dynamic extension statuses, and Codex subscription quota |
 | Git | Working-tree summary and a centered, filterable diff panel |
 | Audio | Optional event sounds on macOS and Windows |
 
@@ -184,10 +184,23 @@ The editor mode and working-tree visibility preference persist globally across P
 | Working tree | `/osdy-pi working-tree position top\|bottom\|status` |
 | Audio | `/osdy-pi sound setup` |
 | Diff | `/osdy-pi diff` |
+| Codex subscription | `/usage` |
 | Alias | `/osdy-pi-osdy-theme` |
 | Alias | `/osdy-pi-classic` |
 
 `/osdy-pi` reports status. `enable` applies the Osdy Pi UI without changing the selected Pi theme; `disable` restores Pi's built-in header, editor, footer, and working row while preserving that theme. The editor mode, working-tree visibility, and sound configuration persist globally; other UI toggles are current-session desired state.
+
+### Codex subscription usage
+
+Run `/usage` to open the Codex subscription dashboard for the active managed `openai-codex` profile and model. Press `r` to refresh; `esc` or `q` closes it. The dashboard shows these controls at the bottom.
+
+The main windows are labeled **Session** and **Weekly** (the API/domain remains primary/secondary). Their remaining-capacity bars are full at 100% remaining and empty at 0%; labels use the active theme's bold accent, Session uses the accent fill, Weekly uses `mdLink`, and empty segments are muted. A double themed frame, section dividers, and spacing separate the display. Detail cards show each duration and relative, local, and UTC reset times. Plan, availability, credits/reset count, and additional buckets appear only when the service supplies them; absent optional values are omitted.
+
+At wide widths, the modal pairs the Session and Weekly detail cards. Below 72 content columns, cards and bars stack and account/model data wraps. The native footer and extended editor also show compact Session/Weekly remaining-capacity bars below model and thinking metadata whenever a current Codex snapshot exists. Wide widths combine those bars; narrow widths stack them. Additional buckets appear only in `/usage`.
+
+Usage loads once when the session starts and refreshes when the modal opens or `r` is pressed; it does not poll. A refresh clears the previous snapshot before authentication resolves, and shutdown clears state, so quota data cannot cross account or profile boundaries.
+
+> **Privacy:** OAuth is resolved only through Pi's `modelRegistry`. Osdy Pi does not read `auth.json`, persist or log credentials, or display account IDs, tokens, response bodies, or endpoint internals in the UI. Requests use a fixed HTTPS endpoint with bounded timeout, response size, and redirects.
 
 ## Editor and working indicator
 
@@ -301,6 +314,8 @@ npm run pi:dev
 - The Git summary reports unavailable when Git commands cannot read a working tree.
 - Diff patches depend on readable repository files; a file whose patch cannot load shows the reported error in the panel.
 - Audio playback is limited to macOS and Windows and to readable `.mp3`/`.wav` files.
+- `/usage` requires an active `openai-codex` login. Run `/login` and choose **ChatGPT Plus/Pro (Codex)**; run `/reload` after local extension changes.
+- A `401` indicates an expired session, while a `403` means usage is unavailable. Optional backend fields may be absent and simply do not render.
 
 ## Disable, uninstall, and license
 

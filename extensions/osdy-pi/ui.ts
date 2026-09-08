@@ -19,6 +19,10 @@ import {
 } from "./animation.js";
 import { fitBorder } from "./border.js";
 import {
+	renderCompactCodexQuotaBars,
+	resolveCodexUsageLayout,
+} from "./codex-usage-ui.js";
+import {
 	ANIMATION_INTERVAL_MS,
 	COMPACT_HEADER_HIDDEN_COLUMNS,
 	headerWidth,
@@ -318,31 +322,33 @@ class OsdyFooter implements Component {
 				: [locationLine];
 		}
 		const thinkingLevel = this.pi.getThinkingLevel();
-		const thinkingLine = truncateToWidth(
-			formatModelMetadata(
-				modelLabel(this.ctx),
-				this.theme.fg(
-					THINKING_THEME_TOKENS[thinkingLevel],
-					`\u001B[1m${thinkingLevel}\u001B[22m`,
-				),
-				resolveActiveProfileLabel(),
+		const baseMetadata = formatModelMetadata(
+			modelLabel(this.ctx),
+			this.theme.fg(
+				THINKING_THEME_TOKENS[thinkingLevel],
+				`\u001B[1m${thinkingLevel}\u001B[22m`,
 			),
-			width,
-			ellipsis,
+			resolveActiveProfileLabel(),
 		);
+		const cachedCodexUsage =
+			this.state.codexUsage.kind === "idle"
+				? undefined
+				: this.state.codexUsage.snapshot;
+		const codexSnapshot =
+			this.ctx.model?.provider === "openai-codex" ? cachedCodexUsage : undefined;
+		const thinkingLine = truncateToWidth(baseMetadata, width, ellipsis);
+		const quotaLines = codexSnapshot
+			? renderCompactCodexQuotaBars(this.theme, codexSnapshot, width)
+			: [];
 		const usageLine = truncateToWidth(
 			usageLabel(this.ctx).trim(),
 			width,
 			ellipsis,
 		);
+		const lines = [thinkingLine, ...quotaLines, usageLine, locationLine];
 		return statusLine
-			? [
-					thinkingLine,
-					usageLine,
-					locationLine,
-					truncateToWidth(statusLine, width, ellipsis),
-				]
-			: [thinkingLine, usageLine, locationLine];
+			? [...lines, truncateToWidth(statusLine, width, ellipsis)]
+			: lines;
 	}
 
 	invalidate(): void {}
@@ -433,6 +439,7 @@ export function createWorkingWidgetFactory(workingState: WorkingWidgetState) {
 export function createEditorComponent(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
+	state: OsdyState,
 ): (
 	tui: TUI,
 	theme: EditorTheme,
@@ -476,15 +483,21 @@ export function createEditorComponent(
 				"mdLink",
 				` ${resolveEditorTitleLabel(resolveActiveProfileLabel())} `,
 			);
-			const topRight = ctx.ui.theme.fg(
-				"muted",
-				` ${modelLabel(ctx)} · think ${pi.getThinkingLevel()} `,
-			);
+			const cachedCodexUsage =
+				state.codexUsage.kind === "idle" ? undefined : state.codexUsage.snapshot;
+			const codexSnapshot =
+				ctx.model?.provider === "openai-codex" ? cachedCodexUsage : undefined;
+			const modelAndThinking = `${modelLabel(ctx)} · think ${pi.getThinkingLevel()}`;
+			const layout = resolveCodexUsageLayout(topLeft, ` ${modelAndThinking} `);
+			const topRight = ctx.ui.theme.fg("muted", layout.topRight);
 			const bottomLeft = ctx.ui.theme.fg("muted", usageLabel(ctx));
 			lines[0] = `${borderColor("╭")}${fitBorder(topLeft, topRight, editorWidth - 2, borderColor)}${borderColor("╮")}`;
 			lines[bottomIndex] =
 				`${borderColor("╰")}${fitBorder(bottomLeft, "", editorWidth - 2, borderColor)}${borderColor("╯")}`;
-			return lines;
+			const quotaLines = codexSnapshot
+				? renderCompactCodexQuotaBars(ctx.ui.theme, codexSnapshot, editorWidth)
+				: [];
+			return [...lines, ...quotaLines];
 		}
 	}
 
