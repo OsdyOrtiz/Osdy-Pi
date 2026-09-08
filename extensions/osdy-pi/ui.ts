@@ -487,7 +487,8 @@ export function createEditorComponent(
 				state.codexUsage.kind === "idle" ? undefined : state.codexUsage.snapshot;
 			const codexSnapshot =
 				ctx.model?.provider === "openai-codex" ? cachedCodexUsage : undefined;
-			const modelAndThinking = `${modelLabel(ctx)} · think ${pi.getThinkingLevel()}`;
+			const thinkingLevel = pi.getThinkingLevel();
+			const modelAndThinking = `${modelLabel(ctx)} · think ${ctx.ui.theme.bold(thinkingLevel)}`;
 			const layout = resolveCodexUsageLayout(topLeft, ` ${modelAndThinking} `);
 			const topRight = ctx.ui.theme.fg("muted", layout.topRight);
 			const bottomLeft = ctx.ui.theme.fg("muted", usageLabel(ctx));

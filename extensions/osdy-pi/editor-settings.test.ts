@@ -4,7 +4,7 @@ import {
 	createEditorSettingsStore,
 	normalizeEditorSettings,
 	type EditorSettingsFileSystem,
-// @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
+	// @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
 } from "./editor-settings.ts";
 // @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
 import { EDITOR_MODES } from "./types.ts";

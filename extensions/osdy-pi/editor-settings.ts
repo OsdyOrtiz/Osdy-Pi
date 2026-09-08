@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import type { EditorMode, GlobalEditorSettings } from "./types.js";
 
-const SUPPORTED_EDITOR_MODES = ["auto", "extended", "simple"] as const satisfies readonly EditorMode[];
+const SUPPORTED_EDITOR_MODES = [
+	"auto",
+	"extended",
+	"simple",
+] as const satisfies readonly EditorMode[];
 const DEFAULT_EDITOR_MODE: EditorMode = "auto";
 const EDITOR_SETTINGS_VERSION = 1;
 const EDITOR_SETTINGS_FILE_NAME = "settings.json";
@@ -32,7 +36,10 @@ function createDefaultEditorSettings(): GlobalEditorSettings {
 }
 
 function isEditorMode(value: unknown): value is EditorMode {
-	return typeof value === "string" && SUPPORTED_EDITOR_MODES.some((mode) => mode === value);
+	return (
+		typeof value === "string" &&
+		SUPPORTED_EDITOR_MODES.some((mode) => mode === value)
+	);
 }
 
 export function normalizeEditorSettings(value: unknown): GlobalEditorSettings {

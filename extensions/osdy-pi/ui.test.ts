@@ -16,6 +16,11 @@ void test("maximum thinking uses the existing extra-high theme color", () => {
 	assert.match(source, /max:\s*"thinkingXhigh"/);
 });
 
+void test("renders the extended editor thinking level in bold", () => {
+	const source = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+	assert.match(source, /theme\.bold\(thinkingLevel\)/);
+});
+
 void test("places a managed profile beside the model in simple mode and preserves its fallback", () => {
 	assert.equal(
 		profileLabel.resolveActiveProfileLabel({ OSDY_PI_PROFILE_NAME: "work" }),
