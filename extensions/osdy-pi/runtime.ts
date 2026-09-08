@@ -12,6 +12,7 @@ import { createEditorSettingsStore } from "./editor-settings.js";
 import { registerAccountProfilesCommand } from "./account-profiles.js";
 import {
 	applyOsdyPi,
+	clearGentleShellChangesWidget,
 	createResponsiveCoordinator,
 	disableOsdyPi,
 	notifyStatus,
@@ -750,6 +751,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	pi.on("agent_end", (_event, ctx) => {
 		controller.onAgentEnd();
 		audioRouter.onAgentEnd(ctx);
+		if (state.enabled) clearGentleShellChangesWidget(ctx);
 	});
 	pi.on("tool_execution_start", (event) =>
 		controller.onToolStart(event.toolName),
@@ -757,6 +759,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	pi.on("tool_execution_end", (event, ctx) => {
 		controller.onToolEnd();
 		audioRouter.onToolExecutionEnd(event.isError === true, ctx);
+		if (state.enabled) clearGentleShellChangesWidget(ctx);
 		if (
 			state.enabled &&
 			state.workingTreeEnabled &&

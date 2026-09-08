@@ -20,7 +20,12 @@ import {
 import { createWorkingTreeWidgetFactory } from "./working-tree.js";
 import { isSmallResponsiveMode } from "./utils.js";
 
+const GENTLE_SHELL_CHANGES_WIDGET_KEY = "gentle-shell-changes";
 const RESPONSIVE_WATCH_INTERVAL_MS = 150;
+
+export function clearGentleShellChangesWidget(ctx: ExtensionContext): void {
+	ctx.ui.setWidget(GENTLE_SHELL_CHANGES_WIDGET_KEY, undefined);
+}
 
 function workingTreeEffective(
 	state: OsdyState,
@@ -137,6 +142,7 @@ export function mountOsdyUi(
 		return createFooterComponent(pi, ctx, state, footerData, theme);
 	});
 	ctx.ui.setWorkingVisible(false);
+	clearGentleShellChangesWidget(ctx);
 	ctx.ui.setWidget(
 		WORKING_WIDGET_KEY,
 		createWorkingWidgetFactory(workingState),

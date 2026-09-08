@@ -61,6 +61,7 @@ const {
 	"./runtime-helpers.ts"
 );
 
+const GENTLE_SHELL_CHANGES_WIDGET_KEY = "gentle-shell-changes";
 const WORKING_TREE_WIDGET_KEY = "osdy-pi-working-tree";
 
 type WidgetCall = {
@@ -197,6 +198,27 @@ void test("syncWorkingTreeWidget remounts an enabled widget", () => {
 	assert.equal(widgetCalls[0]?.key, WORKING_TREE_WIDGET_KEY);
 	assert.equal(typeof widgetCalls[0]?.factory, "function");
 	assert.deepEqual(widgetCalls[0]?.options, { placement: "belowEditor" });
+});
+
+void test("initial UI mount clears Gentle's changed-files widget without affecting Osdy's working tree", () => {
+	const widgetCalls: WidgetCall[] = [];
+	const ctx = createContext(widgetCalls, []);
+
+	mountOsdyUi(
+		{} as ExtensionAPI,
+		ctx,
+		createState(),
+		createWorkingState(),
+		createWorkingTreeState(),
+	);
+
+	assert.deepEqual(widgetCalls[0], {
+		key: GENTLE_SHELL_CHANGES_WIDGET_KEY,
+		factory: undefined,
+		options: undefined,
+	});
+	assert.equal(widgetCalls[1]?.key, "osdy-pi-working");
+	assert.equal(widgetCalls[2]?.key, WORKING_TREE_WIDGET_KEY);
 });
 
 void test("initial UI mount leaves a persisted disabled working tree unmounted", () => {

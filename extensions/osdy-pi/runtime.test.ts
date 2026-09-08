@@ -88,6 +88,27 @@ void test("Codex refresh discards prior usage snapshots and shutdown resets usag
 	);
 });
 
+void test("agent and tool completion reclaim the Gentle changed-files widget", () => {
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+	const agentEndHandler = source.match(
+		/pi\.on\("agent_end", \(_event, ctx\) => \{([\s\S]*?)\n\t\}\);/,
+	)?.[1];
+	const toolExecutionEndHandler = source.match(
+		/pi\.on\("tool_execution_end", \(event, ctx\) => \{([\s\S]*?)\n\t\}\);/,
+	)?.[1];
+
+	assert.ok(agentEndHandler);
+	assert.ok(toolExecutionEndHandler);
+	assert.match(
+		agentEndHandler,
+		/if \(state\.enabled\) clearGentleShellChangesWidget\(ctx\)/,
+	);
+	assert.match(
+		toolExecutionEndHandler,
+		/if \(state\.enabled\) clearGentleShellChangesWidget\(ctx\)/,
+	);
+});
+
 void test("session shutdown does not restore the captured fallback editor", () => {
 	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
 	const shutdownHandler = source.match(
