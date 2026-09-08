@@ -29,9 +29,9 @@ function isGentleNpmSource(value) {
 function isOsdyPackageSource(value) {
 	return (
 		typeof value === "string" &&
-		(/^(?:git:github\.com\/osdyortiz\/osdy-pi|npm:osdy-pi(?:@[^\s]+)?)$/i.test(
+		/^(?:git:github\.com\/osdyortiz\/osdy-pi|npm:osdy-pi(?:@[^\s]+)?)$/i.test(
 			value.trim(),
-		))
+		)
 	);
 }
 

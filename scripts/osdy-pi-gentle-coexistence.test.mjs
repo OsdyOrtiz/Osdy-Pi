@@ -179,8 +179,7 @@ test("rejects a source missing a required extension before settings mutation", a
 			settingsPath,
 			fileSystem: {
 				access: async (filePath) => {
-					if (filePath.endsWith("gentle-todo.ts"))
-						throw new Error("not readable");
+					if (filePath.endsWith("gentle-todo.ts")) throw new Error("not readable");
 				},
 			},
 		}),

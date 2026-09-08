@@ -154,7 +154,8 @@ void test("unmountOsdyEditor removes the custom editor without restoring the fal
 void test("disableOsdyPi restores the captured editor and Osdy can reclaim it", () => {
 	const editorCalls: unknown[] = [];
 	const ctx = createContext([], editorCalls);
-	const fallbackEditorFactory = (() => ({})) as unknown as OsdyState["fallbackEditorFactory"];
+	const fallbackEditorFactory =
+		(() => ({})) as unknown as OsdyState["fallbackEditorFactory"];
 	const state = createState({ fallbackEditorFactory });
 
 	disableOsdyPi(ctx, state);
