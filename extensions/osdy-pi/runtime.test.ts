@@ -155,6 +155,23 @@ void test("enable, disable, and their on/off aliases persist the complete visual
 	);
 });
 
+void test("registers one enabled-aware response-card Markdown transformer", () => {
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+
+	assert.match(
+		source,
+		/import \{ createResponseCardMarkdownTransformer \} from "\.\/response-card\.js";/,
+	);
+	assert.equal(
+		(source.match(/pi\.registerMarkdownTransformer\(/g) ?? []).length,
+		1,
+	);
+	assert.match(
+		source,
+		/pi\.registerMarkdownTransformer\(\s*createResponseCardMarkdownTransformer\(\(\) => state\.enabled\),\s*\);/,
+	);
+});
+
 void test("question prompts subscribe through the plugin event bus", () => {
 	const api = new TestExtensionApi();
 	const sessionContextProvider = new TestSessionContextProvider();

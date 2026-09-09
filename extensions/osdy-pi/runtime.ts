@@ -10,6 +10,7 @@ import { subscribeQuestionPromptAudioNotification } from "./plugin-events.js";
 import { createAudioSoundSettingsStore } from "./audio-sound-settings.js";
 import { createEditorSettingsStore } from "./editor-settings.js";
 import { registerAccountProfilesCommand } from "./account-profiles.js";
+import { createResponseCardMarkdownTransformer } from "./response-card.js";
 import {
 	applyOsdyPi,
 	clearGentleShellChangesWidget,
@@ -679,6 +680,9 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		workingTreeEnabled: true,
 		workingTreePlacement: "aboveEditor",
 	};
+	pi.registerMarkdownTransformer(
+		createResponseCardMarkdownTransformer(() => state.enabled),
+	);
 	const workingState: WorkingWidgetState = {
 		active: false,
 		label: "Working...",
