@@ -34,6 +34,44 @@ function getCacheLabel(totals: UsageTotals): string {
 		: "";
 }
 
+export type ContextUsageData = {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	cost: number;
+	percent: number | undefined;
+	contextWindow: number | undefined;
+};
+
+export type ContextUsageSource = {
+	getContextUsage():
+		| {
+				percent: number | null;
+				contextWindow?: number | null;
+		  }
+		| undefined;
+	model?:
+		| {
+				contextWindow?: number | null;
+		  }
+		| undefined;
+	sessionManager: {
+		getEntries(): readonly unknown[];
+	};
+};
+
+export function contextUsageData(ctx: ContextUsageSource): ContextUsageData {
+	const totals = collectUsageTotals(ctx);
+	const context = ctx.getContextUsage();
+	return {
+		...totals,
+		percent: context?.percent ?? undefined,
+		contextWindow:
+			context?.contextWindow ?? ctx.model?.contextWindow ?? undefined,
+	};
+}
+
 export function usageLabel(ctx: ExtensionContext): string {
 	const totals = collectUsageTotals(ctx);
 	const cacheText = getCacheLabel(totals);
@@ -74,7 +112,7 @@ function mergeUsageTotals(
 	};
 }
 
-function collectUsageTotals(ctx: ExtensionContext): UsageTotals {
+function collectUsageTotals(ctx: ContextUsageSource): UsageTotals {
 	return ctx.sessionManager.getEntries().reduce<UsageTotals>((totals, entry) => {
 		return isAssistantSessionEntry(entry)
 			? mergeUsageTotals(totals, entry)

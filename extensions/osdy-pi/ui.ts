@@ -18,6 +18,7 @@ import {
 	asciiAnimationMode,
 } from "./animation.js";
 import { fitBorder } from "./border.js";
+import { formatContextUsage } from "./context-usage-ui.js";
 import {
 	renderCompactCodexQuotaBars,
 	resolveCodexUsageLayout,
@@ -39,7 +40,7 @@ import {
 	WORKING_SPINNER_FRAMES,
 } from "./constants.js";
 import { formatPath } from "./format.js";
-import { modelLabel, usageLabel } from "./metrics.js";
+import { contextUsageData, modelLabel } from "./metrics.js";
 import {
 	formatModelMetadata,
 	resolveActiveProfileLabel,
@@ -341,7 +342,7 @@ class OsdyFooter implements Component {
 			? renderCompactCodexQuotaBars(this.theme, codexSnapshot, width)
 			: [];
 		const usageLine = truncateToWidth(
-			usageLabel(this.ctx).trim(),
+			formatContextUsage(this.theme, contextUsageData(this.ctx), width),
 			width,
 			ellipsis,
 		);
@@ -491,7 +492,11 @@ export function createEditorComponent(
 			const modelAndThinking = `${modelLabel(ctx)} · think ${ctx.ui.theme.bold(thinkingLevel)}`;
 			const layout = resolveCodexUsageLayout(topLeft, ` ${modelAndThinking} `);
 			const topRight = ctx.ui.theme.fg("muted", layout.topRight);
-			const bottomLeft = ctx.ui.theme.fg("muted", usageLabel(ctx));
+			const bottomLeft = formatContextUsage(
+				ctx.ui.theme,
+				contextUsageData(ctx),
+				innerWidth,
+			);
 			lines[0] = `${borderColor("╭")}${fitBorder(topLeft, topRight, editorWidth - 2, borderColor)}${borderColor("╮")}`;
 			lines[bottomIndex] =
 				`${borderColor("╰")}${fitBorder(bottomLeft, "", editorWidth - 2, borderColor)}${borderColor("╯")}`;
