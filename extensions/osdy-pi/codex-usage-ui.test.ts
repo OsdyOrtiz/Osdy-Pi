@@ -3,7 +3,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import {
+	visibleWidth,
+	type Component,
+	type TUI,
+} from "@earendil-works/pi-tui";
+import type { SimpleTheme } from "./types.js";
 import ts from "typescript";
 
 registerHooks({
@@ -48,6 +53,7 @@ const {
 	renderCodexUsagePanelLines,
 	renderCodexUsageReadyLines,
 	resolveCodexUsageLayout,
+	showCodexUsagePanel,
 } = await import("./codex-usage-ui.js");
 
 const stripLabelSgr = (text: string): string =>
@@ -995,6 +1001,59 @@ void test("renders Session and Weekly labels bold accent while preserving their 
 			(line) => visibleWidth(line) <= 100,
 		),
 	);
+});
+
+void test("requests an immediate modal repaint when refresh remains in flight", async () => {
+	let component: { handleInput(data: string): void } | undefined;
+	let renderRequests = 0;
+	let resolveRefresh: (() => void) | undefined;
+	let refreshCalls = 0;
+	const refresh = (): Promise<void> => {
+		refreshCalls += 1;
+		if (refreshCalls === 1) return Promise.resolve();
+		return new Promise<void>((resolve) => {
+			resolveRefresh = resolve;
+		});
+	};
+
+	void showCodexUsagePanel(
+		{
+			ui: {
+				custom: async <T>(
+					factory: (
+						tui: TUI,
+						theme: SimpleTheme,
+						keybindings: unknown,
+						done: (result: T) => void,
+					) => Component,
+				): Promise<T> => {
+					component = factory(
+						{
+							requestRender: () => {
+								renderRequests += 1;
+							},
+						} as TUI,
+						{ fg: (_name: string, text: string): string => text },
+						{},
+						() => {},
+					) as { handleInput(data: string): void };
+					return await new Promise<T>(() => {});
+				},
+			},
+		},
+		() => ({ kind: "loading", snapshot: undefined }),
+		refresh,
+	);
+	await Promise.resolve();
+	await Promise.resolve();
+	renderRequests = 0;
+
+	component?.handleInput("r");
+	component?.handleInput("r");
+
+	assert.equal(refreshCalls, 2);
+	assert.equal(renderRequests, 1);
+	resolveRefresh?.();
 });
 
 void test("keeps Codex quota out of the editor top border layout", () => {

@@ -605,6 +605,7 @@ class CodexUsagePanel implements Component {
 	private readonly refresh: CodexUsageRefresh;
 	private readonly presentation: CodexUsagePresentation;
 	private readonly close: () => void;
+	private refreshInFlight = false;
 
 	constructor(
 		tui: TUI,
@@ -622,9 +623,19 @@ class CodexUsagePanel implements Component {
 		this.close = close;
 	}
 
+	private async refreshUsage(): Promise<void> {
+		if (this.refreshInFlight) return;
+		this.refreshInFlight = true;
+		try {
+			await this.refresh();
+		} finally {
+			this.refreshInFlight = false;
+		}
+	}
+
 	handleInput(data: string): void {
 		if (matchesKey(data, "escape") || matchesKey(data, "q")) return this.close();
-		if (matchesKey(data, "r")) void this.refresh();
+		if (matchesKey(data, "r")) void this.refreshUsage();
 	}
 
 	render(width: number): string[] {
@@ -675,6 +686,7 @@ export async function showCodexUsagePanel(
 				theme,
 				getState,
 				async () => {
+					tui.requestRender();
 					await refresh();
 					tui.requestRender();
 				},
