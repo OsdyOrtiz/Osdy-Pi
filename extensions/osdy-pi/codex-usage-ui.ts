@@ -680,15 +680,21 @@ export async function showCodexUsagePanel(
 ): Promise<void> {
 	await ctx.ui.custom<void>(
 		(tui, theme, _keybindings, done) => {
-			void refresh().finally(() => tui.requestRender());
+			const initialRefresh = refresh();
+			tui.requestRender();
+			void initialRefresh.finally(() => tui.requestRender());
 			return new CodexUsagePanel(
 				tui,
 				theme,
 				getState,
 				async () => {
+					const pendingRefresh = refresh();
 					tui.requestRender();
-					await refresh();
-					tui.requestRender();
+					try {
+						await pendingRefresh;
+					} finally {
+						tui.requestRender();
+					}
 				},
 				presentation,
 				() => done(),

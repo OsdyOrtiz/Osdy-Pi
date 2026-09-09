@@ -40,6 +40,8 @@ registerHooks({
 
 const { PLUGIN_EVENTS, subscribeQuestionPromptAudioNotification } =
 	await import("./plugin-events.js");
+const { createActiveSessionRefresh, refreshCodexUsage } =
+	await import("./runtime.js");
 
 class TestEventBus {
 	event: string | undefined;
@@ -74,6 +76,89 @@ class TestSessionContextProvider {
 		return this.context;
 	}
 }
+
+void test("usage refresh resolves the active session instead of a distinct command context", async () => {
+	const activeSessionContext = { id: "active-session" };
+	const commandContext = { id: "command-context" };
+	const refreshedContexts: Array<{ id: string }> = [];
+	const refreshActiveSessionUsage = createActiveSessionRefresh(
+		() => activeSessionContext,
+		(context) => {
+			refreshedContexts.push(context);
+			return Promise.resolve();
+		},
+	);
+
+	assert.notEqual(commandContext, activeSessionContext);
+	await refreshActiveSessionUsage();
+	assert.deepEqual(refreshedContexts, [activeSessionContext]);
+});
+
+void test("Codex usage state refresh repaints the shared TUI after loading and error", async () => {
+	const renderedStates: string[] = [];
+	const state = {
+		codexUsage: { kind: "idle" } as const,
+		tui: {
+			requestRender: () => renderedStates.push(state.codexUsage.kind),
+		},
+	};
+
+	await refreshCodexUsage(
+		{
+			modelRegistry: {
+				getProviderAuth: () => Promise.resolve(undefined),
+			},
+		},
+		state,
+		new AbortController(),
+	);
+
+	assert.deepEqual(renderedStates, ["loading", "error"]);
+	assert.equal(state.codexUsage.kind, "error");
+});
+
+void test("Codex usage refresh repaints the shared TUI with its ready quota snapshot", async () => {
+	const snapshot = {
+		planType: "plus",
+		ordinaryUsageAllowed: true,
+		buckets: [
+			{
+				id: "codex",
+				label: undefined,
+				primary: { usedPercent: 37, windowMinutes: 300, resetsAt: undefined },
+				secondary: undefined,
+			},
+		],
+		credits: undefined,
+		fetchedAt: 1_900_000_000_000,
+	};
+	const renderedStates: string[] = [];
+	const state = {
+		codexUsage: { kind: "idle" } as const,
+		tui: {
+			requestRender: () => renderedStates.push(state.codexUsage.kind),
+		},
+	};
+	const accessToken = `header.${Buffer.from(
+		JSON.stringify({
+			"https://api.openai.com/auth": { chatgpt_account_id: "account-id" },
+		}),
+	).toString("base64url")}.signature`;
+
+	await refreshCodexUsage(
+		{
+			modelRegistry: {
+				getProviderAuth: () => Promise.resolve({ auth: { apiKey: accessToken } }),
+			},
+		},
+		state,
+		new AbortController(),
+		() => Promise.resolve(snapshot),
+	);
+
+	assert.deepEqual(renderedStates, ["loading", "ready"]);
+	assert.deepEqual(state.codexUsage, { kind: "ready", snapshot });
+});
 
 void test("Codex refresh discards prior usage snapshots and shutdown resets usage state", () => {
 	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");

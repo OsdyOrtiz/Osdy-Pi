@@ -37,7 +37,12 @@ import {
 	shouldRefreshWorkingTree,
 } from "./working-tree.js";
 import { showWorkingTreeDiffPanel } from "./diff-panel.js";
-import { extractCodexAccountId, fetchCodexUsage } from "./codex-usage.js";
+import {
+	extractCodexAccountId,
+	fetchCodexUsage,
+	type CodexUsageAuth,
+	type CodexUsageSnapshot,
+} from "./codex-usage.js";
 import { showCodexUsagePanel } from "./codex-usage-ui.js";
 import { modelLabel } from "./metrics.js";
 import { resolveActiveProfileLabel } from "./profile-label.js";
@@ -508,10 +513,27 @@ async function openDiffCommand(
 	}
 }
 
-async function refreshCodexUsage(
-	ctx: ExtensionContext,
-	state: OsdyState,
+type CodexUsageRefreshContext = {
+	modelRegistry: {
+		getProviderAuth(provider: string): Promise<{ auth: { apiKey?: string } } | undefined>;
+	};
+};
+
+type CodexUsageRefreshState = {
+	codexUsage: OsdyState["codexUsage"];
+	tui?: { requestRender(): void } | undefined;
+};
+
+type CodexUsageFetcher = (
+	auth: CodexUsageAuth,
+	options: { signal: AbortSignal },
+) => Promise<CodexUsageSnapshot>;
+
+export async function refreshCodexUsage(
+	ctx: CodexUsageRefreshContext,
+	state: CodexUsageRefreshState,
 	abort: AbortController,
+	fetchUsage: CodexUsageFetcher = fetchCodexUsage,
 ): Promise<void> {
 	state.codexUsage = { kind: "loading", snapshot: undefined };
 	state.tui?.requestRender();
@@ -519,7 +541,7 @@ async function refreshCodexUsage(
 		const providerAuth = await ctx.modelRegistry.getProviderAuth("openai-codex");
 		const accessToken = providerAuth?.auth.apiKey;
 		if (!accessToken) throw new Error("Codex login is required");
-		const snapshot = await fetchCodexUsage(
+		const snapshot = await fetchUsage(
 			{ accessToken, accountId: extractCodexAccountId(accessToken) },
 			{ signal: abort.signal },
 		);
@@ -537,12 +559,26 @@ async function refreshCodexUsage(
 	state.tui?.requestRender();
 }
 
+export function createActiveSessionRefresh<T>(
+	getSessionContext: () => T | undefined,
+	startRefresh: (context: T) => Promise<void>,
+): () => Promise<void> {
+	return async () => {
+		const activeSessionContext = getSessionContext();
+		if (activeSessionContext) await startRefresh(activeSessionContext);
+	};
+}
+
 function registerUsageCommand(
 	pi: ExtensionAPI,
 	state: OsdyState,
 	getSessionContext: () => ExtensionContext | undefined,
 	startRefresh: (ctx: ExtensionContext) => Promise<void>,
 ): void {
+	const refreshActiveSessionUsage = createActiveSessionRefresh(
+		getSessionContext,
+		startRefresh,
+	);
 	pi.registerCommand("usage", {
 		description: "Show current Codex subscription usage.",
 		handler: async (_args, ctx) => {
@@ -553,10 +589,7 @@ function registerUsageCommand(
 			await showCodexUsagePanel(
 				ctx,
 				() => state.codexUsage,
-				async () => {
-					const active = getSessionContext();
-					if (active === ctx) await startRefresh(ctx);
-				},
+				refreshActiveSessionUsage,
 				{
 					profile: resolveActiveProfileLabel(),
 					provider: ctx.model?.provider ?? "unknown",

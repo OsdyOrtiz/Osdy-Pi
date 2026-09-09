@@ -8,6 +8,7 @@ import {
 	type Component,
 	type TUI,
 } from "@earendil-works/pi-tui";
+import type { CodexUsageSnapshot } from "./codex-usage.js";
 import type { SimpleTheme } from "./types.js";
 import ts from "typescript";
 
@@ -1003,16 +1004,41 @@ void test("renders Session and Weekly labels bold accent while preserving their 
 	);
 });
 
-void test("requests an immediate modal repaint when refresh remains in flight", async () => {
-	let component: { handleInput(data: string): void } | undefined;
-	let renderRequests = 0;
-	let resolveRefresh: (() => void) | undefined;
+void test("repaints the modal after refresh synchronously enters loading and when it becomes ready", async () => {
+	const refreshedSnapshot: CodexUsageSnapshot = {
+		planType: "plus",
+		ordinaryUsageAllowed: true,
+		buckets: [
+			{
+				id: "codex",
+				label: undefined,
+				primary: { usedPercent: 37, windowMinutes: 300, resetsAt: undefined },
+				secondary: undefined,
+			},
+		],
+		credits: undefined,
+		fetchedAt: 1_900_000_000_000,
+	};
+	let component:
+		| { handleInput(data: string): void; render(width: number): string[] }
+		| undefined;
+	const observedStates: string[] = [];
+	const resolvers: Array<() => void> = [];
 	let refreshCalls = 0;
+	let state:
+		| { kind: "loading"; snapshot: undefined }
+		| { kind: "ready"; snapshot: CodexUsageSnapshot } = {
+		kind: "ready",
+		snapshot: refreshedSnapshot,
+	};
 	const refresh = (): Promise<void> => {
 		refreshCalls += 1;
-		if (refreshCalls === 1) return Promise.resolve();
+		state = { kind: "loading", snapshot: undefined };
 		return new Promise<void>((resolve) => {
-			resolveRefresh = resolve;
+			resolvers.push(() => {
+				state = { kind: "ready", snapshot: refreshedSnapshot };
+				resolve();
+			});
 		});
 	};
 
@@ -1030,30 +1056,41 @@ void test("requests an immediate modal repaint when refresh remains in flight", 
 					component = factory(
 						{
 							requestRender: () => {
-								renderRequests += 1;
+								observedStates.push(state.kind);
 							},
 						} as TUI,
 						{ fg: (_name: string, text: string): string => text },
 						{},
 						() => {},
-					) as { handleInput(data: string): void };
+					) as { handleInput(data: string): void; render(width: number): string[] };
 					return await new Promise<T>(() => {});
 				},
 			},
 		},
-		() => ({ kind: "loading", snapshot: undefined }),
+		() => state,
 		refresh,
 	);
 	await Promise.resolve();
+
+	assert.equal(refreshCalls, 1);
+	assert.equal(observedStates[0], "loading");
+	resolvers.shift()?.();
 	await Promise.resolve();
-	renderRequests = 0;
+	await Promise.resolve();
+	assert.equal(observedStates.at(-1), "ready");
+	assert.deepEqual(state, { kind: "ready", snapshot: refreshedSnapshot });
+	assert.ok(component?.render(96).some((line) => line.includes("63% left")));
 
+	observedStates.length = 0;
 	component?.handleInput("r");
 	component?.handleInput("r");
-
 	assert.equal(refreshCalls, 2);
-	assert.equal(renderRequests, 1);
-	resolveRefresh?.();
+	assert.equal(observedStates[0], "loading");
+	resolvers.shift()?.();
+	await Promise.resolve();
+	await Promise.resolve();
+	assert.equal(observedStates.at(-1), "ready");
+	assert.deepEqual(state, { kind: "ready", snapshot: refreshedSnapshot });
 });
 
 void test("keeps Codex quota out of the editor top border layout", () => {
