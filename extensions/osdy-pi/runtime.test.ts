@@ -94,6 +94,25 @@ void test("usage refresh resolves the active session instead of a distinct comma
 	assert.deepEqual(refreshedContexts, [activeSessionContext]);
 });
 
+void test("agent settlement refreshes enabled active Codex sessions without comparing event context identity", () => {
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+	const agentSettledHandler = source.match(
+		/pi\.on\("agent_settled", \(\) => \{([\s\S]*?)\n\t\}\);/,
+	)?.[1];
+	const agentEndHandler = source.match(
+		/pi\.on\("agent_end", \(_event, ctx\) => \{([\s\S]*?)\n\t\}\);/,
+	)?.[1];
+
+	assert.ok(agentSettledHandler);
+	assert.match(
+		agentSettledHandler,
+		/const activeSessionContext = sessionContext;[\s\S]*?state\.enabled[\s\S]*?activeSessionContext &&[\s\S]*?activeSessionContext\.model\?\.provider === "openai-codex"[\s\S]*?void refreshCurrentCodexUsage\(activeSessionContext\)/,
+	);
+	assert.doesNotMatch(agentSettledHandler, /activeSessionContext\s*===\s*ctx/);
+	assert.ok(agentEndHandler);
+	assert.doesNotMatch(agentEndHandler, /refreshCurrentCodexUsage/);
+});
+
 void test("Codex usage state refresh repaints the shared TUI after loading and error", async () => {
 	const renderedStates: string[] = [];
 	const state = {

@@ -790,6 +790,16 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		audioRouter.onAgentEnd(ctx);
 		if (state.enabled) clearGentleShellChangesWidget(ctx);
 	});
+	pi.on("agent_settled", () => {
+		const activeSessionContext = sessionContext;
+		if (
+			state.enabled &&
+			activeSessionContext &&
+			activeSessionContext.model?.provider === "openai-codex"
+		) {
+			void refreshCurrentCodexUsage(activeSessionContext);
+		}
+	});
 	pi.on("tool_execution_start", (event) =>
 		controller.onToolStart(event.toolName),
 	);
