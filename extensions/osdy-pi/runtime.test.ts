@@ -259,20 +259,76 @@ void test("enable, disable, and their on/off aliases persist the complete visual
 	);
 });
 
-void test("registers one enabled-aware response-card Markdown transformer", () => {
+void test("does not import or register the response-card Markdown transformer", () => {
 	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
 
-	assert.match(
-		source,
-		/import \{ createResponseCardMarkdownTransformer \} from "\.\/response-card\.js";/,
-	);
-	assert.equal(
-		(source.match(/pi\.registerMarkdownTransformer\(/g) ?? []).length,
-		1,
-	);
-	assert.match(
-		source,
-		/pi\.registerMarkdownTransformer\(\s*createResponseCardMarkdownTransformer\(\(\) => state\.enabled\),\s*\);/,
+	assert.doesNotMatch(source, /response-card/);
+	assert.doesNotMatch(source, /pi\.registerMarkdownTransformer\(/);
+});
+
+void test("every registered theme defines non-empty assistant message tokens", () => {
+	const manifest = JSON.parse(
+		readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+	) as { pi: { themes: string[] } };
+
+	assert.equal(manifest.pi.themes.length, 14);
+	for (const themePath of manifest.pi.themes) {
+		const theme = JSON.parse(
+			readFileSync(
+				new URL(`../../${themePath.replace(/^\.\//, "")}`, import.meta.url),
+				"utf8",
+			),
+		) as { colors: Record<string, unknown> };
+		for (const token of [
+			"assistantMessageBg",
+			"assistantMessageAccentBg",
+			"assistantMessageText",
+		]) {
+			const value = theme.colors[token];
+			assert.equal(
+				typeof value === "string" && value.trim() !== "",
+				true,
+				`${themePath} must define a non-empty ${token}`,
+			);
+		}
+		assert.equal(
+			theme.colors.assistantMessageAccentBg,
+			theme.colors.accent,
+			`${themePath} assistant stripe must match its accent`,
+		);
+		assert.equal(
+			theme.colors.userMessageAccentBg,
+			"#FFFFFF",
+			`${themePath} user stripe must be white`,
+		);
+	}
+});
+
+void test("Tokyo Night uses original palette tokens for message stripes", () => {
+	const theme = JSON.parse(
+		readFileSync(
+			new URL("../../themes/osdy-pi-tokyo-night.json", import.meta.url),
+			"utf8",
+		),
+	) as { colors: Record<string, unknown> };
+
+	assert.deepEqual(
+		{
+			assistantMessageBg: theme.colors.assistantMessageBg,
+			assistantMessageAccentBg: theme.colors.assistantMessageAccentBg,
+			assistantMessageText: theme.colors.assistantMessageText,
+			userMessageAccentBg: theme.colors.userMessageAccentBg,
+			userMessageBg: theme.colors.userMessageBg,
+			userMessageText: theme.colors.userMessageText,
+		},
+		{
+			assistantMessageBg: "elevated",
+			assistantMessageAccentBg: "blue",
+			assistantMessageText: "text",
+			userMessageAccentBg: "#FFFFFF",
+			userMessageBg: "panel",
+			userMessageText: "text",
+		},
 	);
 });
 
