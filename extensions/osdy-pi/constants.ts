@@ -158,20 +158,6 @@ const BTS_MASCOT_MAP = [
   "                    dmmmmv       vmmmmd                     ",
 ] as const;
 
-const HEADER_CLASSIC = [
-  "░█████╗░░██████╗██████╗░██╗░░░██╗░░░░░░██████╗░██╗",
-  "██╔══██╗██╔════╝██╔══██╗╚██╗░██╔╝░░░░░░██╔══██╗  ║",
-  "██║░░██║╚█████╗░██║░░██║░╚████╔╝░█████╗██████╔╝██║",
-  "██║░░██║░╚═══██╗██║░░██║░░╚██╔╝░░╚════╝██╔═══╝░██║",
-  "╚█████╔╝██████╔╝██████╔╝░░░██║░░░░░░░░░██║░░░░░██║",
-  "░╚════╝░╚═════╝░╚═════╝░░░░╚═╝░░░░░░░░░╚═╝░░░░░╚═╝",
-  "                                ╭━╮╱╱╱╱╱╱╭╮╱╱╱╱╱╭╮╱╱╱╱╱╭╮╱╱╭╮╭╮╱╱╱╱╭━╮",
-  "                                ┃╭╋━┳━━┳━╋╋╮╭━╮╭╯┣━┳┳╮╭╯┣━╮┣╋╯┣━┳━╮┃━┫",
-  "                                ┃╰┫╋┃┃┃┃╋┃┃╰┫╋╰┫╋┃╋┃╭╯┃╋┃┻┫┃┃╋┃┻┫╋╰╋━┃",
-  "                                ╰━┻━┻┻┻┫╭┻┻━┻━━┻━┻━┻╯╱╰━┻━╯╰┻━┻━┻━━┻━╯",
-  "                                ╱╱╱╱╱╱╱╰╯                        </>",
-] as const;
-
 const HEADER_SIMPLE = [
   "    ███████                █████                             ███████████   ███ ",
   "  ███░░░░░███             ░░███                             ░░███░░░░░███ ░░░  ",
@@ -185,6 +171,33 @@ const HEADER_SIMPLE = [
   "                                 ░░██████",
   "                                  ░░░░░░                      <ideas_compiler/>",
 ] as const;
+
+const NEON_HEADER_ROWS = [
+  ["                                                             █████████                                                  ████████ ", "                                                             ddddddddd                                                  dddddddd "],
+  ["          ██████████████████████                           ███████████                         █████████████████████ ████████████", "          dddddddddddpdddddddddd                           ddccccccddd                         ddddddddddddddddddddd ddccccccccpd"],
+  ["        ██████████████████████████                        ███████████                        ████████████████████████████████████", "        dddccchhhhhhhhhhhhhhhcpddd                        ddcchhhhmdd                        dddccchhhhhhhhhhhhhhhcdddphhhhhllddd"],
+  ["      ███████████████████████████████████████████████████████████████████████████████       ████████████████████████████████████ ", "      pddpchhhhhhhhhhhhhhhhhhhhmdddddddddddddddddddddddddddchhhhhmdddddddddpddddddddd       ddpllhhhhhhllllllhhhhhhmdddddddddddd "],
+  ["     ████████████████████████████████████████████████████████████████████████████████       ███████████████████████████████████  ", "     ddpchhhhhhldddddddchhhhhlmddppchhhhhhhhhhhcdppcchhhhhhhhhhhldchhhhhpdddpchhhhcdd       dddddcchhhhdddddpchhhhlddpcchhhcpdd  "],
+  ["   ██████████████   ████████████████████████████████████████████ ████████████████████████████████████████ ████████████████████   ", "   dddcchhhhhlddd   ddchhhhhldpcchhhhlmmmmmmmddcchhhhlmmlhhhhhhd chhhhlddddcchhhhddddddddddddddpchhhhhmdd dchhhhhmddpchhhhlddd   "],
+  ["  ██████████████  ███████████████████████████████████████████████████████████████████████████████████████████████████████████    ", "  dddcchhhhhmddd  pdcchhhhhlddpplhhhhlddddddddcchhhhldddchhhhlddchhhhhmddpchhhhhldcchhhhhhhlpdpcchhhhhhhhhhhhhmmdddpchhhhlddd    "],
+  [" ████████████████████████████ █████████████████████████████████████████████████████████████████████████████████████████████      ", " ddcchhhhhldddddddpchhhhhhmdd dddmhhhhhldddddchhhhlmddpchhhhmddchhhhhhcccchhhhhmddlllllllllddpchhhhhlllllllldddddpcchhhhldd      "],
+  ["█████████████████████████████████████████████████████████████████████████████████████████████████████████████  ████████████████  ", "ddchhhhhhhlcccccccchhhhhhddpccccccchhhhhhddpchhhhhhcccchhhhlddddmhhhhhhhhhhhhhmdddddddddddddpchhhhldddddddddd  ddchhhhhmddddddd  "],
+  [" ███████████████████████████████████████████████████████████████████████████████          ██████████         ██████████████████  ", " ddmhhhhhhhhhhhhhhhhhhhddpchhhhhhhhhhhhmddddhhhhhhhhhhhhhhmdddddddddddpchhhhhmdd          pchhhhhldd         dddchhhhhhhhmddddd  "],
+  ["   █████████████████████████████████████   ████████████████████████████████████         ███████████          ███████████  █      ", "   ddddddddddddddddddddddddddddddddddddd   ddddddddddddddddddcchhhhhhhhhhhhmddd         dpccldddddd          dpchldddddd  d      "],
+  ["                                                         ██ █████████████████           ██████               ██████              ", "                                                         dd chhhhhhhhhhlddddd           dddddd               dddddd              "],
+  ["                                                         ████████████████                                                        ", "                                                         dddddddddddddddd                                                        "],
+] as const;
+
+const NEON_HEADER_TONES: MascotTonePalette = {
+  b: "#FFFFFF",
+  h: { kind: "theme", token: "accent" },
+  l: { kind: "theme", token: "accent", dimmed: true },
+  m: { kind: "theme", token: "accent", dimmed: true },
+  d: "#12011B",
+  p: { kind: "theme", token: "accent", dimmed: true },
+  c: "#FFFFFF",
+  v: "#FFFFFF",
+};
 
 type HeaderPalette = {
   baseColor: string;
@@ -206,7 +219,13 @@ export const MASCOT_TONE_KEYS = {
 export type MascotToneKey =
   (typeof MASCOT_TONE_KEYS)[keyof typeof MASCOT_TONE_KEYS];
 
-export type MascotTonePalette = Record<MascotToneKey, string>;
+export type ThemeForegroundColor = {
+  kind: "theme";
+  token: string;
+  dimmed?: true;
+};
+
+export type MascotTonePalette = Record<MascotToneKey, string | ThemeForegroundColor>;
 
 type HeaderVariantConfig = {
   label: string;
@@ -218,18 +237,6 @@ type HeaderVariantConfig = {
   linePalette: (lineIndex: number) => HeaderPalette;
   mascotPalette: HeaderPalette;
   mascotTonePalette?: MascotTonePalette;
-};
-
-const CLASSIC_PALETTE: HeaderPalette = {
-  baseColor: "accent",
-  highlightColor: "mdHeading",
-  trailColor: "mdLink",
-};
-
-const CLASSIC_LINK_PALETTE: HeaderPalette = {
-  baseColor: "mdLink",
-  highlightColor: "mdHeading",
-  trailColor: "accent",
 };
 
 const OSDY_THEME_CYAN_PALETTE: HeaderPalette = {
@@ -289,7 +296,8 @@ const RAW_HEX_COLOR = /^#[0-9A-F]{6}$/;
 
 function assertRawHexPalette(palette: MascotTonePalette): void {
   for (const tone of RAW_BODY_TONE_KEYS) {
-    if (!RAW_HEX_COLOR.test(palette[tone])) {
+    const color = palette[tone];
+    if (typeof color !== "string" || !RAW_HEX_COLOR.test(color)) {
       throw new Error(`Mascot tone ${tone} must be a #RRGGBB color.`);
     }
   }
@@ -544,13 +552,14 @@ export const HEADER_VARIANTS: Record<HeaderVariant, HeaderVariantConfig> = {
     mascotPalette: OSDY_THEME_MASCOT_PALETTE,
     mascotTonePalette: HTML_MASCOT_TONES,
   },
-  classic: {
-    label: "Classic",
-    header: HEADER_CLASSIC,
+  neon: {
+    label: "Neon",
+    header: NEON_HEADER_ROWS.map(([header]) => header),
+    headerMap: NEON_HEADER_ROWS.map(([, toneMap]) => toneMap),
+    headerTonePalette: NEON_HEADER_TONES,
     mascot: ROSE_MASCOT.mascot,
     mascotMap: ROSE_MASCOT.toneMap,
-    linePalette: (lineIndex) =>
-      lineIndex >= 6 ? CLASSIC_LINK_PALETTE : CLASSIC_PALETTE,
+    linePalette: osdyThemePalette,
     mascotPalette: OSDY_THEME_MASCOT_PALETTE,
     mascotTonePalette: HTML_MASCOT_TONES,
   },

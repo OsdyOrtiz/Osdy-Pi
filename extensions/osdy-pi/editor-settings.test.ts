@@ -6,8 +6,12 @@ import {
 	type EditorSettingsFileSystem,
 	// @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
 } from "./editor-settings.ts";
-// @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
-import { EDITOR_MODES, MASCOT_CHOICES } from "./types.ts";
+import {
+	EDITOR_MODES,
+	HEADER_VARIANT_CHOICES,
+	MASCOT_CHOICES,
+	// @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
+} from "./types.ts";
 
 class MemoryEditorSettingsFileSystem implements EditorSettingsFileSystem {
 	content: string | undefined;
@@ -41,44 +45,55 @@ class MemoryEditorSettingsFileSystem implements EditorSettingsFileSystem {
 	private pendingContent = "";
 }
 
-void test("editor settings normalize only supported versioned modes", () => {
-	assert.deepEqual(
-		normalizeEditorSettings({ version: 1, editorMode: "simple" }),
-		{
-			version: 1,
-			enabled: true,
-			editorMode: EDITOR_MODES.SIMPLE,
-			workingTreeEnabled: true,
-			mascot: "current",
-		},
+void test("editor settings preserve version-one header choices and fall back safely", async () => {
+	assert.deepEqual(HEADER_VARIANT_CHOICES, ["osdy-theme", "neon"]);
+	assert.equal(
+		normalizeEditorSettings({ version: 1 }).headerVariant,
+		"osdy-theme",
 	);
-	assert.deepEqual(
-		normalizeEditorSettings({ version: 1, editorMode: "invalid" }),
-		{
-			version: 1,
-			enabled: true,
-			editorMode: EDITOR_MODES.AUTO,
-			workingTreeEnabled: true,
-			mascot: "current",
-		},
+	assert.equal(
+		normalizeEditorSettings({ version: 1, headerVariant: "classic" })
+			.headerVariant,
+		"osdy-theme",
 	);
-	assert.deepEqual(
-		normalizeEditorSettings({ version: 2, editorMode: "extended" }),
-		{
-			version: 1,
-			enabled: true,
-			editorMode: EDITOR_MODES.AUTO,
-			workingTreeEnabled: true,
-			mascot: "current",
-		},
+	assert.equal(
+		normalizeEditorSettings({ version: 1, headerVariant: "invalid" })
+			.headerVariant,
+		"osdy-theme",
 	);
-	assert.deepEqual(normalizeEditorSettings(null), {
+
+	const fileSystem = new MemoryEditorSettingsFileSystem();
+	const store = createEditorSettingsStore(
+		"/agent/extensions/osdy-pi/settings.json",
+		fileSystem,
+	);
+	await store.save({
 		version: 1,
 		enabled: true,
 		editorMode: EDITOR_MODES.AUTO,
 		workingTreeEnabled: true,
+		headerVariant: "neon",
 		mascot: "current",
 	});
+	assert.equal((await store.load()).headerVariant, "neon");
+});
+
+void test("editor settings normalize only supported versioned modes", () => {
+	for (const [input, editorMode] of [
+		[{ version: 1, editorMode: "simple" }, EDITOR_MODES.SIMPLE],
+		[{ version: 1, editorMode: "invalid" }, EDITOR_MODES.AUTO],
+		[{ version: 2, editorMode: "extended" }, EDITOR_MODES.AUTO],
+		[null, EDITOR_MODES.AUTO],
+	] as const) {
+		assert.deepEqual(normalizeEditorSettings(input), {
+			version: 1,
+			enabled: true,
+			editorMode,
+			workingTreeEnabled: true,
+			headerVariant: "osdy-theme",
+			mascot: "current",
+		});
+	}
 });
 
 void test("mascot choices preserve the version-one current default, migrate raccoon to Bts, and persist Bts", async () => {
@@ -87,9 +102,15 @@ void test("mascot choices preserve the version-one current default, migrate racc
 		normalizeEditorSettings({ version: 1, mascot: "invalid" }).mascot,
 		"current",
 	);
-	assert.equal(normalizeEditorSettings({ version: 1, mascot: "raccoon" }).mascot, "bts");
+	assert.equal(
+		normalizeEditorSettings({ version: 1, mascot: "raccoon" }).mascot,
+		"bts",
+	);
 	for (const mascot of ["detective", "explorer"] as const) {
-		assert.equal(normalizeEditorSettings({ version: 1, mascot }).mascot, "current");
+		assert.equal(
+			normalizeEditorSettings({ version: 1, mascot }).mascot,
+			"current",
+		);
 	}
 
 	const fileSystem = new MemoryEditorSettingsFileSystem();
@@ -102,6 +123,7 @@ void test("mascot choices preserve the version-one current default, migrate racc
 		enabled: true,
 		editorMode: EDITOR_MODES.AUTO,
 		workingTreeEnabled: true,
+		headerVariant: "neon",
 		mascot: "bts",
 	});
 	assert.equal((await store.load()).mascot, "bts");
@@ -127,6 +149,7 @@ void test("enabled defaults safely and persists globally", async () => {
 		enabled: false,
 		editorMode: EDITOR_MODES.SIMPLE,
 		workingTreeEnabled: false,
+		headerVariant: "osdy-theme",
 		mascot: "current",
 	});
 	assert.deepEqual(await store.load(), {
@@ -134,6 +157,7 @@ void test("enabled defaults safely and persists globally", async () => {
 		enabled: false,
 		editorMode: EDITOR_MODES.SIMPLE,
 		workingTreeEnabled: false,
+		headerVariant: "osdy-theme",
 		mascot: "current",
 	});
 });
@@ -166,6 +190,7 @@ void test("working-tree visibility defaults safely and persists globally", async
 		enabled: true,
 		editorMode: EDITOR_MODES.AUTO,
 		workingTreeEnabled: false,
+		headerVariant: "osdy-theme",
 		mascot: "current",
 	});
 	const reloadedStore = createEditorSettingsStore(
@@ -195,6 +220,7 @@ void test("editor settings load safely and save atomically", async () => {
 		enabled: true,
 		editorMode: EDITOR_MODES.SIMPLE,
 		workingTreeEnabled: true,
+		headerVariant: "osdy-theme",
 		mascot: "current",
 	});
 	assert.deepEqual(fileSystem.mkdirPaths, ["/agent/extensions/osdy-pi"]);
@@ -224,6 +250,7 @@ void test("new editor settings stores load their own persisted mode", async () =
 		enabled: true,
 		editorMode: EDITOR_MODES.EXTENDED,
 		workingTreeEnabled: true,
+		headerVariant: "osdy-theme",
 		mascot: "current",
 	});
 	const reloadedStore = createEditorSettingsStore(

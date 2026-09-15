@@ -1,6 +1,9 @@
 import { ANIMATION_ENABLED } from "./constants.js";
 import type { AnimationMode, SimpleTheme } from "./types.js";
-import type { MascotTonePalette } from "./constants.js";
+import type {
+	MascotTonePalette,
+	ThemeForegroundColor,
+} from "./constants.js";
 import { positiveModulo } from "./utils.js";
 
 export type AsciiAnimationStyle = "static" | "animated";
@@ -25,12 +28,12 @@ export function asciiAnimationMode(): AnimationMode {
 	return getAnimationOverrideMode(process.env.OSDY_PI_ANIMATION) ?? "intro";
 }
 
-function getAnimatedAsciiColor(
+function getAnimatedAsciiColor<Color>(
 	wave: number,
-	baseColor: string,
-	highlightColor: string,
-	trailColor: string,
-): string {
+	baseColor: Color,
+	highlightColor: Color,
+	trailColor: Color,
+): Color {
 	if (wave <= 3) return highlightColor;
 	if (wave <= 8) return trailColor;
 	return baseColor;
@@ -50,11 +53,17 @@ const GLOW_TRAIL_TONES = {
 	v: "c",
 } as const;
 
-function colorAsciiCharacter(
+export function colorAsciiCharacter(
 	theme: SimpleTheme,
-	color: string,
+	color: string | ThemeForegroundColor,
 	character: string,
 ): string {
+	if (typeof color !== "string") {
+		const themedCharacter = theme.fg(color.token, character);
+		return color.dimmed
+			? `\u001B[2m${themedCharacter}\u001B[22m`
+			: themedCharacter;
+	}
 	const hexMatch = RAW_HEX_COLOR.exec(color);
 	if (!hexMatch) return theme.fg(color, character);
 	const red = Number.parseInt(hexMatch[1] ?? "", 16);

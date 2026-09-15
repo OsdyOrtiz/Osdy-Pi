@@ -80,6 +80,29 @@ class TestSessionContextProvider {
 	}
 }
 
+void test("header command completes only catalog choices and is persisted through session wiring", () => {
+	assert.deepEqual(getOsdyCommandCompletions("header"), [
+		{ value: "header osdy-theme", label: "header osdy-theme" },
+		{ value: "header neon", label: "header neon" },
+		{ value: "header status", label: "header status" },
+	]);
+	assert.deepEqual(getOsdyCommandCompletions("header n"), [
+		{ value: "header neon", label: "header neon" },
+	]);
+	assert.deepEqual(getOsdyCommandCompletions("classic"), []);
+
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+	assert.match(
+		source,
+		/async function handleHeaderCommand[\s\S]*?state\.headerVariant = action;[\s\S]*?applyOsdyPi\([\s\S]*?saveVisualSettings\(state, settingsStore\)/,
+	);
+	assert.match(source, /headerVariant: state\.headerVariant/);
+	assert.match(source, /state\.headerVariant = editorSettings\.headerVariant;/);
+	assert.doesNotMatch(source, /registerCommand\(`osdy-pi-\$\{variant\}`/);
+	assert.doesNotMatch(source, /\["osdy-theme", "classic"\]/);
+	assert.doesNotMatch(source, /if \(isHeaderVariant\(action\)\)/);
+});
+
 void test("mascot command completes current, Bts, and status while persisting with immediate refresh", () => {
 	assert.deepEqual(getOsdyCommandCompletions("mascot"), [
 		{ value: "mascot current", label: "mascot current" },

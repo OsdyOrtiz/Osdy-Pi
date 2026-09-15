@@ -24,6 +24,7 @@ export interface GlobalEditorSettings {
 	enabled: boolean;
 	editorMode: EditorMode;
 	workingTreeEnabled: boolean;
+	headerVariant: HeaderVariant;
 	mascot: MascotChoice;
 }
 
@@ -39,7 +40,9 @@ export function shouldShowFooterMetadata(editorEffective: boolean): boolean {
 	return !editorEffective;
 }
 
-export type HeaderVariant = "osdy-theme" | "classic";
+export const HEADER_VARIANT_CHOICES = ["osdy-theme", "neon"] as const;
+
+export type HeaderVariant = (typeof HEADER_VARIANT_CHOICES)[number];
 
 export const MASCOT_CHOICES = ["current", "bts"] as const;
 
