@@ -5,6 +5,7 @@ import {
 	open,
 	mkdtemp,
 	readFile,
+	realpath,
 	symlink,
 	unlink,
 	writeFile,
@@ -18,6 +19,8 @@ import {
 	createProfileLayout,
 	ensureProfileLayout,
 	getDefaultAccountPath,
+	getSharedAgentDir,
+	listProfiles,
 	parseAccountCommand,
 	planDefaultLaunch,
 	planPiLaunch,
@@ -52,6 +55,70 @@ test("validates portable profile names and rejects traversal or reserved names",
 	]) {
 		assert.throws(() => validateProfileName(name));
 	}
+});
+
+test("resolves a split agent osdy-pi symlink while preserving explicit and malformed roots", async () => {
+	const candidate = await mkdtemp(join(tmpdir(), "osdy-pi-agent-test-"));
+	const managedParent = await mkdtemp(join(tmpdir(), "osdy-pi-managed-test-"));
+	const managedDir = join(managedParent, "osdy-pi");
+	await mkdir(managedDir);
+	await symlink(managedDir, join(candidate, "osdy-pi"));
+	assert.equal(
+		getSharedAgentDir({ PI_CODING_AGENT_DIR: candidate }),
+		await realpath(managedParent),
+	);
+	const explicit = await mkdtemp(join(tmpdir(), "osdy-pi-explicit-test-"));
+	assert.equal(
+		getSharedAgentDir({
+			OSDY_PI_SHARED_AGENT_DIR: explicit,
+			PI_CODING_AGENT_DIR: candidate,
+		}),
+		explicit,
+	);
+	const brokenCandidate = await mkdtemp(join(tmpdir(), "osdy-pi-broken-test-"));
+	await symlink(join(brokenCandidate, "missing-osdy-pi"), join(brokenCandidate, "osdy-pi"));
+	assert.equal(
+		getSharedAgentDir({ PI_CODING_AGENT_DIR: brokenCandidate }),
+		brokenCandidate,
+	);
+	const malformedCandidate = await mkdtemp(join(tmpdir(), "osdy-pi-malformed-test-"));
+	const otherDirectory = join(managedParent, "other");
+	await mkdir(otherDirectory);
+	await symlink(otherDirectory, join(malformedCandidate, "osdy-pi"));
+	assert.equal(
+		getSharedAgentDir({ PI_CODING_AGENT_DIR: malformedCandidate }),
+		malformedCandidate,
+	);
+	const fileCandidate = await mkdtemp(join(tmpdir(), "osdy-pi-file-test-"));
+	const fileTarget = join(managedParent, "not-a-directory");
+	await writeFile(fileTarget, "not a directory");
+	await symlink(fileTarget, join(fileCandidate, "osdy-pi"));
+	assert.equal(
+		getSharedAgentDir({ PI_CODING_AGENT_DIR: fileCandidate }),
+		fileCandidate,
+	);
+});
+
+test("does not traverse malformed agent roots when listing profiles", async () => {
+	const validCandidate = await mkdtemp(join(tmpdir(), "osdy-pi-list-valid-test-"));
+	const managedParent = await mkdtemp(join(tmpdir(), "osdy-pi-list-managed-test-"));
+	await mkdir(join(managedParent, "osdy-pi", "profiles", "work"), {
+		recursive: true,
+	});
+	await symlink(join(managedParent, "osdy-pi"), join(validCandidate, "osdy-pi"));
+	assert.deepEqual(
+		await listProfiles(getSharedAgentDir({ PI_CODING_AGENT_DIR: validCandidate })),
+		["work"],
+	);
+
+	const malformedCandidate = await mkdtemp(join(tmpdir(), "osdy-pi-list-malformed-test-"));
+	const wrongChild = await mkdtemp(join(tmpdir(), "osdy-pi-list-wrong-child-test-"));
+	await mkdir(join(wrongChild, "profiles", "private"), { recursive: true });
+	await symlink(wrongChild, join(malformedCandidate, "osdy-pi"));
+	assert.deepEqual(
+		await listProfiles(getSharedAgentDir({ PI_CODING_AGENT_DIR: malformedCandidate })),
+		[],
+	);
 });
 
 test("parses account create as a non-launching layout command", () => {

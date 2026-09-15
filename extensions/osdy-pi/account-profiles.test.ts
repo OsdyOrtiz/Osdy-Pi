@@ -1,13 +1,59 @@
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, realpath, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
+	availableProfiles,
 	manageAccountProfile,
 	manageAccountProfiles,
 	parseDefaultAccountResult,
+	sharedAgentDir,
 	switchAccountInPlace,
 	// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 	// @ts-ignore Node's native TypeScript runner resolves test-only TypeScript source imports.
 } from "./account-profiles.ts";
+
+void test("uses the account resolver for split-agent roots and explicit overrides", async () => {
+	const candidate = await mkdtemp(join(tmpdir(), "osdy-pi-extension-agent-test-"));
+	const managedParent = await mkdtemp(join(tmpdir(), "osdy-pi-extension-managed-test-"));
+	await mkdir(join(managedParent, "osdy-pi"));
+	await symlink(join(managedParent, "osdy-pi"), join(candidate, "osdy-pi"));
+	assert.equal(
+		await sharedAgentDir({ PI_CODING_AGENT_DIR: candidate }),
+		await realpath(managedParent),
+	);
+	const explicit = await mkdtemp(join(tmpdir(), "osdy-pi-extension-explicit-test-"));
+	assert.equal(
+		await sharedAgentDir({
+			OSDY_PI_SHARED_AGENT_DIR: explicit,
+			PI_CODING_AGENT_DIR: candidate,
+		}),
+		explicit,
+	);
+});
+
+void test("does not traverse malformed agent roots during extension profile discovery", async () => {
+	const validCandidate = await mkdtemp(join(tmpdir(), "osdy-pi-extension-list-valid-test-"));
+	const managedParent = await mkdtemp(join(tmpdir(), "osdy-pi-extension-list-managed-test-"));
+	await mkdir(join(managedParent, "osdy-pi", "profiles", "work"), {
+		recursive: true,
+	});
+	await symlink(join(managedParent, "osdy-pi"), join(validCandidate, "osdy-pi"));
+	assert.deepEqual(
+		await availableProfiles(await sharedAgentDir({ PI_CODING_AGENT_DIR: validCandidate })),
+		["work"],
+	);
+
+	const malformedCandidate = await mkdtemp(join(tmpdir(), "osdy-pi-extension-list-malformed-test-"));
+	const wrongChild = await mkdtemp(join(tmpdir(), "osdy-pi-extension-list-wrong-child-test-"));
+	await mkdir(join(wrongChild, "profiles", "private"), { recursive: true });
+	await symlink(wrongChild, join(malformedCandidate, "osdy-pi"));
+	assert.deepEqual(
+		await availableProfiles(await sharedAgentDir({ PI_CODING_AGENT_DIR: malformedCandidate })),
+		[],
+	);
+});
 
 void test("parses default account command output without treating status text as a profile", () => {
 	assert.deepEqual(

@@ -1,4 +1,9 @@
-import { constants as fsConstants } from "node:fs";
+import {
+	constants as fsConstants,
+	lstatSync,
+	realpathSync,
+	statSync,
+} from "node:fs";
 import {
 	chmod,
 	lstat,
@@ -16,7 +21,7 @@ import {
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 const PROFILE_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62})$/;
@@ -87,11 +92,24 @@ export function validateProfileName(value) {
 }
 
 export function getSharedAgentDir(env = process.env) {
-	return resolve(
-		env.OSDY_PI_SHARED_AGENT_DIR ??
-			env.PI_CODING_AGENT_DIR ??
-			join(homedir(), ".pi", "agent"),
+	const explicit = env.OSDY_PI_SHARED_AGENT_DIR;
+	const candidate = resolve(
+		explicit ?? env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
 	);
+	if (explicit !== undefined) return candidate;
+	const managedPath = join(candidate, "osdy-pi");
+	try {
+		if (!lstatSync(managedPath).isSymbolicLink()) return candidate;
+		const resolvedManagedPath = realpathSync(managedPath);
+		if (
+			basename(resolvedManagedPath) !== "osdy-pi" ||
+			!statSync(resolvedManagedPath).isDirectory()
+		)
+			return candidate;
+		return dirname(resolvedManagedPath);
+	} catch {
+		return candidate;
+	}
 }
 
 export function createProfileLayout(sharedAgentDir, name) {
@@ -898,6 +916,10 @@ export async function planDefaultLaunch(
 export async function listProfiles(sharedAgentDir) {
 	const { profilesDir } = createProfileLayout(sharedAgentDir, "placeholder");
 	try {
+		const managedDirectory = await lstat(
+		join(resolve(sharedAgentDir), "osdy-pi"),
+	);
+		if (!managedDirectory.isDirectory()) return [];
 		const entries = await readdir(profilesDir, { withFileTypes: true });
 		const profiles = [];
 		for (const entry of entries) {

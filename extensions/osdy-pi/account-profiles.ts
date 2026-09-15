@@ -1,8 +1,5 @@
 import { spawn as spawnChild } from "node:child_process";
-import { readdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { join, resolve } from "node:path";
 import type {
 	ExtensionCommandContext,
 	ExtensionContext,
@@ -13,16 +10,6 @@ const RESERVED_PROFILE_NAMES = new Set(["default", "profiles", "auth.json"]);
 
 function sameProfile(left: string | undefined, right: string | undefined): boolean {
 	return left?.toLowerCase() === right?.toLowerCase();
-}
-
-function assertUniqueProfileIdentities(profiles: string[]): void {
-	const identities = new Set<string>();
-	for (const profile of profiles) {
-		const identity = profile.toLowerCase();
-		if (identities.has(identity))
-			throw new Error("Profile lookup is ambiguous due to a case-insensitive collision.");
-		identities.add(identity);
-	}
 }
 
 export type AccountContext = Pick<
@@ -53,43 +40,26 @@ function isProfileName(value: string): boolean {
 	return PROFILE_NAME.test(value) && !RESERVED_PROFILE_NAMES.has(value.toLowerCase());
 }
 
-function sharedAgentDir(env: NodeJS.ProcessEnv): string {
-	return resolve(
-		env.OSDY_PI_SHARED_AGENT_DIR ??
-			env.PI_CODING_AGENT_DIR ??
-			join(homedir(), ".pi", "agent"),
-	);
+export async function sharedAgentDir(env: NodeJS.ProcessEnv): Promise<string> {
+	const moduleUrl = new URL(
+		"../../scripts/osdy-pi-account-profiles.mjs",
+		import.meta.url,
+	).href;
+	const profiles = (await import(moduleUrl)) as {
+		getSharedAgentDir(env: NodeJS.ProcessEnv): string;
+	};
+	return profiles.getSharedAgentDir(env);
 }
 
-async function availableProfiles(baseDir: string): Promise<string[]> {
-	try {
-		const entries = await readdir(join(baseDir, "osdy-pi", "profiles"), {
-			withFileTypes: true,
-		});
-		const profiles: string[] = [];
-		for (const entry of entries) {
-			if (entry.isDirectory() && isProfileName(entry.name))
-				profiles.push(entry.name);
-		}
-		assertUniqueProfileIdentities(profiles);
-		return profiles.sort(compareStrings);
-	} catch (error: unknown) {
-		if (isErrorCode(error, "ENOENT")) return [];
-		throw error;
-	}
-}
-
-function isErrorCode(error: unknown, code: string): boolean {
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"code" in error &&
-		error.code === code
-	);
-}
-
-function compareStrings(left: string, right: string): number {
-	return left < right ? -1 : left > right ? 1 : 0;
+export async function availableProfiles(baseDir: string): Promise<string[]> {
+	const moduleUrl = new URL(
+		"../../scripts/osdy-pi-account-profiles.mjs",
+		import.meta.url,
+	).href;
+	const profiles = (await import(moduleUrl)) as {
+		listProfiles(baseDir: string): Promise<string[]>;
+	};
+	return profiles.listProfiles(baseDir);
 }
 
 export async function switchAccountInPlace(
@@ -505,7 +475,7 @@ export function registerAccountProfilesCommand(
 				return;
 			}
 			const dependencies: AccountManagementDependencies = {
-				profiles: () => availableProfiles(sharedAgentDir(process.env)),
+				profiles: async () => availableProfiles(await sharedAgentDir(process.env)),
 				run: runBundledCommand,
 				activeProfile: process.env.OSDY_PI_PROFILE_NAME,
 				refreshUsage: commandDependencies.refreshUsage,
@@ -517,7 +487,7 @@ export function registerAccountProfilesCommand(
 					const profiles = (await import(moduleUrl)) as {
 						switchAccountAuth(baseDir: string, name: string): Promise<void>;
 					};
-					await profiles.switchAccountAuth(sharedAgentDir(process.env), profile);
+					await profiles.switchAccountAuth(await sharedAgentDir(process.env), profile);
 				},
 			};
 			if (mode === "rename" || mode === "remove") {
