@@ -1,27 +1,13 @@
 import assert from "node:assert/strict";
-import { EventEmitter } from "node:events";
 import test from "node:test";
-import type { ChildProcess } from "node:child_process";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore Node's native TypeScript runner resolves test-only TypeScript source imports.
-import { handoffToAccount, manageAccountProfile, manageAccountProfiles, parseDefaultAccountResult, waitForLauncherReady } from "./account-profiles.ts";
-
-class FakeLauncher extends EventEmitter {
-	disconnected = false;
-	unreferenced = false;
-
-	disconnect(): void {
-		this.disconnected = true;
-	}
-
-	unref(): void {
-		this.unreferenced = true;
-	}
-
-	asChildProcess(): ChildProcess {
-		return this as unknown as ChildProcess;
-	}
-}
+import {
+	manageAccountProfile,
+	manageAccountProfiles,
+	parseDefaultAccountResult,
+	switchAccountInPlace,
+	// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+	// @ts-ignore Node's native TypeScript runner resolves test-only TypeScript source imports.
+} from "./account-profiles.ts";
 
 void test("parses default account command output without treating status text as a profile", () => {
 	assert.deepEqual(
@@ -265,6 +251,28 @@ void test("opens a looped account manager and exits cleanly on Cancel", async ()
 	assert.deepEqual(notices, ["Accounts:\nwork (default)"]);
 });
 
+void test("marks active and default profiles case-insensitively while preserving stored spelling", async () => {
+	const notices: string[] = [];
+	const answers = ["Account info", "Cancel"];
+	await manageAccountProfiles(
+		{
+			isIdle: () => true,
+			waitForIdle: () => Promise.resolve(),
+			ui: {
+				notify: (message: string) => notices.push(message),
+				select: () => Promise.resolve(answers.shift()),
+				input: () => Promise.resolve(undefined),
+			},
+		},
+		{
+			profiles: () => Promise.resolve(["Work"]),
+			activeProfile: "WORK",
+			run: () => Promise.resolve({ code: 0, stdout: "work\n", stderr: "" }),
+		},
+	);
+	assert.deepEqual(notices, ["Accounts:\nWork (active) (default)"]);
+});
+
 void test("manages profile rename and permanent removal prompts through authoritative subprocess commands", async (t) => {
 	await t.test("rename sequences target and new name", async () => {
 		const calls: string[][] = [];
@@ -387,61 +395,15 @@ void test("manages profile rename and permanent removal prompts through authorit
 	);
 });
 
-void test("waits for the Pi-ready IPC message before disconnecting the launcher", async () => {
-	const launcher = new FakeLauncher();
-	const ready = waitForLauncherReady(launcher.asChildProcess());
-	assert.equal(launcher.disconnected, false);
-	launcher.emit("spawn");
-	assert.equal(launcher.disconnected, false);
-	launcher.emit("message", { type: "osdy-pi-ready" });
-	await ready;
-	assert.equal(launcher.disconnected, true);
-	assert.equal(launcher.unreferenced, true);
-});
-
-void test("rejects launcher error, early exit, and timeout before readiness", async (t) => {
-	await t.test("error message", async () => {
-		const launcher = new FakeLauncher();
-		const ready = waitForLauncherReady(launcher.asChildProcess());
-		launcher.emit("message", {
-			type: "osdy-pi-error",
-			message: "Pi spawn failed",
-		});
-		await assert.rejects(ready, /Pi spawn failed/);
-	});
-	await t.test("early exit", async () => {
-		const launcher = new FakeLauncher();
-		const ready = waitForLauncherReady(launcher.asChildProcess());
-		launcher.emit("exit", 1, null);
-		await assert.rejects(ready, /exited before confirming readiness/);
-	});
-	await t.test("timeout", async () => {
-		const launcher = new FakeLauncher();
-		let expire: (() => void) | undefined;
-		const ready = waitForLauncherReady(
-			launcher.asChildProcess(),
-			10,
-			(callback) => {
-				expire = callback;
-				return setTimeout(() => undefined, 60_000);
-			},
-		);
-		expire?.();
-		await assert.rejects(ready, /timed out/);
-	});
-});
-
-void test("account handoff waits for idle, starts the launcher with the current session, then shuts down", async () => {
+void test("switches in place after idle without spawning or shutting down", async () => {
 	const events: string[] = [];
-	await handoffToAccount(
+	await switchAccountInPlace(
 		{
 			isIdle: () => false,
 			waitForIdle: () =>
 				Promise.resolve().then(() => {
 					events.push("idle");
 				}),
-			shutdown: () => events.push("shutdown"),
-			sessionManager: { getSessionFile: () => "/tmp/current.jsonl" },
 			ui: {
 				notify: (message: string) => events.push(message),
 				select: () => Promise.resolve(undefined),
@@ -449,30 +411,29 @@ void test("account handoff waits for idle, starts the launcher with the current 
 			},
 		},
 		"work",
-		{
-			spawn: (command, args) =>
-				Promise.resolve().then(() => {
-					events.push(`${command} ${args.join(" ")}`);
-					events.push("spawned");
-				}),
-		},
+		(profile) =>
+			Promise.resolve().then(() => {
+				events.push(`activate ${profile}`);
+			}),
+		() =>
+			Promise.resolve().then(() => {
+				events.push("refresh");
+			}),
 	);
 	assert.deepEqual(events, [
 		"idle",
-		"osdy-pi account use work -- --session /tmp/current.jsonl",
-		"spawned",
-		"shutdown",
+		"activate work",
+		"refresh",
+		"Switched to work. Your next request uses this account.",
 	]);
 });
 
-void test("account handoff keeps the current Pi session running when its session cannot be safely resumed", async () => {
+void test("keeps the current account when in-place activation fails", async () => {
 	const notices: string[] = [];
-	await handoffToAccount(
+	await switchAccountInPlace(
 		{
 			isIdle: () => true,
 			waitForIdle: () => Promise.resolve(),
-			shutdown: () => assert.fail("must not shut down"),
-			sessionManager: { getSessionFile: () => undefined },
 			ui: {
 				notify: (message: string) => notices.push(message),
 				select: () => Promise.resolve(undefined),
@@ -480,38 +441,36 @@ void test("account handoff keeps the current Pi session running when its session
 			},
 		},
 		"work",
-		{ spawn: () => Promise.resolve().then(() => assert.fail("must not launch")) },
+		() => Promise.reject(new Error("unsafe auth")),
+		() => Promise.resolve(assert.fail("must not refresh")),
 	);
 	assert.deepEqual(notices, [
-		"Cannot switch accounts: the current session has not been saved yet.",
+		"Cannot switch accounts: the account files could not be safely activated.",
 	]);
 });
 
-void test("account handoff keeps the current Pi session running when the launcher fails asynchronously", async () => {
-	const events: string[] = [];
-	await handoffToAccount(
+void test("reports a successful switch when usage refresh rejects unexpectedly", async () => {
+	const notices: string[] = [];
+	let refreshAttempted = false;
+	await switchAccountInPlace(
 		{
 			isIdle: () => true,
 			waitForIdle: () => Promise.resolve(),
-			shutdown: () => events.push("shutdown"),
-			sessionManager: { getSessionFile: () => "/tmp/current.jsonl" },
 			ui: {
-				notify: (message: string) => events.push(message),
+				notify: (message: string) => notices.push(message),
 				select: () => Promise.resolve(undefined),
 				input: () => Promise.resolve(undefined),
 			},
 		},
 		"work",
-		{
-			spawn: () =>
-				Promise.resolve().then(() => {
-					events.push("launch attempted");
-					throw new Error("not found");
-				}),
+		() => Promise.resolve(),
+		() => {
+			refreshAttempted = true;
+			return Promise.reject(new Error("unexpected refresh failure"));
 		},
 	);
-	assert.deepEqual(events, [
-		"launch attempted",
-		"Cannot switch accounts: unable to start the replacement Pi process.",
+	assert.equal(refreshAttempted, true);
+	assert.deepEqual(notices, [
+		"Switched to work. Your next request uses this account.",
 	]);
 });

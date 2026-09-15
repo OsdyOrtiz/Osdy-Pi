@@ -573,7 +573,9 @@ async function openDiffCommand(
 
 type CodexUsageRefreshContext = {
 	modelRegistry: {
-		getProviderAuth(provider: string): Promise<{ auth: { apiKey?: string } } | undefined>;
+		getProviderAuth(
+			provider: string,
+		): Promise<{ auth: { apiKey?: string } } | undefined>;
 	};
 };
 
@@ -804,7 +806,6 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	const settingsStore = createAudioSoundSettingsStore();
 	const editorSettingsStore = createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
-	registerAccountProfilesCommand(pi);
 	const audioRouter = createAudioEventRouter(
 		createAudioNotificationService(
 			pi,
@@ -826,6 +827,13 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		await refreshCodexUsage(ctx, state, abort);
 		if (codexUsageAbort === abort) codexUsageAbort = undefined;
 	};
+	registerAccountProfilesCommand(pi, {
+		refreshUsage: async () => {
+			const activeSessionContext = sessionContext;
+			if (activeSessionContext)
+				await refreshCurrentCodexUsage(activeSessionContext);
+		},
+	});
 	const pendingOsdyRefreshes = new Set<ReturnType<typeof setTimeout>>();
 	const cancelOsdyRefreshes = (): void => {
 		for (const timeout of pendingOsdyRefreshes) clearTimeout(timeout);

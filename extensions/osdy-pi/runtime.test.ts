@@ -80,6 +80,36 @@ class TestSessionContextProvider {
 	}
 }
 
+void test("mascot command completes current, Bts, and status while persisting with immediate refresh", () => {
+	assert.deepEqual(getOsdyCommandCompletions("mascot"), [
+		{ value: "mascot current", label: "mascot current" },
+		{ value: "mascot bts", label: "mascot bts" },
+		{ value: "mascot status", label: "mascot status" },
+	]);
+	assert.deepEqual(getOsdyCommandCompletions("mascot b"), [
+		{ value: "mascot bts", label: "mascot bts" },
+	]);
+	assert.deepEqual(getOsdyCommandCompletions("mascot d"), []);
+
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+	assert.match(
+		source,
+		/state\.mascot = action;[\s\S]*?applyOsdyPi\([\s\S]*?saveVisualSettings\(state, settingsStore\)/,
+	);
+	assert.match(source, /state\.mascot = editorSettings\.mascot;/);
+	assert.match(source, /function mascotLabel\(mascot: MascotChoice\): string/);
+	assert.match(source, /osdy-pi mascot: \$\{mascotLabel\(state\.mascot\)\}/);
+});
+
+void test("account switching refreshes usage through the active session context", () => {
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+
+	assert.match(
+		source,
+		/registerAccountProfilesCommand\(pi, \{[\s\S]*?refreshUsage: async \(\) => \{[\s\S]*?const activeSessionContext = sessionContext;[\s\S]*?await refreshCurrentCodexUsage\(activeSessionContext\)/,
+	);
+});
+
 void test("usage refresh resolves the active session instead of a distinct command context", async () => {
 	const activeSessionContext = { id: "active-session" };
 	const commandContext = { id: "command-context" };

@@ -86,6 +86,14 @@ void test("places a managed profile beside the model in simple mode and preserve
 		profileLabel.resolveActiveProfileLabel({ OSDY_PI_PROFILE_NAME: "work" }),
 		"work",
 	);
+	assert.equal(
+		profileLabel.resolveActiveProfileLabel({ OSDY_PI_PROFILE_NAME: "WORK" }),
+		"WORK",
+	);
+	assert.equal(
+		profileLabel.resolveActiveProfileLabel({ OSDY_PI_PROFILE_NAME: "DEFAULT" }),
+		undefined,
+	);
 	assert.equal(profileLabel.resolveActiveProfileLabel({}), undefined);
 	assert.equal(
 		profileLabel.formatModelMetadata("gpt-5", "high", "work"),
