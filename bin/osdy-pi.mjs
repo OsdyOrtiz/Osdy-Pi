@@ -13,7 +13,7 @@ import {
 	removeProfile,
 	renameProfile,
 	setDefaultAccount,
-	validateExistingProfile,
+	switchAccountAuth,
 } from "../scripts/osdy-pi-account-profiles.mjs";
 
 function writeStdout(message) {
@@ -113,6 +113,7 @@ try {
 			writeStdout(
 				"Account profile is ready. In Pi, run /login and select ChatGPT Plus/Pro (Codex).",
 			);
+			await switchAccountAuth(sharedAgentDir, command.name);
 			startPi(planPiLaunch(sharedAgentDir, command.name));
 		} else if (command.action === "rename") {
 			await renameProfile(sharedAgentDir, command.oldName, command.newName);
@@ -124,8 +125,7 @@ try {
 			});
 			writeStdout(`Account profile ${command.name} permanently removed.`);
 		} else {
-			await validateExistingProfile(sharedAgentDir, command.name);
-			await setDefaultAccount(sharedAgentDir, command.name);
+			await switchAccountAuth(sharedAgentDir, command.name);
 			startPi(planPiLaunch(sharedAgentDir, command.name, command.piArgs));
 		}
 	}

@@ -1,50 +1,56 @@
 import { spawn as spawnChild } from "node:child_process";
-import type { ChildProcess } from "node:child_process";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { isAbsolute, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
-const PROFILE_NAME = /^[a-z0-9](?:[a-z0-9-]{0,62})$/;
+const PROFILE_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62})$/;
 const RESERVED_PROFILE_NAMES = new Set(["default", "profiles", "auth.json"]);
+
+function sameProfile(left: string | undefined, right: string | undefined): boolean {
+	return left?.toLowerCase() === right?.toLowerCase();
+}
+
+function assertUniqueProfileIdentities(profiles: string[]): void {
+	const identities = new Set<string>();
+	for (const profile of profiles) {
+		const identity = profile.toLowerCase();
+		if (identities.has(identity))
+			throw new Error("Profile lookup is ambiguous due to a case-insensitive collision.");
+		identities.add(identity);
+	}
+}
 
 export type AccountContext = Pick<
 	ExtensionCommandContext,
-	"isIdle" | "waitForIdle" | "shutdown"
+	"isIdle" | "waitForIdle"
 > & {
-	sessionManager: Pick<
+	shutdown?: ExtensionCommandContext["shutdown"];
+	sessionManager?: Pick<
 		ExtensionCommandContext["sessionManager"],
 		"getSessionFile"
 	>;
 	ui: Pick<ExtensionContext["ui"], "notify" | "select" | "input">;
 };
 
-export interface AccountHandoffDependencies {
-	spawn(command: string, args: string[]): Promise<void>;
-	launcher?: string;
-}
-
 export interface AccountManagementDependencies {
 	profiles(): Promise<string[]>;
 	run(args: string[]): Promise<{ code: number; stdout: string; stderr: string }>;
 	activeProfile?: string | undefined;
-	handoff?: (profile: string) => Promise<void>;
+	activate?: (profile: string) => Promise<void>;
+	refreshUsage?: (() => Promise<void>) | undefined;
 }
 
-type LauncherMessage =
-	| { type: "osdy-pi-ready" }
-	| { type: "osdy-pi-error"; message: string };
-
-type ScheduleTimeout = (callback: () => void, delay: number) => NodeJS.Timeout;
-
-const LAUNCHER_READY_TIMEOUT_MS = 10_000;
+export interface AccountProfilesCommandDependencies {
+	refreshUsage?: (() => Promise<void>) | undefined;
+}
 
 function isProfileName(value: string): boolean {
-	return PROFILE_NAME.test(value) && !RESERVED_PROFILE_NAMES.has(value);
+	return PROFILE_NAME.test(value) && !RESERVED_PROFILE_NAMES.has(value.toLowerCase());
 }
 
 function sharedAgentDir(env: NodeJS.ProcessEnv): string {
@@ -65,6 +71,7 @@ async function availableProfiles(baseDir: string): Promise<string[]> {
 			if (entry.isDirectory() && isProfileName(entry.name))
 				profiles.push(entry.name);
 		}
+		assertUniqueProfileIdentities(profiles);
 		return profiles.sort(compareStrings);
 	} catch (error: unknown) {
 		if (isErrorCode(error, "ENOENT")) return [];
@@ -85,10 +92,11 @@ function compareStrings(left: string, right: string): number {
 	return left < right ? -1 : left > right ? 1 : 0;
 }
 
-export async function handoffToAccount(
+export async function switchAccountInPlace(
 	ctx: AccountContext,
 	profile: string,
-	dependencies: AccountHandoffDependencies,
+	activate: (profile: string) => Promise<void>,
+	refreshUsage?: () => Promise<void>,
 ): Promise<void> {
 	if (!isProfileName(profile)) {
 		ctx.ui.notify(
@@ -97,90 +105,26 @@ export async function handoffToAccount(
 		);
 		return;
 	}
-	const sessionPath = ctx.sessionManager.getSessionFile();
-	if (!sessionPath || !isAbsolute(sessionPath)) {
-		ctx.ui.notify(
-			"Cannot switch accounts: the current session has not been saved yet.",
-			"warning",
-		);
-		return;
-	}
 	if (!ctx.isIdle()) await ctx.waitForIdle();
-	const launcher = dependencies.launcher ?? "osdy-pi";
 	try {
-		await dependencies.spawn(launcher, [
-			"account",
-			"use",
-			profile,
-			"--",
-			"--session",
-			sessionPath,
-		]);
+		await activate(profile);
 	} catch {
 		ctx.ui.notify(
-			"Cannot switch accounts: unable to start the replacement Pi process.",
+			"Cannot switch accounts: the account files could not be safely activated.",
 			"warning",
 		);
 		return;
 	}
-	ctx.shutdown();
-}
-
-function isLauncherMessage(message: unknown): message is LauncherMessage {
-	if (typeof message !== "object" || message === null || !("type" in message))
-		return false;
-	if (message.type === "osdy-pi-ready") return true;
-	return (
-		message.type === "osdy-pi-error" &&
-		"message" in message &&
-		typeof message.message === "string"
+	process.env.OSDY_PI_PROFILE_NAME = profile;
+	try {
+		await refreshUsage?.();
+	} catch {
+		// Usage refresh failures must not make a completed account activation appear failed.
+	}
+	ctx.ui.notify(
+		`Switched to ${profile}. Your next request uses this account.`,
+		"info",
 	);
-}
-
-export function waitForLauncherReady(
-	child: ChildProcess,
-	timeoutMs = LAUNCHER_READY_TIMEOUT_MS,
-	scheduleTimeout: ScheduleTimeout = setTimeout,
-): Promise<void> {
-	return new Promise((resolveReady, rejectReady) => {
-		let settled = false;
-		const cleanup = (): void => {
-			clearTimeout(timeout);
-			child.removeListener("error", onError);
-			child.removeListener("exit", onExit);
-			child.removeListener("message", onMessage);
-		};
-		const fail = (error: Error): void => {
-			if (settled) return;
-			settled = true;
-			cleanup();
-			rejectReady(error);
-		};
-		const onError = (error: Error): void => fail(error);
-		const onExit = (): void =>
-			fail(new Error("Replacement Pi exited before confirming readiness."));
-		const onMessage = (message: unknown): void => {
-			if (!isLauncherMessage(message)) return;
-			if (message.type === "osdy-pi-error") {
-				fail(new Error(message.message));
-				return;
-			}
-			if (settled) return;
-			settled = true;
-			cleanup();
-			child.disconnect();
-			child.unref();
-			resolveReady();
-		};
-		const timeout = scheduleTimeout(
-			() =>
-				fail(new Error("Replacement Pi timed out before confirming readiness.")),
-			timeoutMs,
-		);
-		child.once("error", onError);
-		child.once("exit", onExit);
-		child.on("message", onMessage);
-	});
 }
 
 function bundledLauncherPath(): string {
@@ -247,7 +191,7 @@ function markedProfiles(
 ): string[] {
 	return profiles.map(
 		(profile) =>
-			`${profile}${profile === activeProfile ? " (active)" : ""}${profile === defaultProfile ? " (default)" : ""}`,
+			`${profile}${sameProfile(profile, activeProfile) ? " (active)" : ""}${sameProfile(profile, defaultProfile) ? " (default)" : ""}`,
 	);
 }
 
@@ -290,7 +234,7 @@ export async function manageAccountProfile(
 	const target =
 		activeMarker === -1 ? selected : selected.slice(0, activeMarker);
 	if (!profiles.includes(target)) return;
-	if (target === dependencies.activeProfile) {
+	if (sameProfile(target, dependencies.activeProfile)) {
 		ctx.ui.notify(
 			"Cannot change the active profile. Switch to another profile first.",
 			"warning",
@@ -302,7 +246,7 @@ export async function manageAccountProfile(
 		if (newName === undefined) return;
 		if (!validProfileName(newName)) {
 			ctx.ui.notify(
-				"Profile names use lowercase letters, numbers, and hyphens only.",
+				"Profile names use ASCII letters, numbers, and hyphens only.",
 				"warning",
 			);
 			return;
@@ -331,10 +275,10 @@ export async function manageAccountProfile(
 		return;
 	}
 	let replacement: string | undefined;
-	if (defaultState.status === "valid" && defaultState.profile === target) {
+	if (defaultState.status === "valid" && sameProfile(defaultState.profile, target)) {
 		replacement = await ctx.ui.select(
 			"Choose a new default account",
-			profiles.filter((profile) => profile !== target),
+			profiles.filter((profile) => !sameProfile(profile, target)),
 		);
 		if (replacement === undefined) return;
 	}
@@ -404,7 +348,7 @@ export async function manageAccountProfiles(
 			if (name === undefined) continue;
 			if (!validProfileName(name)) {
 				ctx.ui.notify(
-					"Profile names use lowercase letters, numbers, and hyphens only.",
+					"Profile names use ASCII letters, numbers, and hyphens only.",
 					"warning",
 				);
 				continue;
@@ -501,11 +445,17 @@ export async function manageAccountProfiles(
 		const marker = target.indexOf(" (");
 		const profile = marker === -1 ? target : target.slice(0, marker);
 		if (!profiles.includes(profile)) continue;
-		if (profile === dependencies.activeProfile) {
+		if (sameProfile(profile, dependencies.activeProfile)) {
 			ctx.ui.notify("That account is already active.", "info");
 			continue;
 		}
-		if (dependencies.handoff) await dependencies.handoff(profile);
+		if (dependencies.activate)
+			await switchAccountInPlace(
+				ctx,
+				profile,
+				dependencies.activate,
+				dependencies.refreshUsage,
+			);
 		return;
 	}
 }
@@ -534,17 +484,20 @@ function runBundledCommand(
 	});
 }
 
-export function registerAccountProfilesCommand(pi: {
-	registerCommand(
-		name: string,
-		options: {
-			description: string;
-			handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
-		},
-	): void;
-}): void {
+export function registerAccountProfilesCommand(
+	pi: {
+		registerCommand(
+			name: string,
+			options: {
+				description: string;
+				handler: (args: string, ctx: ExtensionCommandContext) => Promise<void>;
+			},
+		): void;
+	},
+	commandDependencies: AccountProfilesCommandDependencies = {},
+): void {
 	pi.registerCommand("osdy-account", {
-		description: "Restart Pi with another isolated OpenAI account profile.",
+		description: "Switch the active OpenAI account without restarting Pi.",
 		handler: async (args, ctx) => {
 			const mode = args.trim();
 			if ((ctx as ExtensionCommandContext & { hasUI?: boolean }).hasUI === false) {
@@ -555,17 +508,17 @@ export function registerAccountProfilesCommand(pi: {
 				profiles: () => availableProfiles(sharedAgentDir(process.env)),
 				run: runBundledCommand,
 				activeProfile: process.env.OSDY_PI_PROFILE_NAME,
-				handoff: (profile) =>
-					handoffToAccount(ctx, profile, {
-						launcher: bundledLauncherPath(),
-						spawn: (command, launchArgs) =>
-							waitForLauncherReady(
-								spawnChild(process.execPath, [command, ...launchArgs], {
-									detached: true,
-									stdio: ["ignore", "ignore", "ignore", "ipc"],
-								}),
-							),
-					}),
+				refreshUsage: commandDependencies.refreshUsage,
+				activate: async (profile) => {
+					const moduleUrl = new URL(
+						"../../scripts/osdy-pi-account-profiles.mjs",
+						import.meta.url,
+					).href;
+					const profiles = (await import(moduleUrl)) as {
+						switchAccountAuth(baseDir: string, name: string): Promise<void>;
+					};
+					await profiles.switchAccountAuth(sharedAgentDir(process.env), profile);
+				},
 			};
 			if (mode === "rename" || mode === "remove") {
 				await manageAccountProfile(ctx, mode, dependencies);

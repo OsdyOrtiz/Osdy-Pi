@@ -1,7 +1,14 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { EditorMode, GlobalEditorSettings } from "./types.js";
+// @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
+import { HEADER_VARIANT_CHOICES, MASCOT_CHOICES } from "./types.ts";
+import type {
+	EditorMode,
+	GlobalEditorSettings,
+	HeaderVariant,
+	MascotChoice,
+} from "./types.js";
 
 const SUPPORTED_EDITOR_MODES = [
 	"auto",
@@ -32,6 +39,8 @@ function createDefaultEditorSettings(): GlobalEditorSettings {
 		enabled: true,
 		editorMode: DEFAULT_EDITOR_MODE,
 		workingTreeEnabled: true,
+		headerVariant: "osdy-theme",
+		mascot: "current",
 	};
 }
 
@@ -40,6 +49,21 @@ function isEditorMode(value: unknown): value is EditorMode {
 		typeof value === "string" &&
 		SUPPORTED_EDITOR_MODES.some((mode) => mode === value)
 	);
+}
+
+function normalizeHeaderVariant(value: unknown): HeaderVariant {
+	return typeof value === "string" &&
+		HEADER_VARIANT_CHOICES.includes(value as HeaderVariant)
+		? (value as HeaderVariant)
+		: "osdy-theme";
+}
+
+function normalizeMascotChoice(value: unknown): MascotChoice {
+	if (value === "raccoon") return "bts";
+	return typeof value === "string" &&
+		MASCOT_CHOICES.includes(value as MascotChoice)
+		? (value as MascotChoice)
+		: "current";
 }
 
 export function normalizeEditorSettings(value: unknown): GlobalEditorSettings {
@@ -61,6 +85,8 @@ export function normalizeEditorSettings(value: unknown): GlobalEditorSettings {
 			typeof recordValue.workingTreeEnabled === "boolean"
 				? recordValue.workingTreeEnabled
 				: true,
+		headerVariant: normalizeHeaderVariant(recordValue.headerVariant),
+		mascot: normalizeMascotChoice(recordValue.mascot),
 	};
 }
 

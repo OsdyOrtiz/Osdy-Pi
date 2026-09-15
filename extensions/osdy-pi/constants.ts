@@ -1,5 +1,5 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import type { HeaderVariant } from "./types.js";
+import type { HeaderVariant, MascotChoice } from "./types.js";
 
 export const ANIMATION_ENABLED = true;
 export const ANIMATION_INTERVAL_MS = 30;
@@ -100,18 +100,62 @@ const HTML_MASCOT_MAP = [
   "                               dmmmmmm                    ",
 ] as const;
 
-const HEADER_CLASSIC = [
-  "░█████╗░░██████╗██████╗░██╗░░░██╗░░░░░░██████╗░██╗",
-  "██╔══██╗██╔════╝██╔══██╗╚██╗░██╔╝░░░░░░██╔══██╗  ║",
-  "██║░░██║╚█████╗░██║░░██║░╚████╔╝░█████╗██████╔╝██║",
-  "██║░░██║░╚═══██╗██║░░██║░░╚██╔╝░░╚════╝██╔═══╝░██║",
-  "╚█████╔╝██████╔╝██████╔╝░░░██║░░░░░░░░░██║░░░░░██║",
-  "░╚════╝░╚═════╝░╚═════╝░░░░╚═╝░░░░░░░░░╚═╝░░░░░╚═╝",
-  "                                ╭━╮╱╱╱╱╱╱╭╮╱╱╱╱╱╭╮╱╱╱╱╱╭╮╱╱╭╮╭╮╱╱╱╱╭━╮",
-  "                                ┃╭╋━┳━━┳━╋╋╮╭━╮╭╯┣━┳┳╮╭╯┣━╮┣╋╯┣━┳━╮┃━┫",
-  "                                ┃╰┫╋┃┃┃┃╋┃┃╰┫╋╰┫╋┃╋┃╭╯┃╋┃┻┫┃┃╋┃┻┫╋╰╋━┃",
-  "                                ╰━┻━┻┻┻┫╭┻┻━┻━━┻━┻━┻╯╱╰━┻━╯╰┻━┻━┻━━┻━╯",
-  "                                ╱╱╱╱╱╱╱╰╯                        </>",
+const BTS_MASCOT = [
+  "             ▒▒▒▒                          ▒▒▒░             ",
+  "            ▓▓▓▓▓▓▒                     ░▒▓▓▓▓▓▒            ",
+  "            ▓▓▓ ▒▓▓▒░                  ▒▓▓▓░░▓▓▓            ",
+  "          ░▓▓▒    ▒▒▓▒░░  ░▒▒▒▒▒░░   ▒▒▒▓▒    ▒▓            ",
+  "          ░▓▓▒     ░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░     ▒▓            ",
+  "            ▓▓▓ ░░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░ ░▓▓▒            ",
+  "             ░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░               ",
+  "             ░▒▒▒▒▒▓▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒▒▓▓▓▓▓▓▒▒▒               ",
+  "            ░▒▒▒▒▓▓▓▒   ▓▓▓▓▓▒▒▒▓▓▓▓▓   ░▓▓▓▓▒              ",
+  "            ░▒▒▓▓▓▓      ░▓▓▓▒▒▒▓▓▓░      ▒▓▓▓░     ░   ▒▒  ",
+  "           ▒▓▓▓▓░          ▓▓▒▒▒▓▓          ░▓▒░  ▓▓▓▓▓▓░   ",
+  "         ▓▓▓▓▓▒       ▓▓     ▒▒▒░    ▓▓        ▓▓▓▓▓▓▓▓▓▓▓▓ ",
+  "        ▒▓▓▓▒░            ░▓▓░░░▓▓░           ░▓▓▓▓▒▒▓▒▒▓▓▓▓",
+  "          ░▓░            ▓▓▓▓   ▒▓▓▓▓         ▓▓▓▓▓▒▒▓▒▓▓▓▓░",
+  "            ▒▓▒       ▓▓▓▓▓▓     ▒▓▓▓▓▓░    ░▓ ░▓▓▓▓▓▓▒▓▓▓  ",
+  "               ▓▓░░░░▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒░▒▓░    ░░▒▓▓▓░    ",
+  "                      ░▒▓▓▓▓▓▓▓▓▓▓▓▓▓▒                      ",
+  "    ▒▒▒▒▒░           ▒▒▒▒▒▒▒▓▓▓▓▓▓▒▒▒▒▒░         ░          ",
+  " ░░▒▒▒▒░░░░       ░░▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▒▒▒▒▒▒░ ░░░  ░          ",
+  "▒▒▒▒▒▒     ░      ░▒▒▒░  ▒▓▓▓▓▓▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒░ ░           ",
+  "░▒▒░░    ░▒▒▒▒    ░▒▒▒▒░   ▓▓▓▓▓▓▓▓▓▓▓▒░ ░▒▒░░              ",
+  "  ▒░   ░▒▒▒▒▒░      ░▒░    ▓▓▓▓▓▓▓▓▓▓▓▒▒▒                   ",
+  "       ▒▒▒▒░      ▒▒░   ░▒▓▓▓▓▓▓▓▓▓▓▓▓▒▒▒                   ",
+  "      ▒▒▒▒░░      ▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▓▒▒▒▒                   ",
+  "        ░▒░        ▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▒▒▒▒▒░                    ",
+  "                    ░▒▒▒▒░       ░▒▒▒▒░                     ",
+] as const;
+
+const BTS_MASCOT_MAP = [
+  "             mmmm                          mmmv             ",
+  "            lhhhhlv                     dmlhhhhp            ",
+  "            hhl mhhpv                  mlhhddhhl            ",
+  "          dhhv    mphmvd  dmmmmmvd   mmphp    pl            ",
+  "          dhhm     dmmmmmmmmmmmmmmmmmmmmd     pl            ",
+  "            hhl ddmmmmmmmmmmmmmmmmmmmmmmmvd dhhp            ",
+  "             vmvmmmmmmmmmmmmmmmmmmmmmmmmmmmmv               ",
+  "             dmmmmplhhhhhhmmmmmmmmmphhhhhhpmv               ",
+  "            vmmmphhhp   lhhhhmmmlhhhh   vhhhlm              ",
+  "            vmmhhhl      dlhhmmmlhlv      mlhhd     d   cc  ",
+  "           mhhhhd          lhmmmlh          dlpd  hhbbbld   ",
+  "         lhhhhp       hb     mmmd    lb        hhhbhcbbbbbh ",
+  "        mhhhpd            vhhvvvlhv           dhbbbccbccbbbl",
+  "          dhv            hhhh   phhhl         lhhbbcchccbhhv",
+  "            plp       lhhhhp     plhhhld    dp dlhbbbbcbhh  ",
+  "               pldddvhhhhhhhhhhhhhhhhhhhmdmlv    dvmlhhd    ",
+  "                      vmhhhhhhhhhhhhhm                      ",
+  "    mmmmmd           mmmmmmmllllllmmmmmv         d          ",
+  " dvmmmmvvvd       dvmmmmmmmhhhhhhhhlmmmmmvv dvd  d          ",
+  "vmmmmm     d      vmmmd  phhhhhhhhhhhmmmmmmmmmv d           ",
+  "vmmvd    vmmmm    vmmmmv   hhhhhhhhhhhmv vmmvd              ",
+  "  md   dmmmmmv      vmd    hhhhhhhhhhhmmm                   ",
+  "       mmmmv      mmv   dmhhhhhhhhhhhhmmm                   ",
+  "      mmmmvd      mmmmmmhhhhhhhhhhhhhmmmm                   ",
+  "        vmd        mmmmmmmhhhhhhhhmmmmmv                    ",
+  "                    dmmmmv       vmmmmd                     ",
 ] as const;
 
 const HEADER_SIMPLE = [
@@ -127,6 +171,33 @@ const HEADER_SIMPLE = [
   "                                 ░░██████",
   "                                  ░░░░░░                      <ideas_compiler/>",
 ] as const;
+
+const NEON_HEADER_ROWS = [
+  ["                                                             █████████                                                  ████████ ", "                                                             ddddddddd                                                  dddddddd "],
+  ["          ██████████████████████                           ███████████                         █████████████████████ ████████████", "          dddddddddddpdddddddddd                           ddccccccddd                         ddddddddddddddddddddd ddccccccccpd"],
+  ["        ██████████████████████████                        ███████████                        ████████████████████████████████████", "        dddccchhhhhhhhhhhhhhhcpddd                        ddcchhhhmdd                        dddccchhhhhhhhhhhhhhhcdddphhhhhllddd"],
+  ["      ███████████████████████████████████████████████████████████████████████████████       ████████████████████████████████████ ", "      pddpchhhhhhhhhhhhhhhhhhhhmdddddddddddddddddddddddddddchhhhhmdddddddddpddddddddd       ddpllhhhhhhllllllhhhhhhmdddddddddddd "],
+  ["     ████████████████████████████████████████████████████████████████████████████████       ███████████████████████████████████  ", "     ddpchhhhhhldddddddchhhhhlmddppchhhhhhhhhhhcdppcchhhhhhhhhhhldchhhhhpdddpchhhhcdd       dddddcchhhhdddddpchhhhlddpcchhhcpdd  "],
+  ["   ██████████████   ████████████████████████████████████████████ ████████████████████████████████████████ ████████████████████   ", "   dddcchhhhhlddd   ddchhhhhldpcchhhhlmmmmmmmddcchhhhlmmlhhhhhhd chhhhlddddcchhhhddddddddddddddpchhhhhmdd dchhhhhmddpchhhhlddd   "],
+  ["  ██████████████  ███████████████████████████████████████████████████████████████████████████████████████████████████████████    ", "  dddcchhhhhmddd  pdcchhhhhlddpplhhhhlddddddddcchhhhldddchhhhlddchhhhhmddpchhhhhldcchhhhhhhlpdpcchhhhhhhhhhhhhmmdddpchhhhlddd    "],
+  [" ████████████████████████████ █████████████████████████████████████████████████████████████████████████████████████████████      ", " ddcchhhhhldddddddpchhhhhhmdd dddmhhhhhldddddchhhhlmddpchhhhmddchhhhhhcccchhhhhmddlllllllllddpchhhhhlllllllldddddpcchhhhldd      "],
+  ["█████████████████████████████████████████████████████████████████████████████████████████████████████████████  ████████████████  ", "ddchhhhhhhlcccccccchhhhhhddpccccccchhhhhhddpchhhhhhcccchhhhlddddmhhhhhhhhhhhhhmdddddddddddddpchhhhldddddddddd  ddchhhhhmddddddd  "],
+  [" ███████████████████████████████████████████████████████████████████████████████          ██████████         ██████████████████  ", " ddmhhhhhhhhhhhhhhhhhhhddpchhhhhhhhhhhhmddddhhhhhhhhhhhhhhmdddddddddddpchhhhhmdd          pchhhhhldd         dddchhhhhhhhmddddd  "],
+  ["   █████████████████████████████████████   ████████████████████████████████████         ███████████          ███████████  █      ", "   ddddddddddddddddddddddddddddddddddddd   ddddddddddddddddddcchhhhhhhhhhhhmddd         dpccldddddd          dpchldddddd  d      "],
+  ["                                                         ██ █████████████████           ██████               ██████              ", "                                                         dd chhhhhhhhhhlddddd           dddddd               dddddd              "],
+  ["                                                         ████████████████                                                        ", "                                                         dddddddddddddddd                                                        "],
+] as const;
+
+const NEON_HEADER_TONES: MascotTonePalette = {
+  b: "#FFFFFF",
+  h: { kind: "theme", token: "accent" },
+  l: { kind: "theme", token: "accent", dimmed: true },
+  m: { kind: "theme", token: "accent", dimmed: true },
+  d: "#12011B",
+  p: { kind: "theme", token: "accent", dimmed: true },
+  c: "#FFFFFF",
+  v: "#FFFFFF",
+};
 
 type HeaderPalette = {
   baseColor: string;
@@ -148,7 +219,13 @@ export const MASCOT_TONE_KEYS = {
 export type MascotToneKey =
   (typeof MASCOT_TONE_KEYS)[keyof typeof MASCOT_TONE_KEYS];
 
-export type MascotTonePalette = Record<MascotToneKey, string>;
+export type ThemeForegroundColor = {
+  kind: "theme";
+  token: string;
+  dimmed?: true;
+};
+
+export type MascotTonePalette = Record<MascotToneKey, string | ThemeForegroundColor>;
 
 type HeaderVariantConfig = {
   label: string;
@@ -160,18 +237,6 @@ type HeaderVariantConfig = {
   linePalette: (lineIndex: number) => HeaderPalette;
   mascotPalette: HeaderPalette;
   mascotTonePalette?: MascotTonePalette;
-};
-
-const CLASSIC_PALETTE: HeaderPalette = {
-  baseColor: "accent",
-  highlightColor: "mdHeading",
-  trailColor: "mdLink",
-};
-
-const CLASSIC_LINK_PALETTE: HeaderPalette = {
-  baseColor: "mdLink",
-  highlightColor: "mdHeading",
-  trailColor: "accent",
 };
 
 const OSDY_THEME_CYAN_PALETTE: HeaderPalette = {
@@ -209,6 +274,17 @@ const HTML_MASCOT_TONES: MascotTonePalette = {
   v: "mdLink",
 };
 
+const BTS_MASCOT_TONES: MascotTonePalette = {
+  b: "#FCFCFC",
+  h: "#F9F3E7",
+  l: "#DDD5CC",
+  m: "#969291",
+  d: "#53445F",
+  p: "#C9BBA8",
+  c: "#CDA5F1",
+  v: "#746D6C",
+};
+
 const RAW_BODY_TONE_KEYS = [
   MASCOT_TONE_KEYS.background,
   MASCOT_TONE_KEYS.bright,
@@ -220,7 +296,8 @@ const RAW_HEX_COLOR = /^#[0-9A-F]{6}$/;
 
 function assertRawHexPalette(palette: MascotTonePalette): void {
   for (const tone of RAW_BODY_TONE_KEYS) {
-    if (!RAW_HEX_COLOR.test(palette[tone])) {
+    const color = palette[tone];
+    if (typeof color !== "string" || !RAW_HEX_COLOR.test(color)) {
       throw new Error(`Mascot tone ${tone} must be a #RRGGBB color.`);
     }
   }
@@ -378,9 +455,31 @@ const ROSE_MASCOT = addRightEdgeGlow({
   mascot: HTML_MASCOT,
   toneMap: HTML_MASCOT_MAP,
 });
+const BTS_MASCOT_ART = addRightEdgeGlow({
+  mascot: BTS_MASCOT,
+  toneMap: BTS_MASCOT_MAP,
+});
+for (const [art, palette] of [
+  [ROSE_MASCOT, HTML_MASCOT_TONES],
+  [BTS_MASCOT_ART, BTS_MASCOT_TONES],
+] as const) {
+  assertRawHexPalette(palette);
+  assertMascotStructure(art, palette);
+}
 
-assertRawHexPalette(HTML_MASCOT_TONES);
-assertMascotStructure(ROSE_MASCOT, HTML_MASCOT_TONES);
+export type MascotConfig = {
+  art: MascotArt;
+  tonePalette: MascotTonePalette;
+};
+
+export const MASCOTS: Record<MascotChoice, MascotConfig> = {
+  current: { art: ROSE_MASCOT, tonePalette: HTML_MASCOT_TONES },
+  bts: { art: BTS_MASCOT_ART, tonePalette: BTS_MASCOT_TONES },
+};
+
+export function mascotForChoice(choice: MascotChoice): MascotConfig {
+  return MASCOTS[choice];
+}
 
 type PreparedMascotArt = {
   art: MascotArt;
@@ -453,13 +552,14 @@ export const HEADER_VARIANTS: Record<HeaderVariant, HeaderVariantConfig> = {
     mascotPalette: OSDY_THEME_MASCOT_PALETTE,
     mascotTonePalette: HTML_MASCOT_TONES,
   },
-  classic: {
-    label: "Classic",
-    header: HEADER_CLASSIC,
+  neon: {
+    label: "Neon",
+    header: NEON_HEADER_ROWS.map(([header]) => header),
+    headerMap: NEON_HEADER_ROWS.map(([, toneMap]) => toneMap),
+    headerTonePalette: NEON_HEADER_TONES,
     mascot: ROSE_MASCOT.mascot,
     mascotMap: ROSE_MASCOT.toneMap,
-    linePalette: (lineIndex) =>
-      lineIndex >= 6 ? CLASSIC_LINK_PALETTE : CLASSIC_PALETTE,
+    linePalette: osdyThemePalette,
     mascotPalette: OSDY_THEME_MASCOT_PALETTE,
     mascotTonePalette: HTML_MASCOT_TONES,
   },

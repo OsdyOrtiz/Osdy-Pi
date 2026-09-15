@@ -24,7 +24,7 @@ Start Pi normally:
 pi
 ```
 
-`pi install` installs Osdy Pi's extension resources. When you later run plain `pi`, a valid Osdy default account automatically hands off once to the bundled launcher and resumes the saved session under that profile. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
+`pi install` installs Osdy Pi's extension resources. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
 
 ## Gentle coexistence setup
 
@@ -50,7 +50,7 @@ Osdy Pi can keep multiple ChatGPT Plus/Pro accounts authenticated and let you ch
 
 | Action | Behavior |
 | --- | --- |
-| **Switch** | Restarts Pi safely with another profile, resumes the current saved session, and makes that profile the default. |
+| **Switch** | Waits for idle, safely replaces Pi's canonical auth with the selected profile, and updates active/default together without restarting Pi. |
 | **Add** | Creates an isolated profile without restarting or changing the default. Select it with **Switch**, then run `/login`. |
 | **Default** | Shows, changes, or clears the profile used by future plain installed `pi` and `npm run pi:dev` launches. It does not switch the current process. |
 | **Rename** | Renames an inactive profile. The default follows the new name when applicable. |
@@ -85,7 +85,7 @@ osdy-pi account remove personal --confirm personal --replacement work
 osdy-pi account default --clear
 ```
 
-Profile names accept lowercase letters, numbers, and hyphens, up to 63 characters. Spaces, paths, uppercase letters, and the reserved names `default`, `profiles`, and `auth.json` are rejected. `account add` opens a profile for login but does not change the default.
+Profile names accept ASCII letters, numbers, and hyphens, up to 63 characters, preserving their spelling (for example, `Personal` or `WORK`). Spaces, paths, and the reserved names `default`, `profiles`, and `auth.json` (in any casing) are rejected. Profile identity is case-insensitive, so names that differ only by casing cannot coexist. `account add` opens a profile for login but does not change the default.
 
 ### See and switch the active account
 
@@ -95,7 +95,7 @@ When Pi was launched through a profile, Osdy Pi shows its profile name in the ed
 - **Extended/framed editor:** `personal` replaces the `Osdy-Pi` title.
 - **No managed profile:** the existing model line and `Osdy-Pi` title remain unchanged.
 
-`account use <name>` saves that existing profile as the default before it starts Pi. Inside Pi, `/osdy-account` does the same after you select another profile. Osdy Pi waits for active work to finish, starts the replacement Pi with the current saved session, confirms that the new Pi process started, and only then closes the previous process. This is a controlled restart, not an in-process credential swap.
+`account use <name>` activates the profile in Pi's shared agent directory, saves it as active/default, then starts Pi. Inside Pi, `/osdy-account` waits for active work to finish and swaps the canonical `auth.json` in place; the next request resolves the new account without a spawn, shutdown, session handoff, or restart.
 
 To resume a specific session directly from the terminal:
 
@@ -103,7 +103,7 @@ To resume a specific session directly from the terminal:
 osdy-pi account use work -- --session /absolute/path/to/session.jsonl
 ```
 
-> **Privacy:** only Pi's managed `auth.json` is isolated per profile. Session history, settings, installed packages, and extension resources are shared, so every profile can access that local state. Osdy Pi never reads, copies, prints, or passes OAuth credentials. It keeps Pi's canonical `openai-codex` provider and delegates authentication to Pi's built-in `/login` flow.
+> **Privacy:** each profile keeps a private `auth.json`; Pi runs against its canonical shared `auth.json`. Osdy Pi atomically copies opaque auth files between those private locations only to activate or preserve an account; it never parses, prints, logs, or passes OAuth credentials. Session history, settings, installed packages, and extension resources are shared, so every profile can access that local state. It keeps Pi's canonical `openai-codex` provider and delegates authentication to Pi's built-in `/login` flow.
 
 ### Rename and permanently remove profiles
 
@@ -285,7 +285,7 @@ For the normal in-Pi development flow, no global `osdy-pi` link is required:
 
 2. Inside Pi, run `/osdy-account`.
 3. Choose **Add**, enter a profile name, then choose **Switch** and select it.
-4. After the managed restart, run `/login` and choose **ChatGPT Plus/Pro (Codex)**.
+4. Without restarting, run `/login` and choose **ChatGPT Plus/Pro (Codex)**.
 5. From then on, `npm run pi:dev` starts the default profile automatically. Use `/osdy-account` for every profile-management action.
 
 The terminal interface remains available for recovery and automated testing:
@@ -299,7 +299,7 @@ npm run pi:dev -- account rename personal private
 npm run pi:dev -- account remove private --confirm private
 ```
 
-`npm run pi:dev` launches `pi -e <absolute repository root>` with `PI_CODING_AGENT_DIR=<absolute repository root>/.pi-dev` when no default is set. If its `.pi-dev` metadata names a valid profile, it routes through this checkout's local launcher and starts that profile while retaining `-e <absolute repository root>`. The development `.pi-dev` profile store and the installed Pi profile store are separate. For an installed package, plain `pi` loads extension resources; at startup Osdy Pi hands off through its bundled launcher when the installed store has a valid default, while no default leaves ordinary unmanaged Pi running. Account commands use this checkout's local launcher, so no global `osdy-pi` link is needed. The development extension root is inherited by profile launches, keeping the local extension loaded after an `/osdy-account` handoff. The manual equivalent is:
+`npm run pi:dev` launches `pi -e <absolute repository root>` with `PI_CODING_AGENT_DIR=<absolute repository root>/.pi-dev`. If its `.pi-dev` metadata names a valid profile, it activates that profile's auth before launching Pi and retains `-e <absolute repository root>`. The development `.pi-dev` profile store and the installed Pi profile store are separate. Account commands use this checkout's local launcher, so no global `osdy-pi` link is needed. The development extension root remains loaded after an in-process `/osdy-account` switch. The manual equivalent is:
 
 ```bash
 PI_CODING_AGENT_DIR="$PWD/.pi-dev" OSDY_PI_DEV_EXTENSION_ROOT="$PWD" pi -e "$PWD"

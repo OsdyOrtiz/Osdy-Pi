@@ -40,8 +40,11 @@ registerHooks({
 
 const { PLUGIN_EVENTS, subscribeQuestionPromptAudioNotification } =
 	await import("./plugin-events.js");
-const { createActiveSessionRefresh, refreshCodexUsage } =
-	await import("./runtime.js");
+const {
+	createActiveSessionRefresh,
+	getOsdyCommandCompletions,
+	refreshCodexUsage,
+} = await import("./runtime.js");
 
 class TestEventBus {
 	event: string | undefined;
@@ -76,6 +79,59 @@ class TestSessionContextProvider {
 		return this.context;
 	}
 }
+
+void test("header command completes only catalog choices and is persisted through session wiring", () => {
+	assert.deepEqual(getOsdyCommandCompletions("header"), [
+		{ value: "header osdy-theme", label: "header osdy-theme" },
+		{ value: "header neon", label: "header neon" },
+		{ value: "header status", label: "header status" },
+	]);
+	assert.deepEqual(getOsdyCommandCompletions("header n"), [
+		{ value: "header neon", label: "header neon" },
+	]);
+	assert.deepEqual(getOsdyCommandCompletions("classic"), []);
+
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+	assert.match(
+		source,
+		/async function handleHeaderCommand[\s\S]*?state\.headerVariant = action;[\s\S]*?applyOsdyPi\([\s\S]*?saveVisualSettings\(state, settingsStore\)/,
+	);
+	assert.match(source, /headerVariant: state\.headerVariant/);
+	assert.match(source, /state\.headerVariant = editorSettings\.headerVariant;/);
+	assert.doesNotMatch(source, /registerCommand\(`osdy-pi-\$\{variant\}`/);
+	assert.doesNotMatch(source, /\["osdy-theme", "classic"\]/);
+	assert.doesNotMatch(source, /if \(isHeaderVariant\(action\)\)/);
+});
+
+void test("mascot command completes current, Bts, and status while persisting with immediate refresh", () => {
+	assert.deepEqual(getOsdyCommandCompletions("mascot"), [
+		{ value: "mascot current", label: "mascot current" },
+		{ value: "mascot bts", label: "mascot bts" },
+		{ value: "mascot status", label: "mascot status" },
+	]);
+	assert.deepEqual(getOsdyCommandCompletions("mascot b"), [
+		{ value: "mascot bts", label: "mascot bts" },
+	]);
+	assert.deepEqual(getOsdyCommandCompletions("mascot d"), []);
+
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+	assert.match(
+		source,
+		/state\.mascot = action;[\s\S]*?applyOsdyPi\([\s\S]*?saveVisualSettings\(state, settingsStore\)/,
+	);
+	assert.match(source, /state\.mascot = editorSettings\.mascot;/);
+	assert.match(source, /function mascotLabel\(mascot: MascotChoice\): string/);
+	assert.match(source, /osdy-pi mascot: \$\{mascotLabel\(state\.mascot\)\}/);
+});
+
+void test("account switching refreshes usage through the active session context", () => {
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+
+	assert.match(
+		source,
+		/registerAccountProfilesCommand\(pi, \{[\s\S]*?refreshUsage: async \(\) => \{[\s\S]*?const activeSessionContext = sessionContext;[\s\S]*?await refreshCurrentCodexUsage\(activeSessionContext\)/,
+	);
+});
 
 void test("usage refresh resolves the active session instead of a distinct command context", async () => {
 	const activeSessionContext = { id: "active-session" };

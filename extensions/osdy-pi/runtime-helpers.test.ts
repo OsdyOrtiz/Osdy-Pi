@@ -78,6 +78,7 @@ function createState(overrides: Partial<OsdyState> = {}): OsdyState {
 		editorMode: EDITOR_MODES.SIMPLE,
 		fallbackEditorFactory: undefined,
 		headerVariant: "osdy-theme",
+		mascot: "current",
 		smallMode: false,
 		tui: undefined,
 		workingTreeEnabled: true,

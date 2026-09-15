@@ -23,8 +23,11 @@ import { runSoundSetupWizard } from "./sound-setup-wizard.js";
 import {
 	DEFAULT_EDITOR_MODE,
 	EDITOR_MODES,
+	HEADER_VARIANT_CHOICES,
 	type EditorMode,
 	type HeaderVariant,
+	MASCOT_CHOICES,
+	type MascotChoice,
 	type OsdyState,
 	type WorkingTreeState,
 	type WorkingWidgetState,
@@ -97,10 +100,16 @@ function parseCommandArgs(args: string): string[] {
 	return args.trim().split(/\s+/).filter(Boolean);
 }
 
-const HEADER_VARIANTS = ["osdy-theme", "classic"] as const;
+function isMascotChoice(value: string): value is MascotChoice {
+	return MASCOT_CHOICES.includes(value as MascotChoice);
+}
+
+function mascotLabel(mascot: MascotChoice): string {
+	return mascot === "bts" ? "Bts" : mascot;
+}
 
 function isHeaderVariant(value: string): value is HeaderVariant {
-	return HEADER_VARIANTS.includes(value as HeaderVariant);
+	return HEADER_VARIANT_CHOICES.includes(value as HeaderVariant);
 }
 
 async function saveVisualSettings(
@@ -113,6 +122,8 @@ async function saveVisualSettings(
 			enabled: state.enabled,
 			editorMode: state.editorMode,
 			workingTreeEnabled: state.workingTreeEnabled,
+			headerVariant: state.headerVariant,
+			mascot: state.mascot,
 		});
 		return true;
 	} catch {
@@ -162,20 +173,74 @@ async function disableOsdyPiCommand(
 	);
 }
 
-function setHeaderVariant(
+async function handleMascotCommand(
+	action: string | undefined,
+	rest: string[],
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	state: OsdyState,
 	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
-	variant: HeaderVariant,
-): void {
-	state.headerVariant = variant;
+	settingsStore: ReturnType<typeof createEditorSettingsStore>,
+): Promise<void> {
+	const mascotUsage = `Usage: /osdy-pi mascot ${MASCOT_CHOICES.join(" | ")} | status`;
+	if (rest.length > 0) {
+		ctx.ui.notify(mascotUsage, "warning");
+		return;
+	}
+	if (action === "status" || action === undefined) {
+		ctx.ui.notify(`osdy-pi mascot: ${mascotLabel(state.mascot)}`, "info");
+		return;
+	}
+	if (!isMascotChoice(action)) {
+		ctx.ui.notify(mascotUsage, "warning");
+		return;
+	}
+	state.mascot = action;
 	if (state.enabled) applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
-	ctx.ui.notify(`osdy-pi style: ${variant}`, "info");
+	const saved = await saveVisualSettings(state, settingsStore);
+	ctx.ui.notify(
+		saved
+			? `osdy-pi mascot: ${mascotLabel(action)}`
+			: "osdy-pi mascot changed but could not be saved",
+		saved ? "info" : "warning",
+	);
 }
 
-function getOsdyCommandCompletions(prefix: string) {
+async function handleHeaderCommand(
+	action: string | undefined,
+	rest: string[],
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+	workingState: WorkingWidgetState,
+	workingTreeState: WorkingTreeState,
+	settingsStore: ReturnType<typeof createEditorSettingsStore>,
+): Promise<void> {
+	const headerUsage = `Usage: /osdy-pi header ${HEADER_VARIANT_CHOICES.join(" | ")} | status`;
+	if (
+		rest.length > 0 ||
+		(action !== undefined && action !== "status" && !isHeaderVariant(action))
+	) {
+		ctx.ui.notify(headerUsage, "warning");
+		return;
+	}
+	if (action === "status" || action === undefined) {
+		ctx.ui.notify(`osdy-pi header: ${state.headerVariant}`, "info");
+		return;
+	}
+	state.headerVariant = action;
+	if (state.enabled) applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
+	const saved = await saveVisualSettings(state, settingsStore);
+	ctx.ui.notify(
+		saved
+			? `osdy-pi header: ${action}`
+			: "osdy-pi header changed but could not be saved",
+		saved ? "info" : "warning",
+	);
+}
+
+export function getOsdyCommandCompletions(prefix: string) {
 	const trimmed = prefix.trim();
 	const parts = parseCommandArgs(trimmed);
 	if (parts.length === 0) {
@@ -188,8 +253,9 @@ function getOsdyCommandCompletions(prefix: string) {
 			"sound",
 			"working-tree",
 			"editor",
+			"mascot",
+			"header",
 			"diff",
-			...HEADER_VARIANTS,
 		].map((value) => ({ value, label: value }));
 	}
 	if (trimmed === "sound") {
@@ -203,6 +269,18 @@ function getOsdyCommandCompletions(prefix: string) {
 			"working-tree status",
 			"working-tree position top",
 			"working-tree position bottom",
+		].map((value) => ({ value, label: value }));
+	}
+	if (trimmed === "mascot") {
+		return [
+			...MASCOT_CHOICES.map((choice) => `mascot ${choice}`),
+			"mascot status",
+		].map((value) => ({ value, label: value }));
+	}
+	if (trimmed === "header") {
+		return [
+			...HEADER_VARIANT_CHOICES.map((choice) => `header ${choice}`),
+			"header status",
 		].map((value) => ({ value, label: value }));
 	}
 	if (trimmed === "editor") {
@@ -227,8 +305,9 @@ function getOsdyCommandCompletions(prefix: string) {
 			"sound",
 			"working-tree",
 			"editor",
+			"mascot",
+			"header",
 			"diff",
-			...HEADER_VARIANTS,
 		]
 			.filter((value) => value.startsWith(valuePrefix))
 			.map((value) => ({ value, label: value }));
@@ -238,6 +317,18 @@ function getOsdyCommandCompletions(prefix: string) {
 		return ["setup"]
 			.filter((value) => value.startsWith(valuePrefix))
 			.map((value) => ({ value: `sound ${value}`, label: `sound ${value}` }));
+	}
+	if (parts[0] === "header" && parts.length === 2) {
+		const valuePrefix = parts[1] ?? "";
+		return [...HEADER_VARIANT_CHOICES, "status"]
+			.filter((value) => value.startsWith(valuePrefix))
+			.map((value) => ({ value: `header ${value}`, label: `header ${value}` }));
+	}
+	if (parts[0] === "mascot" && parts.length === 2) {
+		const valuePrefix = parts[1] ?? "";
+		return [...MASCOT_CHOICES, "status"]
+			.filter((value) => value.startsWith(valuePrefix))
+			.map((value) => ({ value: `mascot ${value}`, label: `mascot ${value}` }));
 	}
 	if (parts[0] === "editor" && parts.length === 2) {
 		const valuePrefix = parts[1] ?? "";
@@ -514,7 +605,9 @@ async function openDiffCommand(
 
 type CodexUsageRefreshContext = {
 	modelRegistry: {
-		getProviderAuth(provider: string): Promise<{ auth: { apiKey?: string } } | undefined>;
+		getProviderAuth(
+			provider: string,
+		): Promise<{ auth: { apiKey?: string } } | undefined>;
 	};
 };
 
@@ -612,7 +705,7 @@ function registerCommand(
 ): void {
 	pi.registerCommand("osdy-pi", {
 		description:
-			"Manage the Osdy Pi experience: enable/disable (on/off), status, editor, style, sound setup, working tree, or diff panel.",
+			"Manage the Osdy Pi experience: enable/disable (on/off), status, mascot, editor, style, sound setup, working tree, or diff panel.",
 		getArgumentCompletions: getOsdyCommandCompletions,
 		handler: async (args, ctx) => {
 			const [action = "status", ...rest] = parseCommandArgs(args);
@@ -648,6 +741,32 @@ function registerCommand(
 				await handleSoundCommand(rest, ctx, settingsStore);
 				return;
 			}
+			if (action === "mascot") {
+				await handleMascotCommand(
+					rest[0],
+					rest.slice(1),
+					pi,
+					ctx,
+					state,
+					workingState,
+					workingTreeState,
+					editorSettingsStore,
+				);
+				return;
+			}
+			if (action === "header") {
+				await handleHeaderCommand(
+					rest[0],
+					rest.slice(1),
+					pi,
+					ctx,
+					state,
+					workingState,
+					workingTreeState,
+					editorSettingsStore,
+				);
+				return;
+			}
 			if (action === "editor") {
 				await handleEditorCommand(
 					rest[0],
@@ -677,26 +796,12 @@ function registerCommand(
 				await openDiffCommand(pi, ctx, state, workingState, workingTreeState);
 				return;
 			}
-			if (isHeaderVariant(action)) {
-				setHeaderVariant(pi, ctx, state, workingState, workingTreeState, action);
-				return;
-			}
 			ctx.ui.notify(
-				"Usage: /osdy-pi enable|disable|on|off|status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff | osdy-theme | classic",
+				`Usage: /osdy-pi enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff`,
 				"warning",
 			);
 		},
 	});
-
-	for (const variant of HEADER_VARIANTS) {
-		pi.registerCommand(`osdy-pi-${variant}`, {
-			description: `Switch Osdy Pi header to ${variant}.`,
-			handler: (_args, ctx) => {
-				setHeaderVariant(pi, ctx, state, workingState, workingTreeState, variant);
-				return Promise.resolve();
-			},
-		});
-	}
 }
 
 export function registerOsdyPi(pi: ExtensionAPI): void {
@@ -707,6 +812,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		editorMode: DEFAULT_EDITOR_MODE,
 		fallbackEditorFactory: undefined,
 		headerVariant: "osdy-theme",
+		mascot: "current",
 		smallMode: false,
 		tui: undefined,
 		workingTreeEnabled: true,
@@ -731,7 +837,6 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	const settingsStore = createAudioSoundSettingsStore();
 	const editorSettingsStore = createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
-	registerAccountProfilesCommand(pi);
 	const audioRouter = createAudioEventRouter(
 		createAudioNotificationService(
 			pi,
@@ -753,6 +858,13 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		await refreshCodexUsage(ctx, state, abort);
 		if (codexUsageAbort === abort) codexUsageAbort = undefined;
 	};
+	registerAccountProfilesCommand(pi, {
+		refreshUsage: async () => {
+			const activeSessionContext = sessionContext;
+			if (activeSessionContext)
+				await refreshCurrentCodexUsage(activeSessionContext);
+		},
+	});
 	const pendingOsdyRefreshes = new Set<ReturnType<typeof setTimeout>>();
 	const cancelOsdyRefreshes = (): void => {
 		for (const timeout of pendingOsdyRefreshes) clearTimeout(timeout);
@@ -832,6 +944,8 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		state.enabled = editorSettings.enabled;
 		state.editorMode = editorSettings.editorMode;
 		state.workingTreeEnabled = editorSettings.workingTreeEnabled;
+		state.headerVariant = editorSettings.headerVariant;
+		state.mascot = editorSettings.mascot;
 		workingTreeState.enabled = editorSettings.workingTreeEnabled;
 		if (!state.enabled) return;
 		claimOsdyVisualLayer(

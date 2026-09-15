@@ -30,12 +30,14 @@ import {
 	HEADER_VARIANTS,
 	INTRO_ANIMATION_FRAMES,
 	MASCOT_GAP,
+	mascotForChoice,
 	mascotWidthForRows,
 	scaleHeader,
 	scaleMascot,
 	STACKED_CONTENT_MAX_ROWS,
 	STACKED_HEADER_MAX_ROWS,
 	STACKED_HEADER_MIN_ROWS,
+	type MascotConfig,
 	type ScaledHeaderArt,
 	WORKING_SPINNER_FRAMES,
 } from "./constants.js";
@@ -93,16 +95,14 @@ type HeaderConfig = (typeof HEADER_VARIANTS)[HeaderVariant];
 function calculateHeaderLayout(
 	variantName: HeaderVariant,
 	variant: HeaderConfig,
+	mascot: MascotConfig,
 	width: number,
 	terminalColumns: number,
 	terminalRows: number,
 ): HeaderLayout {
 	const renderWidth = Math.max(1, width);
 	const fullHeaderWidth = headerWidth(variantName);
-	const mascotArt = {
-		mascot: variant.mascot ?? [],
-		toneMap: variant.mascotMap ?? [],
-	};
+	const mascotArt = mascot.art;
 	const hasMascot = mascotArt.mascot.length > 0 && mascotArt.toneMap.length > 0;
 	const heightLimitedMascotWidth = hasMascot
 		? mascotWidthForRows(mascotArt, terminalRows)
@@ -137,7 +137,7 @@ function calculateHeaderLayout(
 }
 
 function renderMascotLines(
-	variant: HeaderConfig,
+	mascot: MascotConfig,
 	mascotArt: ReturnType<typeof scaleMascot>,
 	frame: number,
 	theme: SimpleTheme,
@@ -145,14 +145,14 @@ function renderMascotLines(
 ): string[] {
 	return mascotArt.mascot.map((line, index) => {
 		const toneLine = mascotArt.toneMap[index];
-		if (toneLine && variant.mascotTonePalette) {
+		if (toneLine) {
 			return animateAsciiLineWithToneMap(
 				line,
 				toneLine,
 				index,
 				frame,
 				theme,
-				variant.mascotTonePalette,
+				mascot.tonePalette,
 				animationStyle,
 			);
 		}
@@ -161,9 +161,9 @@ function renderMascotLines(
 			index,
 			frame,
 			theme,
-			variant.mascotPalette.baseColor,
-			variant.mascotPalette.highlightColor,
-			variant.mascotPalette.trailColor,
+			"accent",
+			"mdHeading",
+			"mdLink",
 			animationStyle,
 		);
 	});
@@ -216,22 +216,20 @@ function renderResponsiveHeader(
 	animationStyle: "animated" | "static",
 ): string[] {
 	const variant = HEADER_VARIANTS[state.headerVariant];
+	const mascot = mascotForChoice(state.mascot);
 	const layout = calculateHeaderLayout(
 		state.headerVariant,
 		variant,
+		mascot,
 		width,
 		terminalColumns,
 		terminalRows,
 	);
 	const mascotArt = layout.hasMascot
-		? scaleMascot(
-				{ mascot: variant.mascot ?? [], toneMap: variant.mascotMap ?? [] },
-				layout.mascotWidthBudget,
-				layout.mascotRowBudget,
-			)
+		? scaleMascot(mascot.art, layout.mascotWidthBudget, layout.mascotRowBudget)
 		: { mascot: [], toneMap: [] };
 	const mascotLines = renderMascotLines(
-		variant,
+		mascot,
 		mascotArt,
 		frame,
 		theme,

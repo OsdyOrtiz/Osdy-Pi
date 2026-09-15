@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
 	lstat,
 	mkdir,
+	open,
 	mkdtemp,
 	readFile,
 	symlink,
@@ -10,6 +11,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import {
 	clearDefaultAccount,
@@ -19,8 +21,12 @@ import {
 	parseAccountCommand,
 	planDefaultLaunch,
 	planPiLaunch,
+	readActiveAccount,
 	readDefaultAccount,
+	setActiveAccount,
 	setDefaultAccount,
+	switchAccountAuth,
+	validateExistingProfile,
 	validateProfileName,
 	renameProfile,
 	removeProfile,
@@ -28,6 +34,8 @@ import {
 
 test("validates portable profile names and rejects traversal or reserved names", () => {
 	assert.equal(validateProfileName("work-codex"), "work-codex");
+	assert.equal(validateProfileName("Personal"), "Personal");
+	assert.equal(validateProfileName("WORK"), "WORK");
 	for (const name of [
 		"",
 		".",
@@ -37,7 +45,10 @@ test("validates portable profile names and rejects traversal or reserved names",
 		"a\\b",
 		"/tmp",
 		"two words",
-		"UPPER",
+		"default",
+		"DEFAULT",
+		"Profiles",
+		"AUTH.JSON",
 	]) {
 		assert.throws(() => validateProfileName(name));
 	}
@@ -120,6 +131,115 @@ test("parses exact rename and confirmed remove forms", () => {
 		["account", "remove", "old", "--replacement", "other", "--confirm", "old"],
 	])
 		assert.throws(() => parseAccountCommand(args));
+});
+
+test("resolves profiles case-insensitively, rejects casefold duplicates, and detects legacy collisions", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(sharedDir, "Work");
+	assert.equal((await validateExistingProfile(sharedDir, "work")).name, "Work");
+	await assert.rejects(ensureProfileLayout(sharedDir, "work"), /already exists/i);
+	await setDefaultAccount(sharedDir, "work");
+	await setActiveAccount(sharedDir, "work");
+	assert.deepEqual(await readDefaultAccount(sharedDir), {
+		status: "valid",
+		profile: "Work",
+	});
+	assert.deepEqual(await readActiveAccount(sharedDir), {
+		status: "valid",
+		profile: "Work",
+	});
+	try {
+		await mkdir(createProfileLayout(sharedDir, "WORK").profileDir);
+	} catch (error) {
+		if (error?.code === "EEXIST") return;
+		throw error;
+	}
+	await assert.rejects(setDefaultAccount(sharedDir, "work"), /ambiguous/i);
+});
+
+test("serializes concurrent case-insensitive profile creates and renames", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	let releaseCreate;
+	let signalCreateEntered;
+	const createHeld = new Promise((resolve) => {
+		releaseCreate = resolve;
+	});
+	const createEntered = new Promise((resolve) => {
+		signalCreateEntered = resolve;
+	});
+	const firstCreate = ensureProfileLayout(sharedDir, "Work", {
+		hooks: {
+			afterLockAcquired: async () => {
+				signalCreateEntered();
+				return createHeld;
+			},
+		},
+	});
+	await createEntered;
+	assert.equal(
+		(await lstat(join(sharedDir, "osdy-pi", "profile-namespace.lock"))).isFile(),
+		true,
+	);
+	const secondCreate = ensureProfileLayout(sharedDir, "work");
+	releaseCreate();
+	await firstCreate;
+	await assert.rejects(secondCreate, /already exists/i);
+	assert.equal((await validateExistingProfile(sharedDir, "work")).name, "Work");
+
+	await ensureProfileLayout(sharedDir, "first");
+	await ensureProfileLayout(sharedDir, "second");
+	let releaseRename;
+	let signalRenameEntered;
+	const renameHeld = new Promise((resolve) => {
+		releaseRename = resolve;
+	});
+	const renameEntered = new Promise((resolve) => {
+		signalRenameEntered = resolve;
+	});
+	const firstRename = renameProfile(sharedDir, "first", "Target", {
+		hooks: {
+			afterLockAcquired: async () => {
+				signalRenameEntered();
+				return renameHeld;
+			},
+		},
+	});
+	await renameEntered;
+	const secondRename = renameProfile(sharedDir, "second", "target");
+	releaseRename();
+	await firstRename;
+	await assert.rejects(secondRename, /already exists/i);
+	assert.equal((await validateExistingProfile(sharedDir, "target")).name, "Target");
+});
+
+test("renames case-only profiles portably, canonicalizes metadata, and protects active casing", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(sharedDir, "work");
+	await setDefaultAccount(sharedDir, "work");
+	await renameProfile(sharedDir, "work", "WORK");
+	assert.deepEqual(await readDefaultAccount(sharedDir), {
+		status: "valid",
+		profile: "WORK",
+	});
+	await assert.rejects(
+		renameProfile(sharedDir, "work", "Work", { activeProfile: "WORK" }),
+		/active profile/,
+	);
+	const rollbackDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(rollbackDir, "case");
+	await setDefaultAccount(rollbackDir, "case");
+	await assert.rejects(
+		renameProfile(rollbackDir, "case", "CASE", {
+			setDefault: async () => {
+				throw new Error("metadata failed");
+			},
+		}),
+		/rolled back/,
+	);
+	assert.equal(
+		(await lstat(createProfileLayout(rollbackDir, "case").profileDir)).isDirectory(),
+		true,
+	);
 });
 
 test("plans an auth-only profile directory with shared non-auth state", () => {
@@ -346,17 +466,270 @@ test("requires a replacement to remove the default and refuses nested real direc
 	);
 });
 
+test("swaps profile auth into the canonical shared agent directory and persists the prior active auth", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(sharedDir, "personal");
+	await ensureProfileLayout(sharedDir, "work");
+	await writeFile(join(sharedDir, "auth.json"), "personal-auth", {
+		mode: 0o600,
+	});
+	await writeFile(createProfileLayout(sharedDir, "work").authPath, "work-auth", {
+		mode: 0o600,
+	});
+	await setActiveAccount(sharedDir, "personal");
+	await setDefaultAccount(sharedDir, "personal");
+	await switchAccountAuth(sharedDir, "work");
+	assert.equal(
+		await readFile(createProfileLayout(sharedDir, "personal").authPath, "utf8"),
+		"personal-auth",
+	);
+	assert.equal(
+		await readFile(join(sharedDir, "auth.json"), "utf8"),
+		"work-auth",
+	);
+	assert.equal((await lstat(join(sharedDir, "auth.json"))).mode & 0o777, 0o600);
+	assert.deepEqual(await readDefaultAccount(sharedDir), {
+		status: "valid",
+		profile: "work",
+	});
+});
+
+test("activates an empty profile for /login without leaving the old canonical auth", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(sharedDir, "personal");
+	await ensureProfileLayout(sharedDir, "new");
+	await writeFile(join(sharedDir, "auth.json"), "personal-auth", {
+		mode: 0o600,
+	});
+	await setActiveAccount(sharedDir, "personal");
+	await setDefaultAccount(sharedDir, "personal");
+	await switchAccountAuth(sharedDir, "new");
+	assert.equal(
+		await readFile(createProfileLayout(sharedDir, "personal").authPath, "utf8"),
+		"personal-auth",
+	);
+	await assert.rejects(lstat(join(sharedDir, "auth.json")), /ENOENT/);
+	await writeFile(join(sharedDir, "auth.json"), "new-auth", { mode: 0o600 });
+	await switchAccountAuth(sharedDir, "personal");
+	assert.equal(
+		await readFile(createProfileLayout(sharedDir, "new").authPath, "utf8"),
+		"new-auth",
+	);
+	assert.deepEqual(await readDefaultAccount(sharedDir), {
+		status: "valid",
+		profile: "personal",
+	});
+});
+
+test("rejects symlink auth files and leaves the canonical auth untouched", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(sharedDir, "personal");
+	await ensureProfileLayout(sharedDir, "work");
+	await writeFile(join(sharedDir, "auth.json"), "personal-auth", {
+		mode: 0o600,
+	});
+	await symlink(
+		join(sharedDir, "elsewhere"),
+		createProfileLayout(sharedDir, "work").authPath,
+	);
+	await assert.rejects(switchAccountAuth(sharedDir, "work"), /regular file/);
+	assert.equal(
+		await readFile(join(sharedDir, "auth.json"), "utf8"),
+		"personal-auth",
+	);
+});
+
+test("first default launch migrates destination auth into an absent canonical auth without active metadata", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(sharedDir, "work");
+	await writeFile(createProfileLayout(sharedDir, "work").authPath, "work-auth", {
+		mode: 0o600,
+	});
+	await setDefaultAccount(sharedDir, "work");
+	await planDefaultLaunch(sharedDir);
+	assert.equal(
+		await readFile(join(sharedDir, "auth.json"), "utf8"),
+		"work-auth",
+	);
+});
+
+test("rolls back active and default metadata when selection fails after active write", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(sharedDir, "personal");
+	await ensureProfileLayout(sharedDir, "work");
+	await writeFile(join(sharedDir, "auth.json"), "personal-auth", {
+		mode: 0o600,
+	});
+	await writeFile(createProfileLayout(sharedDir, "work").authPath, "work-auth", {
+		mode: 0o600,
+	});
+	await setDefaultAccount(sharedDir, "personal");
+	await assert.rejects(
+		switchAccountAuth(sharedDir, "work", {
+			hooks: {
+				afterActiveWrite: async () => {
+					throw new Error("injected");
+				},
+			},
+		}),
+		/injected/,
+	);
+	assert.deepEqual(await readActiveAccount(sharedDir), { status: "unset" });
+	assert.deepEqual(await readDefaultAccount(sharedDir), {
+		status: "valid",
+		profile: "personal",
+	});
+	assert.equal(
+		await readFile(join(sharedDir, "auth.json"), "utf8"),
+		"personal-auth",
+	);
+});
+
+test("attempts both metadata rollbacks when the active rollback fails", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(sharedDir, "personal");
+	await ensureProfileLayout(sharedDir, "work");
+	let activeRollbackAttempts = 0;
+	let defaultRollbackAttempts = 0;
+	await assert.rejects(
+		switchAccountAuth(sharedDir, "work", {
+			hooks: {
+				afterActiveWrite: async () => {
+					throw new Error("original failure");
+				},
+				restoreActiveMetadata: async () => {
+					activeRollbackAttempts += 1;
+					throw new Error("active rollback failure");
+				},
+				restoreDefaultMetadata: async () => {
+					defaultRollbackAttempts += 1;
+					throw new Error("default rollback failure");
+				},
+			},
+		}),
+		/original failure.*active rollback failure.*default rollback failure/,
+	);
+	assert.equal(activeRollbackAttempts, 1);
+	assert.equal(defaultRollbackAttempts, 1);
+});
+
+test("rejects auth replacement between lstat and open", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	const outside = join(sharedDir, "outside-auth.json");
+	await ensureProfileLayout(sharedDir, "work");
+	await writeFile(createProfileLayout(sharedDir, "work").authPath, "work-auth", {
+		mode: 0o600,
+	});
+	await writeFile(outside, "outside-auth", { mode: 0o600 });
+	await assert.rejects(
+		switchAccountAuth(sharedDir, "work", {
+			hooks: {
+				beforeOpenAuth: async (source) => {
+					await unlink(source);
+					await symlink(outside, source);
+				},
+			},
+		}),
+		/(regular file|changed while switching)/,
+	);
+	await assert.rejects(lstat(join(sharedDir, "auth.json")), /ENOENT/);
+});
+
+test("serializes switches with a lock file and cleans it after an error", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(sharedDir, "work");
+	let release;
+	const held = new Promise((resolve) => {
+		release = resolve;
+	});
+	const first = switchAccountAuth(sharedDir, "work", {
+		hooks: { afterLockAcquired: async () => held },
+	});
+	await delay(20);
+	assert.equal(
+		(await lstat(join(sharedDir, "osdy-pi", "account-switch.lock"))).isFile(),
+		true,
+	);
+	let secondEntered = false;
+	const second = switchAccountAuth(sharedDir, "work", {
+		hooks: {
+			afterLockAcquired: async () => {
+				secondEntered = true;
+			},
+		},
+	});
+	await delay(20);
+	assert.equal(secondEntered, false);
+	release();
+	await Promise.all([first, second]);
+	await assert.rejects(
+		lstat(join(sharedDir, "osdy-pi", "account-switch.lock")),
+		/ENOENT/,
+	);
+	await assert.rejects(
+		switchAccountAuth(sharedDir, "work", {
+			hooks: {
+				afterLockAcquired: async () => {
+					throw new Error("lock failure");
+				},
+			},
+		}),
+		/lock failure/,
+	);
+	await assert.rejects(
+		lstat(join(sharedDir, "osdy-pi", "account-switch.lock")),
+		/ENOENT/,
+	);
+});
+
+test("cleans an initialized lock after lock setup fails", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(sharedDir, "work");
+	const lockPath = join(sharedDir, "osdy-pi", "account-switch.lock");
+	await assert.rejects(
+		switchAccountAuth(sharedDir, "work", {
+			hooks: {
+				afterLockCreated: async () => {
+					throw new Error("lock setup failure");
+				},
+			},
+		}),
+		/lock setup failure/,
+	);
+	await assert.rejects(lstat(lockPath), /ENOENT/);
+	await switchAccountAuth(sharedDir, "work");
+	await assert.rejects(lstat(lockPath), /ENOENT/);
+});
+
+test("does not remove an existing account switch lock while waiting", async () => {
+	const sharedDir = await mkdtemp(join(tmpdir(), "osdy-pi-profile-test-"));
+	await ensureProfileLayout(sharedDir, "work");
+	const lockPath = join(sharedDir, "osdy-pi", "account-switch.lock");
+	const foreignLock = await open(lockPath, "wx", 0o600);
+	try {
+		await assert.rejects(
+			switchAccountAuth(sharedDir, "work"),
+			/timed out waiting for account switch lock/i,
+		);
+		assert.equal((await lstat(lockPath)).isFile(), true);
+	} finally {
+		await foreignLock.close();
+		await unlink(lockPath);
+	}
+	await switchAccountAuth(sharedDir, "work");
+	await assert.rejects(lstat(lockPath), /ENOENT/);
+});
+
 test("launches Pi through an argument array without exposing auth", () => {
-	const plan = planPiLaunch("/Users/example/.pi/agent", "work", [
-		"--session",
-		"/tmp/current.jsonl",
-	]);
+	const plan = planPiLaunch(
+		"/Users/example/.pi/agent",
+		"work",
+		["--session", "/tmp/current.jsonl"],
+		{},
+	);
 	assert.equal(plan.command, "pi");
 	assert.deepEqual(plan.args, ["--session", "/tmp/current.jsonl"]);
-	assert.equal(
-		plan.env.PI_CODING_AGENT_DIR,
-		"/Users/example/.pi/agent/osdy-pi/profiles/work",
-	);
+	assert.equal(plan.env.PI_CODING_AGENT_DIR, "/Users/example/.pi/agent");
 	assert.equal(plan.env.OSDY_PI_SHARED_AGENT_DIR, "/Users/example/.pi/agent");
 	assert.equal(plan.env.OSDY_PI_PROFILE_NAME, "work");
 	assert.equal(
