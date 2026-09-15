@@ -40,8 +40,11 @@ registerHooks({
 
 const { PLUGIN_EVENTS, subscribeQuestionPromptAudioNotification } =
 	await import("./plugin-events.js");
-const { createActiveSessionRefresh, refreshCodexUsage } =
-	await import("./runtime.js");
+const {
+	createActiveSessionRefresh,
+	getOsdyCommandCompletions,
+	refreshCodexUsage,
+} = await import("./runtime.js");
 
 class TestEventBus {
 	event: string | undefined;

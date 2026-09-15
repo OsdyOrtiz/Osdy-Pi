@@ -7,7 +7,7 @@ import {
 	// @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
 } from "./editor-settings.ts";
 // @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
-import { EDITOR_MODES } from "./types.ts";
+import { EDITOR_MODES, MASCOT_CHOICES } from "./types.ts";
 
 class MemoryEditorSettingsFileSystem implements EditorSettingsFileSystem {
 	content: string | undefined;
@@ -49,6 +49,7 @@ void test("editor settings normalize only supported versioned modes", () => {
 			enabled: true,
 			editorMode: EDITOR_MODES.SIMPLE,
 			workingTreeEnabled: true,
+			mascot: "current",
 		},
 	);
 	assert.deepEqual(
@@ -58,6 +59,7 @@ void test("editor settings normalize only supported versioned modes", () => {
 			enabled: true,
 			editorMode: EDITOR_MODES.AUTO,
 			workingTreeEnabled: true,
+			mascot: "current",
 		},
 	);
 	assert.deepEqual(
@@ -67,6 +69,7 @@ void test("editor settings normalize only supported versioned modes", () => {
 			enabled: true,
 			editorMode: EDITOR_MODES.AUTO,
 			workingTreeEnabled: true,
+			mascot: "current",
 		},
 	);
 	assert.deepEqual(normalizeEditorSettings(null), {
@@ -74,7 +77,34 @@ void test("editor settings normalize only supported versioned modes", () => {
 		enabled: true,
 		editorMode: EDITOR_MODES.AUTO,
 		workingTreeEnabled: true,
+		mascot: "current",
 	});
+});
+
+void test("mascot choices preserve the version-one current default, migrate raccoon to Bts, and persist Bts", async () => {
+	assert.deepEqual(MASCOT_CHOICES, ["current", "bts"]);
+	assert.equal(
+		normalizeEditorSettings({ version: 1, mascot: "invalid" }).mascot,
+		"current",
+	);
+	assert.equal(normalizeEditorSettings({ version: 1, mascot: "raccoon" }).mascot, "bts");
+	for (const mascot of ["detective", "explorer"] as const) {
+		assert.equal(normalizeEditorSettings({ version: 1, mascot }).mascot, "current");
+	}
+
+	const fileSystem = new MemoryEditorSettingsFileSystem();
+	const store = createEditorSettingsStore(
+		"/agent/extensions/osdy-pi/settings.json",
+		fileSystem,
+	);
+	await store.save({
+		version: 1,
+		enabled: true,
+		editorMode: EDITOR_MODES.AUTO,
+		workingTreeEnabled: true,
+		mascot: "bts",
+	});
+	assert.equal((await store.load()).mascot, "bts");
 });
 
 void test("enabled defaults safely and persists globally", async () => {
@@ -97,12 +127,14 @@ void test("enabled defaults safely and persists globally", async () => {
 		enabled: false,
 		editorMode: EDITOR_MODES.SIMPLE,
 		workingTreeEnabled: false,
+		mascot: "current",
 	});
 	assert.deepEqual(await store.load(), {
 		version: 1,
 		enabled: false,
 		editorMode: EDITOR_MODES.SIMPLE,
 		workingTreeEnabled: false,
+		mascot: "current",
 	});
 });
 
@@ -134,6 +166,7 @@ void test("working-tree visibility defaults safely and persists globally", async
 		enabled: true,
 		editorMode: EDITOR_MODES.AUTO,
 		workingTreeEnabled: false,
+		mascot: "current",
 	});
 	const reloadedStore = createEditorSettingsStore(
 		"/agent/extensions/osdy-pi/settings.json",
@@ -162,6 +195,7 @@ void test("editor settings load safely and save atomically", async () => {
 		enabled: true,
 		editorMode: EDITOR_MODES.SIMPLE,
 		workingTreeEnabled: true,
+		mascot: "current",
 	});
 	assert.deepEqual(fileSystem.mkdirPaths, ["/agent/extensions/osdy-pi"]);
 	assert.deepEqual(fileSystem.writePaths, [
@@ -190,6 +224,7 @@ void test("new editor settings stores load their own persisted mode", async () =
 		enabled: true,
 		editorMode: EDITOR_MODES.EXTENDED,
 		workingTreeEnabled: true,
+		mascot: "current",
 	});
 	const reloadedStore = createEditorSettingsStore(
 		"/agent/extensions/osdy-pi/settings.json",

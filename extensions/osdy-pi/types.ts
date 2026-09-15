@@ -24,6 +24,7 @@ export interface GlobalEditorSettings {
 	enabled: boolean;
 	editorMode: EditorMode;
 	workingTreeEnabled: boolean;
+	mascot: MascotChoice;
 }
 
 export function resolveEffectiveEditorMode(
@@ -40,6 +41,10 @@ export function shouldShowFooterMetadata(editorEffective: boolean): boolean {
 
 export type HeaderVariant = "osdy-theme" | "classic";
 
+export const MASCOT_CHOICES = ["current", "bts"] as const;
+
+export type MascotChoice = (typeof MASCOT_CHOICES)[number];
+
 export type WorkingTreePlacement = "aboveEditor" | "belowEditor";
 
 export type CodexUsageState =
@@ -55,6 +60,7 @@ export type OsdyState = {
 	editorMode: EditorMode;
 	fallbackEditorFactory: EditorFactory | undefined;
 	headerVariant: HeaderVariant;
+	mascot: MascotChoice;
 	smallMode: boolean;
 	tui: TUI | undefined;
 	workingTreeEnabled: boolean;

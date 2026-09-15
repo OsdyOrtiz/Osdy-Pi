@@ -1,5 +1,5 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import type { HeaderVariant } from "./types.js";
+import type { HeaderVariant, MascotChoice } from "./types.js";
 
 export const ANIMATION_ENABLED = true;
 export const ANIMATION_INTERVAL_MS = 30;
@@ -98,6 +98,64 @@ const HTML_MASCOT_MAP = [
   "               dmmmmmd      dmmmmmmd     h                ",
   "             mmmmmmmm         dmmmmmmm                    ",
   "                               dmmmmmm                    ",
+] as const;
+
+const BTS_MASCOT = [
+  "             ▒▒▒▒                          ▒▒▒░             ",
+  "            ▓▓▓▓▓▓▒                     ░▒▓▓▓▓▓▒            ",
+  "            ▓▓▓ ▒▓▓▒░                  ▒▓▓▓░░▓▓▓            ",
+  "          ░▓▓▒    ▒▒▓▒░░  ░▒▒▒▒▒░░   ▒▒▒▓▒    ▒▓            ",
+  "          ░▓▓▒     ░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░     ▒▓            ",
+  "            ▓▓▓ ░░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░░ ░▓▓▒            ",
+  "             ░▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒░               ",
+  "             ░▒▒▒▒▒▓▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒▒▓▓▓▓▓▓▒▒▒               ",
+  "            ░▒▒▒▒▓▓▓▒   ▓▓▓▓▓▒▒▒▓▓▓▓▓   ░▓▓▓▓▒              ",
+  "            ░▒▒▓▓▓▓      ░▓▓▓▒▒▒▓▓▓░      ▒▓▓▓░     ░   ▒▒  ",
+  "           ▒▓▓▓▓░          ▓▓▒▒▒▓▓          ░▓▒░  ▓▓▓▓▓▓░   ",
+  "         ▓▓▓▓▓▒       ▓▓     ▒▒▒░    ▓▓        ▓▓▓▓▓▓▓▓▓▓▓▓ ",
+  "        ▒▓▓▓▒░            ░▓▓░░░▓▓░           ░▓▓▓▓▒▒▓▒▒▓▓▓▓",
+  "          ░▓░            ▓▓▓▓   ▒▓▓▓▓         ▓▓▓▓▓▒▒▓▒▓▓▓▓░",
+  "            ▒▓▒       ▓▓▓▓▓▓     ▒▓▓▓▓▓░    ░▓ ░▓▓▓▓▓▓▒▓▓▓  ",
+  "               ▓▓░░░░▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▒░▒▓░    ░░▒▓▓▓░    ",
+  "                      ░▒▓▓▓▓▓▓▓▓▓▓▓▓▓▒                      ",
+  "    ▒▒▒▒▒░           ▒▒▒▒▒▒▒▓▓▓▓▓▓▒▒▒▒▒░         ░          ",
+  " ░░▒▒▒▒░░░░       ░░▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▒▒▒▒▒▒░ ░░░  ░          ",
+  "▒▒▒▒▒▒     ░      ░▒▒▒░  ▒▓▓▓▓▓▓▓▓▓▓▓▒▒▒▒▒▒▒▒▒░ ░           ",
+  "░▒▒░░    ░▒▒▒▒    ░▒▒▒▒░   ▓▓▓▓▓▓▓▓▓▓▓▒░ ░▒▒░░              ",
+  "  ▒░   ░▒▒▒▒▒░      ░▒░    ▓▓▓▓▓▓▓▓▓▓▓▒▒▒                   ",
+  "       ▒▒▒▒░      ▒▒░   ░▒▓▓▓▓▓▓▓▓▓▓▓▓▒▒▒                   ",
+  "      ▒▒▒▒░░      ▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▓▒▒▒▒                   ",
+  "        ░▒░        ▒▒▒▒▒▒▒▓▓▓▓▓▓▓▓▒▒▒▒▒░                    ",
+  "                    ░▒▒▒▒░       ░▒▒▒▒░                     ",
+] as const;
+
+const BTS_MASCOT_MAP = [
+  "             mmmm                          mmmv             ",
+  "            lhhhhlv                     dmlhhhhp            ",
+  "            hhl mhhpv                  mlhhddhhl            ",
+  "          dhhv    mphmvd  dmmmmmvd   mmphp    pl            ",
+  "          dhhm     dmmmmmmmmmmmmmmmmmmmmd     pl            ",
+  "            hhl ddmmmmmmmmmmmmmmmmmmmmmmmvd dhhp            ",
+  "             vmvmmmmmmmmmmmmmmmmmmmmmmmmmmmmv               ",
+  "             dmmmmplhhhhhhmmmmmmmmmphhhhhhpmv               ",
+  "            vmmmphhhp   lhhhhmmmlhhhh   vhhhlm              ",
+  "            vmmhhhl      dlhhmmmlhlv      mlhhd     d   cc  ",
+  "           mhhhhd          lhmmmlh          dlpd  hhbbbld   ",
+  "         lhhhhp       hb     mmmd    lb        hhhbhcbbbbbh ",
+  "        mhhhpd            vhhvvvlhv           dhbbbccbccbbbl",
+  "          dhv            hhhh   phhhl         lhhbbcchccbhhv",
+  "            plp       lhhhhp     plhhhld    dp dlhbbbbcbhh  ",
+  "               pldddvhhhhhhhhhhhhhhhhhhhmdmlv    dvmlhhd    ",
+  "                      vmhhhhhhhhhhhhhm                      ",
+  "    mmmmmd           mmmmmmmllllllmmmmmv         d          ",
+  " dvmmmmvvvd       dvmmmmmmmhhhhhhhhlmmmmmvv dvd  d          ",
+  "vmmmmm     d      vmmmd  phhhhhhhhhhhmmmmmmmmmv d           ",
+  "vmmvd    vmmmm    vmmmmv   hhhhhhhhhhhmv vmmvd              ",
+  "  md   dmmmmmv      vmd    hhhhhhhhhhhmmm                   ",
+  "       mmmmv      mmv   dmhhhhhhhhhhhhmmm                   ",
+  "      mmmmvd      mmmmmmhhhhhhhhhhhhhmmmm                   ",
+  "        vmd        mmmmmmmhhhhhhhhmmmmmv                    ",
+  "                    dmmmmv       vmmmmd                     ",
 ] as const;
 
 const HEADER_CLASSIC = [
@@ -207,6 +265,17 @@ const HTML_MASCOT_TONES: MascotTonePalette = {
   p: "accent",
   c: "mdHeading",
   v: "mdLink",
+};
+
+const BTS_MASCOT_TONES: MascotTonePalette = {
+  b: "#FCFCFC",
+  h: "#F9F3E7",
+  l: "#DDD5CC",
+  m: "#969291",
+  d: "#53445F",
+  p: "#C9BBA8",
+  c: "#CDA5F1",
+  v: "#746D6C",
 };
 
 const RAW_BODY_TONE_KEYS = [
@@ -378,9 +447,31 @@ const ROSE_MASCOT = addRightEdgeGlow({
   mascot: HTML_MASCOT,
   toneMap: HTML_MASCOT_MAP,
 });
+const BTS_MASCOT_ART = addRightEdgeGlow({
+  mascot: BTS_MASCOT,
+  toneMap: BTS_MASCOT_MAP,
+});
+for (const [art, palette] of [
+  [ROSE_MASCOT, HTML_MASCOT_TONES],
+  [BTS_MASCOT_ART, BTS_MASCOT_TONES],
+] as const) {
+  assertRawHexPalette(palette);
+  assertMascotStructure(art, palette);
+}
 
-assertRawHexPalette(HTML_MASCOT_TONES);
-assertMascotStructure(ROSE_MASCOT, HTML_MASCOT_TONES);
+export type MascotConfig = {
+  art: MascotArt;
+  tonePalette: MascotTonePalette;
+};
+
+export const MASCOTS: Record<MascotChoice, MascotConfig> = {
+  current: { art: ROSE_MASCOT, tonePalette: HTML_MASCOT_TONES },
+  bts: { art: BTS_MASCOT_ART, tonePalette: BTS_MASCOT_TONES },
+};
+
+export function mascotForChoice(choice: MascotChoice): MascotConfig {
+  return MASCOTS[choice];
+}
 
 type PreparedMascotArt = {
   art: MascotArt;
