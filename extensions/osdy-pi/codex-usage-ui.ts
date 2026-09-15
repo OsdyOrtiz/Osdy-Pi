@@ -68,6 +68,25 @@ export function formatRemainingPercent(usedPercent: number): string {
 	return `${Math.max(0, Math.round(100 - usedPercent))}% left`;
 }
 
+function remainingPercentTheme(
+	usedPercent: number,
+): "muted" | "warning" | "error" {
+	const remainingPercent = Math.max(0, Math.round(100 - usedPercent));
+	if (remainingPercent <= 15) return "error";
+	if (remainingPercent <= 40) return "warning";
+	return "muted";
+}
+
+function themedRemainingPercent(
+	theme: SimpleTheme,
+	usedPercent: number,
+): string {
+	return theme.fg(
+		remainingPercentTheme(usedPercent),
+		formatRemainingPercent(usedPercent),
+	);
+}
+
 function formatResetRelative(resetAt: number, now: number): string {
 	const seconds = Math.round((resetAt * 1_000 - now) / 1_000);
 	if (seconds <= 0) return "reset time passed";
@@ -249,11 +268,16 @@ export function renderCompactCodexQuotaBars(
 			12,
 			maximumWidth - visibleWidth(label) - visibleWidth(gap),
 		);
-		const themedLabel = label.startsWith(`${name} `)
-			? `${quotaLabel(theme, name, " ")}${theme.fg("muted", `${label.slice(name.length + 1)}${gap}`)}`
-			: label
-				? theme.fg("muted", `${label}${gap}`)
+		const hasName = label.startsWith(`${name} `);
+		const labelText = hasName ? label.slice(name.length + 1) : label;
+		const themedLabelText = labelText.endsWith(remaining)
+			? `${theme.fg("muted", labelText.slice(0, -remaining.length))}${themedRemainingPercent(theme, window.usedPercent)}${theme.fg("muted", gap)}`
+			: labelText
+				? theme.fg("muted", `${labelText}${gap}`)
 				: "";
+		const themedLabel = hasName
+			? `${quotaLabel(theme, name, " ")}${themedLabelText}`
+			: themedLabelText;
 		const line = `${themedLabel}${progress(theme, window, barWidth, quotaTheme(name))}`;
 		return [truncateToWidth(line, maximumWidth, "")];
 	});
@@ -284,7 +308,7 @@ export function renderCodexUsageReadyLines(
 			if (!window) continue;
 			const reset = formatResetTiming(window.resetsAt, now);
 			lines.push(
-				`${quotaLabel(theme, name, ": ")}${progress(theme, window, 10, quotaTheme(name))}${theme.fg("muted", ` ${formatRemainingPercent(window.usedPercent)}`)}${reset ? theme.fg("muted", ` · ${reset}`) : ""}`,
+				`${quotaLabel(theme, name, ": ")}${progress(theme, window, 10, quotaTheme(name))}${theme.fg("muted", " ")}${themedRemainingPercent(theme, window.usedPercent)}${reset ? theme.fg("muted", ` · ${reset}`) : ""}`,
 			);
 		}
 	}
@@ -451,21 +475,21 @@ function renderQuotaFooterLines(
 			if (!window) continue;
 			const prefix = `${label} ${name} `;
 			const themedLabel = `${theme.fg("muted", `${label} `)}${quotaLabel(theme, name, " ")}`;
-			const suffix = ` ${formatRemainingPercent(window.usedPercent)} · ${Math.round(window.usedPercent)}% used`;
+			const remaining = formatRemainingPercent(window.usedPercent);
+			const suffix = ` ${remaining} · ${Math.round(window.usedPercent)}% used`;
+			const themedSuffix = `${theme.fg("muted", " ")}${themedRemainingPercent(theme, window.usedPercent)}${theme.fg("muted", ` · ${Math.round(window.usedPercent)}% used`)}`;
+			const compactThemedSuffix = `${themedRemainingPercent(theme, window.usedPercent)}${theme.fg("muted", ` · ${Math.round(window.usedPercent)}% used`)}`;
 			const availableBarWidth =
 				width - visibleWidth(prefix) - visibleWidth(suffix);
 			if (availableBarWidth < 6) {
 				quotaLines.push(
-					...wrapToVisibleWidth(
-						`${themedLabel}${theme.fg("muted", suffix.trimStart())}`,
-						width,
-					),
+					...wrapToVisibleWidth(`${themedLabel}${compactThemedSuffix}`, width),
 					progress(theme, window, Math.max(1, width), quotaTheme(name)),
 				);
 			} else {
 				const barWidth = Math.min(28, availableBarWidth);
 				quotaLines.push(
-					`${themedLabel}${progress(theme, window, barWidth, quotaTheme(name))}${theme.fg("muted", suffix)}`,
+					`${themedLabel}${progress(theme, window, barWidth, quotaTheme(name))}${themedSuffix}`,
 				);
 			}
 		}
@@ -599,7 +623,6 @@ export function renderCodexUsagePanelLines(
 }
 
 class CodexUsagePanel implements Component {
-	private readonly tui: TUI;
 	private readonly theme: SimpleTheme;
 	private readonly getState: () => CodexUsageViewState;
 	private readonly refresh: CodexUsageRefresh;
@@ -608,14 +631,12 @@ class CodexUsagePanel implements Component {
 	private refreshInFlight = false;
 
 	constructor(
-		tui: TUI,
 		theme: SimpleTheme,
 		getState: () => CodexUsageViewState,
 		refresh: CodexUsageRefresh,
 		presentation: CodexUsagePresentation,
 		close: () => void,
 	) {
-		this.tui = tui;
 		this.theme = theme;
 		this.getState = getState;
 		this.refresh = refresh;
@@ -684,7 +705,6 @@ export async function showCodexUsagePanel(
 			tui.requestRender();
 			void initialRefresh.finally(() => tui.requestRender());
 			return new CodexUsagePanel(
-				tui,
 				theme,
 				getState,
 				async () => {

@@ -60,6 +60,12 @@ const {
 const stripLabelSgr = (text: string): string =>
 	text.replaceAll("\u001B[1m", "").replaceAll("\u001B[22m", "");
 
+const stripSgr = (text: string): string =>
+	text.replace(
+		new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g"),
+		"",
+	);
+
 void test("formats cached Codex quota metadata without session token activity", () => {
 	const snapshot = {
 		planType: "plus",
@@ -880,8 +886,46 @@ void test("fits ANSI-colored compact quota bars at very narrow widths without lo
 		assert.ok(lines.every((line) => /[█░]/.test(line)));
 	}
 	const lines = renderCompactCodexQuotaBars(theme, snapshot, 20);
-	assert.ok(lines[0]?.includes("5h 63% left"));
-	assert.ok(lines[1]?.includes("7d 29% left"));
+	assert.ok(stripSgr(lines[0] ?? "").includes("5h 63% left"));
+	assert.ok(stripSgr(lines[1] ?? "").includes("7d 29% left"));
+});
+
+void test("colors displayed remaining-percent boundaries across compact, ready, and modal quota lines", () => {
+	const boundaries = [
+		{ usedPercent: 59, remaining: 41, role: "muted" },
+		{ usedPercent: 60, remaining: 40, role: "warning" },
+		{ usedPercent: 84, remaining: 16, role: "warning" },
+		{ usedPercent: 85, remaining: 15, role: "error" },
+		{ usedPercent: 99, remaining: 1, role: "error" },
+		{ usedPercent: 100, remaining: 0, role: "error" },
+	] as const;
+	const theme = {
+		fg: (name: string, text: string): string => `[${name}:${text}]`,
+	};
+	for (const { usedPercent, remaining, role } of boundaries) {
+		const snapshot = {
+			planType: "plus",
+			ordinaryUsageAllowed: true,
+			buckets: [
+				{
+					id: "codex",
+					label: undefined,
+					primary: { usedPercent, windowMinutes: 300, resetsAt: undefined },
+					secondary: undefined,
+				},
+			],
+			credits: undefined,
+			fetchedAt: 0,
+		};
+		const expected = `[${role}:${remaining}% left]`;
+		assert.ok(renderCompactCodexQuotaBars(theme, snapshot, 80).join("\n").includes(expected));
+		assert.ok(renderCodexUsageReadyLines(theme, snapshot, 0).join("\n").includes(expected));
+		assert.ok(
+			renderCodexUsageDashboardLines(theme, snapshot, {}, 0, 100)
+				.join("\n")
+				.includes(expected),
+		);
+	}
 });
 
 void test("uses window-bound theme colors for modal and compact quota labels and bars", () => {
@@ -924,12 +968,12 @@ void test("uses window-bound theme colors for modal and compact quota labels and
 	assert.ok(modal.includes("[accent:████") && modal.includes("[mdLink:████"));
 	assert.ok(
 		compact.includes(
-			"[accent:\u001B[1mSession\u001B[22m ][muted:5h 50% left ][accent:████",
+			"[accent:\u001B[1mSession\u001B[22m ][muted:5h ][muted:50% left][muted: ][accent:████",
 		),
 	);
 	assert.ok(
 		compact.includes(
-			"[accent:\u001B[1mWeekly\u001B[22m ][muted:7d 50% left ][mdLink:████",
+			"[accent:\u001B[1mWeekly\u001B[22m ][muted:7d ][muted:50% left][muted: ][mdLink:████",
 		),
 	);
 	assert.ok(
