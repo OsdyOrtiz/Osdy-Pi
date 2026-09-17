@@ -244,7 +244,7 @@ async function assertPathAncestorsAreReal(path) {
 		.filter((root) => isWithin(resolvedPath, root))
 		.sort((left, right) => right.length - left.length)[0];
 	let current = resolvedPath;
-	while (current !== trustedRoot) {
+	while (true) {
 		try {
 			const stats = await lstat(current);
 			if (stats.isSymbolicLink())
@@ -254,6 +254,7 @@ async function assertPathAncestorsAreReal(path) {
 		} catch (error) {
 			if (!isMissing(error)) throw error;
 		}
+		if (current === trustedRoot) break;
 		const parent = dirname(current);
 		if (parent === current) break;
 		current = parent;

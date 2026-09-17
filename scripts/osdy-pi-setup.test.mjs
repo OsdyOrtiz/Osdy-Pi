@@ -177,6 +177,28 @@ test("refuses an agent directory reached through a symlinked ancestor", async ()
 	await assert.rejects(lstat(join(agentDir, "settings.json")), /ENOENT/);
 });
 
+test("refuses a symlinked temporary-directory boundary", async () => {
+	const temporary = await mkdtemp(join(tmpdir(), "osdy-pi-setup-"));
+	const root = await realpath(temporary);
+	const outside = join(root, "outside");
+	const linkedTemporary = join(root, "linked-temp");
+	const agentDir = join(linkedTemporary, "agent");
+	await mkdir(join(outside, "agent"), { recursive: true });
+	await symlink(outside, linkedTemporary);
+	const previousTemporary = process.env.TMPDIR;
+	process.env.TMPDIR = linkedTemporary;
+	try {
+		await assert.rejects(
+			configureOsdyPiSetup({ agentDir }),
+			/Configuration path must not contain symbolic links/,
+		);
+		await assert.rejects(lstat(join(outside, "agent", "settings.json")), /ENOENT/);
+	} finally {
+		if (previousTemporary === undefined) delete process.env.TMPDIR;
+		else process.env.TMPDIR = previousTemporary;
+	}
+});
+
 test("rejects incompatible nested settings before mutation", async () => {
 	for (const [field, value] of [
 		["terminal", "fullscreen"],
