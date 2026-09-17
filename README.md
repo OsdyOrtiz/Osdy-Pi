@@ -4,6 +4,20 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 <img width="1857" height="847" alt="Osdy Pi interface" src="https://github.com/user-attachments/assets/028eeb14-3f43-4f1c-9603-0c55a8d2856d" />
 
+## Changes in this branch
+
+Compared with `main`, this branch adds five user-facing improvements:
+
+| Area | What changed |
+| --- | --- |
+| Message cards | Osdy Pi now uses Pi's native user and assistant message cards instead of rewriting assistant Markdown. Every bundled theme defines native card backgrounds, text colors, and accent stripes; assistant stripes follow the theme accent and user stripes are white. |
+| Header | The former `classic` header is replaced by a theme-aware `neon` header. Header selection now uses `/osdy-pi header ...`, updates immediately, and persists across reloads and sessions. |
+| Mascot | A selectable `bts` mascot joins the existing `current` mascot. Mascot selection is independent from the header, responsive at every supported terminal size, and persisted globally. |
+| Accounts | `/osdy-account` switches Codex profiles in place without restarting Pi. Profile names preserve ASCII casing but remain case-insensitive for identity, and account activation now uses atomic copies, rollback, bounded auth files, and process-safe locks. |
+| Quota | Remaining Codex quota percentages are emphasized in both `/usage` and compact footer/editor bars: warning at 40% or less, error at 15% or less. |
+
+The branch also expands regression coverage for native card theme tokens, responsive Neon/Bts rendering, persisted visual choices, in-place account activation and rollback, profile concurrency, launcher behavior, and quota thresholds.
+
 ## Quick start
 
 Install from npm:
@@ -105,6 +119,8 @@ osdy-pi account use work -- --session /absolute/path/to/session.jsonl
 
 > **Privacy:** each profile keeps a private `auth.json`; Pi runs against its canonical shared `auth.json`. Osdy Pi atomically copies opaque auth files between those private locations only to activate or preserve an account; it never parses, prints, logs, or passes OAuth credentials. Session history, settings, installed packages, and extension resources are shared, so every profile can access that local state. It keeps Pi's canonical `openai-codex` provider and delegates authentication to Pi's built-in `/login` flow.
 
+Account switching is serialized in-process and protected by a private cross-process lock. Osdy Pi accepts only bounded regular auth files, refuses symlink-based auth sources, writes replacements with private permissions, and restores the previous canonical auth and account metadata when activation fails. A separate namespace lock protects concurrent profile creation, rename, and removal. Launchers activate the selected auth before starting Pi while continuing to use the shared agent directory; existing managed-directory links from earlier profile layouts are resolved for compatibility.
+
 ### Rename and permanently remove profiles
 
 Use `osdy-pi account rename <old> <new>` to rename an existing inactive profile. If it was the default, its default selection follows the new name.
@@ -118,9 +134,10 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 | Area | Included behavior |
 | --- | --- |
 | Themes | 14 built-in themes, including Osdy, Kanagawa, Dracula, Catppuccin, Matrix, and Lucent Orange palettes |
-| Header | Selectable `osdy-theme` and `classic` header/mascot styles |
+| Header and mascot | Independently selectable `osdy-theme`/`neon` headers and `current`/`bts` mascots |
+| Messages | Pi-native, theme-aware user and assistant message cards |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
-| Status | Custom working spinner, responsive footer metrics, dynamic extension statuses, and Codex subscription quota |
+| Status | Custom working spinner, responsive footer metrics, dynamic extension statuses, and Codex subscription quota with low-capacity emphasis |
 | Git | Working-tree summary and a centered, filterable diff panel |
 | Audio | Optional event sounds on macOS and Windows |
 
@@ -163,7 +180,16 @@ Or set the theme in Pi's `settings.json`:
 
 ### Header, mascot, and animation
 
-`osdy-theme` is the default header style; `classic` is the alternative. In normal mode, both styles render their full selected header and mascot. The header animation and mascot edge glow resolve through the active theme, so each installed palette supplies its own accents. Use `/osdy-pi osdy-theme` or `/osdy-pi classic`, or their direct aliases `/osdy-pi-osdy-theme` and `/osdy-pi-classic`.
+Header and mascot choices are independent:
+
+| Element | Choices | Command |
+| --- | --- | --- |
+| Header | `osdy-theme` (default), `neon` | `/osdy-pi header osdy-theme|neon` |
+| Mascot | `current` (default), `bts` | `/osdy-pi mascot current|bts` |
+
+Both commands update the UI immediately. Add `status` instead of a choice to inspect the current selection. Choices persist in the global Osdy Pi settings across reloads and sessions. The old top-level style commands and `classic` header aliases are no longer registered.
+
+In normal mode, the selected header and mascot render side by side. The Neon header derives its highlights from the active theme rather than using one fixed palette. Each mascot keeps its own tone map while its animated edge glow can resolve through theme colors. Header and mascot scaling remain independent, so any combination follows the same responsive layout rules.
 
 Animation is enabled by default with an intro animation. Configure it through `OSDY_PI_ANIMATION`:
 
@@ -185,7 +211,7 @@ In the extended framed editor, the active thinking level is rendered in bold in 
 
 Small and compact modes trim only fully empty mascot-art and tone-map margins before applying one proportional width-and-height scale; mascot width starts near four-fifths of the available width. The header moves below the mascot as soon as side-by-side width would force the mascot into an additional width-limited reduction. Compact headers retain their source art when it fits and reduce proportionally only when a width or row bound requires it. Compact headers and mascots share a bounded terminal-row budget, so the header is omitted rather than collapsed into an unreadable one-row logo when there is not enough vertical space. The small-mode footer places the model and styled bare thinking level above usage, path/branch, and dynamic extension statuses. Pi Lens's footer status is hidden in small mode, but Pi Lens continues running. Usage includes input/output/cache-read/cache-write tokens, cost, and context. Extension statuses are supplied dynamically by Pi/extensions and may include Osdy Pi, MCP, or LSP; they are not hardcoded.
 
-The enabled state, editor mode, and working-tree visibility preference persist globally across Pi reloads and sessions, shared by all projects. They are saved in `$PI_CODING_AGENT_DIR/extensions/osdy-pi/settings.json`, or `~/.pi/agent/extensions/osdy-pi/settings.json` when `PI_CODING_AGENT_DIR` is unset. The selected editor mode and working-tree placement are restored when the terminal moves normal → small → normal.
+The enabled state, editor mode, working-tree visibility preference, header, and mascot persist globally across Pi reloads and sessions, shared by all projects. They are saved in `$PI_CODING_AGENT_DIR/extensions/osdy-pi/settings.json`, or `~/.pi/agent/extensions/osdy-pi/settings.json` when `PI_CODING_AGENT_DIR` is unset. Existing settings without the new visual fields safely default to `osdy-theme` and `current`; the former `raccoon` mascot value migrates to `bts`. The selected editor mode and working-tree placement are restored when the terminal moves normal → small → normal.
 
 ## Commands
 
@@ -194,15 +220,14 @@ The enabled state, editor mode, and working-tree visibility preference persist g
 | Main | `/osdy-pi` |
 | Main | `/osdy-pi enable\|disable\|on\|off\|status` |
 | Accounts | `/osdy-account` |
-| Header | `/osdy-pi osdy-theme\|classic` |
+| Header | `/osdy-pi header osdy-theme\|neon\|status` |
+| Mascot | `/osdy-pi mascot current\|bts\|status` |
 | Editor | `/osdy-pi editor auto\|extended\|simple\|on\|off\|toggle\|status` |
 | Working tree | `/osdy-pi working-tree on\|off\|toggle\|status` |
 | Working tree | `/osdy-pi working-tree position top\|bottom\|status` |
 | Audio | `/osdy-pi sound setup` |
 | Diff | `/osdy-pi diff` |
 | Codex subscription | `/usage` |
-| Alias | `/osdy-pi-osdy-theme` |
-| Alias | `/osdy-pi-classic` |
 
 `/osdy-pi` reports status. `enable` (or `on`) applies the Osdy Pi UI without changing the selected Pi theme; `disable` (or `off`) restores the Gentle Shell or Pi UI captured at session startup while preserving that theme. The enabled state, editor mode, working-tree visibility, and sound configuration persist globally.
 
@@ -210,13 +235,19 @@ The enabled state, editor mode, and working-tree visibility preference persist g
 
 Run `/usage` to open the Codex subscription dashboard for the active managed `openai-codex` profile and model. Press `r` to refresh; `esc` or `q` closes it. The dashboard shows these controls at the bottom.
 
-The main windows are labeled **Session** and **Weekly** (the API/domain remains primary/secondary). Their remaining-capacity bars are full at 100% remaining and empty at 0%; labels use the active theme's bold accent, Session uses the accent fill, Weekly uses `mdLink`, and empty segments are muted. A double themed frame, section dividers, and spacing separate the display. Detail cards show each duration and relative, local, and UTC reset times. Plan, availability, credits/reset count, and additional buckets appear only when the service supplies them; absent optional values are omitted.
+The main windows are labeled **Session** and **Weekly** (the API/domain remains primary/secondary). Their remaining-capacity bars are full at 100% remaining and empty at 0%; labels use the active theme's bold accent, Session uses the accent fill, Weekly uses `mdLink`, and empty segments are muted. The remaining percentage stays muted above 40%, changes to the theme's warning color at 40% or less, and changes to its error color at 15% or less. The same thresholds apply in the `/usage` dashboard and compact footer/editor quota bars. A double themed frame, section dividers, and spacing separate the display. Detail cards show each duration and relative, local, and UTC reset times. Plan, availability, credits/reset count, and additional buckets appear only when the service supplies them; absent optional values are omitted.
 
 At wide widths, the modal pairs the Session and Weekly detail cards. Below 72 content columns, cards and bars stack and account/model data wraps. The native footer and extended editor also show compact Session/Weekly remaining-capacity bars below model and thinking metadata whenever a current Codex snapshot exists. Wide widths combine those bars; narrow widths stack them. Additional buckets appear only in `/usage`.
 
 Usage loads once when the session starts and refreshes when the modal opens or `r` is pressed; it does not poll. A refresh clears the previous snapshot before authentication resolves, and shutdown clears state, so quota data cannot cross account or profile boundaries.
 
 > **Privacy:** OAuth is resolved only through Pi's `modelRegistry`. Osdy Pi does not read `auth.json`, persist or log credentials, or display account IDs, tokens, response bodies, or endpoint internals in the UI. Requests use a fixed HTTPS endpoint with bounded timeout, response size, and redirects.
+
+## Native message cards
+
+Osdy Pi delegates conversation rendering to Pi's native message-card components. It does not install a Markdown transformer or inject card markup into assistant responses. This preserves Pi's own streaming, selection, and Markdown behavior while allowing every bundled Osdy theme to style the native cards.
+
+User and assistant cards have separate background, text, and accent tokens. Assistant accents follow each theme's primary accent; user accents are white for a consistent visual distinction. Disabling Osdy Pi continues to restore the underlying Gentle Shell or Pi presentation normally.
 
 ## Editor and working indicator
 
