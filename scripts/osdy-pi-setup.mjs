@@ -1,7 +1,7 @@
 import { access, lstat, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
-import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const MAX_CONFIG_BYTES = 1024 * 1024;
 const GENTLE_COMMIT = "2b579c80824e83442b8ae9f7bfad629a52f9f711";
@@ -140,6 +140,9 @@ export function reconcileSetupSettings(settings) {
 	if (!isRecord(settings)) throw new Error("settings.json must contain an object.");
 	if (settings.packages !== undefined && !Array.isArray(settings.packages))
 		throw new Error("settings.json packages must be an array.");
+	for (const field of ["terminal", "modelThinkingLevels"])
+		if (settings[field] !== undefined && !isRecord(settings[field]))
+			throw new Error(`settings.json ${field} must contain an object.`);
 	const retainedPackages = (settings.packages ?? []).filter(
 		(entry) => !isManagedPackage(entry),
 	);
@@ -227,6 +230,36 @@ async function readConfig(path, label) {
 	return { exists: true, value };
 }
 
+function isWithin(path, root) {
+	const pathFromRoot = relative(root, path);
+	return (
+		pathFromRoot === "" ||
+		(!pathFromRoot.startsWith("..") && !isAbsolute(pathFromRoot))
+	);
+}
+
+async function assertPathAncestorsAreReal(path) {
+	const resolvedPath = resolve(path);
+	const trustedRoot = [resolve(homedir()), resolve(tmpdir())]
+		.filter((root) => isWithin(resolvedPath, root))
+		.sort((left, right) => right.length - left.length)[0];
+	let current = resolvedPath;
+	while (current !== trustedRoot) {
+		try {
+			const stats = await lstat(current);
+			if (stats.isSymbolicLink())
+				throw new Error(
+					`Configuration path must not contain symbolic links: ${current}`,
+				);
+		} catch (error) {
+			if (!isMissing(error)) throw error;
+		}
+		const parent = dirname(current);
+		if (parent === current) break;
+		current = parent;
+	}
+}
+
 async function assertSafeDirectories(paths) {
 	for (const path of paths) {
 		try {
@@ -309,6 +342,7 @@ export async function configureOsdyPiSetup(options = {}) {
 		mcp: join(agentDir, "mcp.json"),
 	};
 
+	await assertPathAncestorsAreReal(agentDir);
 	await assertSafeDirectories([
 		agentDir,
 		join(agentDir, "extensions"),

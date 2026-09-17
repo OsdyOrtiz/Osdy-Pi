@@ -4,6 +4,7 @@ import {
 	mkdir,
 	mkdtemp,
 	readFile,
+	realpath,
 	symlink,
 	writeFile,
 } from "node:fs/promises";
@@ -158,6 +159,43 @@ test("refuses a symlinked configuration directory before any write", async () =>
 		/Configuration directory must not be a symbolic link/,
 	);
 	assert.equal(await readFile(join(agentDir, "settings.json"), "utf8"), original);
+});
+
+test("refuses an agent directory reached through a symlinked ancestor", async () => {
+	const temporary = await mkdtemp(join(tmpdir(), "osdy-pi-setup-"));
+	const root = await realpath(temporary);
+	const outside = join(root, "outside");
+	const linkedParent = join(root, "linked-parent");
+	const agentDir = join(linkedParent, "agent");
+	await mkdir(join(outside, "agent"), { recursive: true });
+	await symlink(outside, linkedParent);
+
+	await assert.rejects(
+		configureOsdyPiSetup({ agentDir }),
+		/Configuration path must not contain symbolic links/,
+	);
+	await assert.rejects(lstat(join(agentDir, "settings.json")), /ENOENT/);
+});
+
+test("rejects incompatible nested settings before mutation", async () => {
+	for (const [field, value] of [
+		["terminal", "fullscreen"],
+		["modelThinkingLevels", []],
+	]) {
+		const temporary = await mkdtemp(join(tmpdir(), "osdy-pi-setup-"));
+		const root = await realpath(temporary);
+		const agentDir = join(root, "agent");
+		await mkdir(agentDir, { recursive: true });
+		const settingsPath = join(agentDir, "settings.json");
+		const original = `${JSON.stringify({ quietStartup: true, [field]: value })}\n`;
+		await writeFile(settingsPath, original);
+
+		await assert.rejects(
+			configureOsdyPiSetup({ agentDir }),
+			new RegExp(`settings\\.json ${field} must contain an object`),
+		);
+		assert.equal(await readFile(settingsPath, "utf8"), original);
+	}
 });
 
 test("optional MCP setup preserves unrelated servers and reports prerequisites", async () => {
