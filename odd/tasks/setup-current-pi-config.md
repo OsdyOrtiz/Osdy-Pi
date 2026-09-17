@@ -55,8 +55,8 @@ A single setup command should make Osdy Pi reproducible without leaking credenti
 - [ ] **OSDY-SETUP-2 — Implement setup service and CLI dispatch**
   - Add `scripts/osdy-pi-setup.mjs` and wire `osdy-pi setup` through `bin/osdy-pi.mjs`.
   - Update the package allowlist for the new runtime script.
-  - Correction required: reject symlinked ancestors of an existing agent directory and reject incompatible `terminal` or `modelThinkingLevels` shapes before any write.
-  - Check: focused setup and CLI tests pass, including new regression coverage.
+  - Correction required: reject symlinked ancestors of an existing agent directory, including an environment-derived `homedir()` or `tmpdir()` boundary, and reject incompatible `terminal` or `modelThinkingLevels` shapes before any write.
+  - Check: focused setup and CLI tests pass, including a symlinked trusted-root boundary regression.
 - [x] **OSDY-SETUP-3 — Document exact-clone behavior and exclusions**
   - Document the command, package/resource coverage, privacy exclusions, optional MCP prerequisites, `/login`, and `/reload`/restart behavior.
   - Check: independent readback confirmed documentation matches command coverage and packaged files.
@@ -85,6 +85,8 @@ A single setup command should make Osdy Pi reproducible without leaking credenti
 - User selected `feature-branch-chain` for any future delivery slicing.
 - Initial implementation completed in commits `f6c978b` and `dee61bc`.
 - Independent verification reproduced two medium defects: writes through a symlinked ancestor and destructive acceptance of incompatible nested settings shapes.
+- Commit `9b259eb` fixed ordinary symlink ancestors and incompatible nested settings without byte mutation.
+- Correction re-verification found the ancestor walk skipped its environment-derived trusted-root boundary; a symlinked `TMPDIR` still permits redirected writes, so criterion 5 remains open.
 - A low-severity Windows `PATHEXT` warning remains optional because it affects prerequisite warning accuracy rather than core safety or acceptance.
 
 ## Verification Evidence
@@ -93,9 +95,10 @@ A single setup command should make Osdy Pi reproducible without leaking credenti
 - Initial full suite: 161 passed, 0 failed.
 - Typecheck, lint, package dry-run, diff check, and LSP diagnostics passed.
 - Independent verifier confirmed acceptance criteria 1-4 and 6-8.
-- Acceptance criterion 5 failed and requires correction before closure.
+- Acceptance criterion 5 failed twice and still requires the trusted-root boundary correction before closure.
+- Parent spot check after `9b259eb`: focused suite passed 10/10 and LSP reported zero diagnostics.
 - Native assessment was unavailable because the package-local Gentle AI v3.1.0 binary is missing; the candidate was conservatively treated as high risk and independently verified.
 
 ## Next Step
 
-Delegate the two criterion-5 regression fixes, require observed RED/GREEN evidence, then rerun independent verification and the parent spot check.
+Delegate the trusted-root boundary regression fix with observed RED/GREEN evidence, then rerun independent verification and the parent spot check.
