@@ -40,6 +40,35 @@ pi
 
 `pi install` installs Osdy Pi's extension resources. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
 
+## Reproduce the current portable setup
+
+After installing Osdy Pi, configure the same portable package, model, UI, and subagent-routing preset used by the current Osdy workspace:
+
+```bash
+osdy-pi setup
+```
+
+The command updates `$PI_CODING_AGENT_DIR`, or `~/.pi/agent` when that variable is unset. It preserves unrelated settings and package entries, normalizes Osdy's managed entries to deterministic versions, and configures:
+
+- Osdy Pi, Gentle Pi, Engram, Intercom, Ask User Question, Web Access, Pi Lens, BTW, Open Pets, Playwright, and the MCP adapter;
+- the OpenAI Codex model/thinking defaults, fullscreen terminal preferences, and Tokyo Night theme;
+- the current Gentle subagent model routing; and
+- safe Osdy UI preferences with the extended editor enabled.
+
+Pi installs missing configured package sources on its next start. Run `/login` to authenticate, then restart Pi or run `/reload` to activate the resources. Re-running `osdy-pi setup` is idempotent.
+
+MCP servers are opt-in:
+
+```bash
+osdy-pi setup --with-mcp
+```
+
+This adds credential-free definitions for CodeGraph, Context7, and Engram while preserving unrelated MCP servers. It warns when the `codegraph`, `npx`, or `engram` command is unavailable; install those prerequisites separately before using the corresponding server.
+
+The setup command intentionally never reads or copies authentication, sessions, trust decisions, caches, account profiles or selections, installed `node_modules`, generated host extensions, Gentle task history, Intercom state, or Pi Pretty history. It also does not create audio notification settings because sound files use machine-local absolute paths. Existing private/runtime files in the target agent directory are left untouched.
+
+Configuration files must be regular files beneath real directories. Setup refuses symbolic-link targets, malformed JSON, and incompatible object shapes before writing the preset.
+
 ## Gentle coexistence setup
 
 To persistently load a local Gentle checkout while keeping Osdy Pi's UI authoritative, run:
