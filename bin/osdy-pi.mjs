@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { configureGentleCoexistence } from "../scripts/osdy-pi-gentle-coexistence.mjs";
+import { configureOsdyPiSetup } from "../scripts/osdy-pi-setup.mjs";
 import {
 	clearDefaultAccount,
 	ensureProfileLayout,
@@ -26,13 +27,13 @@ function writeStderr(message) {
 
 function printUsage() {
 	writeStderr(
-		"Usage: osdy-pi gentle setup <absolute-source-path> | account list | create <name> | add <name> | rename <old> <new> | remove <name> --confirm <name> [--replacement <other>] | use <name> [-- <pi args...] | default [<name> | --clear]",
+		"Usage: osdy-pi setup [--with-mcp] | gentle setup <absolute-source-path> | account list | create <name> | add <name> | rename <old> <new> | remove <name> --confirm <name> [--replacement <other>] | use <name> [-- <pi args...] | default [<name> | --clear]",
 	);
 }
 
 function boundedMessage(error) {
 	const message =
-		error instanceof Error ? error.message : "Unable to manage Osdy Pi accounts.";
+		error instanceof Error ? error.message : "Unable to run the Osdy Pi command.";
 	return message.slice(0, 240);
 }
 
@@ -66,7 +67,18 @@ function startPi(plan) {
 
 try {
 	const args = process.argv.slice(2);
-	if (args[0] === "gentle") {
+	if (args[0] === "setup") {
+		if (args.length > 2 || (args.length === 2 && args[1] !== "--with-mcp"))
+			throw new Error("Usage: osdy-pi setup [--with-mcp]");
+		const result = await configureOsdyPiSetup({
+			withMcp: args[1] === "--with-mcp",
+		});
+		writeStdout(`Portable Osdy Pi setup ${result.status}.`);
+		for (const warning of result.warnings) writeStderr(`Warning: ${warning}`);
+		writeStdout(
+			"Run /login to authenticate, then restart Pi or run /reload to apply the configuration.",
+		);
+	} else if (args[0] === "gentle") {
 		if (args[1] !== "setup" || args.length !== 3)
 			throw new Error("Usage: osdy-pi gentle setup <absolute-source-path>");
 		const result = await configureGentleCoexistence(args[2]);

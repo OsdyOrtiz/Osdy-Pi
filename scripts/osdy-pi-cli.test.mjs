@@ -17,6 +17,26 @@ async function createGentleSource(root) {
 	return source;
 }
 
+test("setup configures the portable preset and prints next steps", async () => {
+	const root = await mkdtemp(join(tmpdir(), "osdy-pi-cli-"));
+	const agentDir = join(root, "agent");
+	const result = spawnSync(
+		process.execPath,
+		[resolve("bin/osdy-pi.mjs"), "setup"],
+		{ encoding: "utf8", env: { ...process.env, PI_CODING_AGENT_DIR: agentDir } },
+	);
+
+	assert.equal(result.status, 0, result.stderr);
+	assert.match(result.stdout, /Portable Osdy Pi setup configured/);
+	assert.match(result.stdout, /Run \/login/);
+	assert.match(result.stdout, /restart Pi or run \/reload/i);
+	const settings = JSON.parse(
+		await readFile(join(agentDir, "settings.json"), "utf8"),
+	);
+	assert.ok(settings.packages.includes("npm:pi-lens@4.2.0"));
+	await assert.rejects(readFile(join(agentDir, "auth.json"), "utf8"), /ENOENT/);
+});
+
 test("gentle setup configures the PI_CODING_AGENT_DIR settings file", async () => {
 	const root = await mkdtemp(join(tmpdir(), "osdy-pi-cli-"));
 	const source = await createGentleSource(root);
