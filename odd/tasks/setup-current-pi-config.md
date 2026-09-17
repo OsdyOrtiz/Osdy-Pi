@@ -52,19 +52,19 @@ A single setup command should make Osdy Pi reproducible without leaking credenti
   - Add tests for deterministic package normalization, preservation of unrelated settings, safe defaults, excluded private state, malformed input, symlink refusal, idempotence, and optional MCP behavior.
   - Check: focused setup tests failed first with the expected missing module, missing CLI dispatch, and partial-mutation symlink cases.
   - Evidence: commit `f6c978b` and recorded RED runs from the bounded writer.
-- [x] **OSDY-SETUP-2 — Implement setup service and CLI dispatch**
-  - Added `scripts/osdy-pi-setup.mjs`, wired `osdy-pi setup` through `bin/osdy-pi.mjs`, and updated the package allowlist.
-  - Rejects symlinked targets, directories, ordinary ancestors, and environment-derived `homedir()`/`tmpdir()` boundaries before mutation.
-  - Rejects incompatible `terminal` or `modelThinkingLevels` shapes without changing existing bytes.
-  - Evidence: commits `f6c978b`, `9b259eb`, and `35b8c0b`; focused suite passed 11/11 after observed RED regressions.
+- [ ] **OSDY-SETUP-2 — Implement setup service and CLI dispatch**
+  - Add `scripts/osdy-pi-setup.mjs` and wire `osdy-pi setup` through `bin/osdy-pi.mjs`.
+  - Update the package allowlist for the new runtime script.
+  - Correction required: reject symlinked ancestors of an existing agent directory, including an environment-derived `homedir()` or `tmpdir()` boundary, and reject incompatible `terminal` or `modelThinkingLevels` shapes before any write.
+  - Check: focused setup and CLI tests pass, including a symlinked trusted-root boundary regression.
 - [x] **OSDY-SETUP-3 — Document exact-clone behavior and exclusions**
   - Document the command, package/resource coverage, privacy exclusions, optional MCP prerequisites, `/login`, and `/reload`/restart behavior.
   - Check: independent readback confirmed documentation matches command coverage and packaged files.
   - Evidence: commit `dee61bc`.
-- [x] **OSDY-SETUP-4 — Verify the complete feature**
-  - Independent verification ran focused tests, typecheck, lint, the full test suite, and package dry-run.
-  - Packed files and the feature diff contain no secret/private state or absolute user paths.
-  - Evidence: 11/11 focused tests, 164/164 full tests, clean typecheck/lint/package dry-run/diff check, zero LSP diagnostics, and all eight acceptance criteria independently confirmed.
+- [ ] **OSDY-SETUP-4 — Verify the complete feature**
+  - Run `npm run typecheck`, `npm run lint`, and `npm test`.
+  - Inspect the packed file list and ensure no secret/private files or absolute user paths are present.
+  - Check: rerun all required verification after the OSDY-SETUP-2 correction; criterion 5 is currently unmet.
 
 ## Acceptance Criteria
 
@@ -86,8 +86,7 @@ A single setup command should make Osdy Pi reproducible without leaking credenti
 - Initial implementation completed in commits `f6c978b` and `dee61bc`.
 - Independent verification reproduced two medium defects: writes through a symlinked ancestor and destructive acceptance of incompatible nested settings shapes.
 - Commit `9b259eb` fixed ordinary symlink ancestors and incompatible nested settings without byte mutation.
-- Correction re-verification found the ancestor walk skipped its environment-derived trusted-root boundary; commit `35b8c0b` added the missing boundary validation and regression coverage.
-- Final independent reproduction confirmed the former `TMPDIR` bypass, ordinary symlink ancestor case, and incompatible nested shapes all reject without mutation.
+- Correction re-verification found the ancestor walk skipped its environment-derived trusted-root boundary; a symlinked `TMPDIR` still permits redirected writes, so criterion 5 remains open.
 - A low-severity Windows `PATHEXT` warning remains optional because it affects prerequisite warning accuracy rather than core safety or acceptance.
 
 ## Verification Evidence
@@ -96,11 +95,10 @@ A single setup command should make Osdy Pi reproducible without leaking credenti
 - Initial full suite: 161 passed, 0 failed.
 - Typecheck, lint, package dry-run, diff check, and LSP diagnostics passed.
 - Independent verifier confirmed acceptance criteria 1-4 and 6-8.
-- Parent spot checks passed after both corrections: focused suite reached 11/11 and LSP reported zero diagnostics.
-- Final independent verification passed 11/11 focused tests, 164/164 full tests, typecheck, lint, `npm pack --dry-run`, and `git diff --check`.
-- All eight acceptance criteria are met; the independent verifier recommended approval and closure.
+- Acceptance criterion 5 failed twice and still requires the trusted-root boundary correction before closure.
+- Parent spot check after `9b259eb`: focused suite passed 10/10 and LSP reported zero diagnostics.
 - Native assessment was unavailable because the package-local Gentle AI v3.1.0 binary is missing; the candidate was conservatively treated as high risk and independently verified.
 
 ## Next Step
 
-Feature implementation is complete on `feat/setup-current-pi-config`. Push, pull request creation, release/version bump, and merge remain user decisions. When releasing a new package version, update the preset's pinned `npm:osdy-pi` version in the same release work unit.
+Delegate the trusted-root boundary regression fix with observed RED/GREEN evidence, then rerun independent verification and the parent spot check.
