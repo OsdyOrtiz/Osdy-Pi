@@ -48,20 +48,23 @@ A single setup command should make Osdy Pi reproducible without leaking credenti
 
 ## Tasks
 
-- [ ] **OSDY-SETUP-1 — Specify safe preset reconciliation with failing tests**
+- [x] **OSDY-SETUP-1 — Specify safe preset reconciliation with failing tests**
   - Add tests for deterministic package normalization, preservation of unrelated settings, safe defaults, excluded private state, malformed input, symlink refusal, idempotence, and optional MCP behavior.
-  - Check: focused setup tests fail for the expected missing implementation.
+  - Check: focused setup tests failed first with the expected missing module, missing CLI dispatch, and partial-mutation symlink cases.
+  - Evidence: commit `f6c978b` and recorded RED runs from the bounded writer.
 - [ ] **OSDY-SETUP-2 — Implement setup service and CLI dispatch**
   - Add `scripts/osdy-pi-setup.mjs` and wire `osdy-pi setup` through `bin/osdy-pi.mjs`.
   - Update the package allowlist for the new runtime script.
-  - Check: focused setup and CLI tests pass.
-- [ ] **OSDY-SETUP-3 — Document exact-clone behavior and exclusions**
+  - Correction required: reject symlinked ancestors of an existing agent directory and reject incompatible `terminal` or `modelThinkingLevels` shapes before any write.
+  - Check: focused setup and CLI tests pass, including new regression coverage.
+- [x] **OSDY-SETUP-3 — Document exact-clone behavior and exclusions**
   - Document the command, package/resource coverage, privacy exclusions, optional MCP prerequisites, `/login`, and `/reload`/restart behavior.
-  - Check: documentation matches observed command output and packaged files.
+  - Check: independent readback confirmed documentation matches command coverage and packaged files.
+  - Evidence: commit `dee61bc`.
 - [ ] **OSDY-SETUP-4 — Verify the complete feature**
   - Run `npm run typecheck`, `npm run lint`, and `npm test`.
   - Inspect the packed file list and ensure no secret/private files or absolute user paths are present.
-  - Check: all required verification passes or exact environmental failures are recorded.
+  - Check: rerun all required verification after the OSDY-SETUP-2 correction; criterion 5 is currently unmet.
 
 ## Acceptance Criteria
 
@@ -80,12 +83,19 @@ A single setup command should make Osdy Pi reproducible without leaking credenti
 - User selected an exact local configuration clone while explicitly excluding credentials and private state.
 - User authorized a feature branch and local Conventional Commit work-unit commits; push and PR creation remain unauthorized.
 - User selected `feature-branch-chain` for any future delivery slicing.
-- No source implementation has started.
+- Initial implementation completed in commits `f6c978b` and `dee61bc`.
+- Independent verification reproduced two medium defects: writes through a symlinked ancestor and destructive acceptance of incompatible nested settings shapes.
+- A low-severity Windows `PATHEXT` warning remains optional because it affects prerequisite warning accuracy rather than core safety or acceptance.
 
 ## Verification Evidence
 
-- Pending.
+- Initial focused suite: 8 passed, 0 failed.
+- Initial full suite: 161 passed, 0 failed.
+- Typecheck, lint, package dry-run, diff check, and LSP diagnostics passed.
+- Independent verifier confirmed acceptance criteria 1-4 and 6-8.
+- Acceptance criterion 5 failed and requires correction before closure.
+- Native assessment was unavailable because the package-local Gentle AI v3.1.0 binary is missing; the candidate was conservatively treated as high risk and independently verified.
 
 ## Next Step
 
-Delegate the bounded TDD implementation to one writer using this document as the task authority.
+Delegate the two criterion-5 regression fixes, require observed RED/GREEN evidence, then rerun independent verification and the parent spot check.
