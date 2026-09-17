@@ -890,14 +890,12 @@ void test("fits ANSI-colored compact quota bars at very narrow widths without lo
 	assert.ok(stripSgr(lines[1] ?? "").includes("7d 29% left"));
 });
 
-void test("colors displayed remaining-percent boundaries across compact, ready, and modal quota lines", () => {
+void test("colors quota bar fill boundaries while keeping percentages muted across compact, ready, and modal lines", () => {
 	const boundaries = [
-		{ usedPercent: 59, remaining: 41, role: "muted" },
+		{ usedPercent: 59, remaining: 41, role: "accent" },
 		{ usedPercent: 60, remaining: 40, role: "warning" },
 		{ usedPercent: 84, remaining: 16, role: "warning" },
 		{ usedPercent: 85, remaining: 15, role: "error" },
-		{ usedPercent: 99, remaining: 1, role: "error" },
-		{ usedPercent: 100, remaining: 0, role: "error" },
 	] as const;
 	const theme = {
 		fg: (name: string, text: string): string => `[${name}:${text}]`,
@@ -917,18 +915,19 @@ void test("colors displayed remaining-percent boundaries across compact, ready, 
 			credits: undefined,
 			fetchedAt: 0,
 		};
-		const expected = `[${role}:${remaining}% left]`;
-		assert.ok(renderCompactCodexQuotaBars(theme, snapshot, 80).join("\n").includes(expected));
-		assert.ok(renderCodexUsageReadyLines(theme, snapshot, 0).join("\n").includes(expected));
-		assert.ok(
-			renderCodexUsageDashboardLines(theme, snapshot, {}, 0, 100)
-				.join("\n")
-				.includes(expected),
-		);
+		const outputs = [
+			renderCompactCodexQuotaBars(theme, snapshot, 80).join("\n"),
+			renderCodexUsageReadyLines(theme, snapshot, 0).join("\n"),
+			renderCodexUsageDashboardLines(theme, snapshot, {}, 0, 100).join("\n"),
+		];
+		for (const output of outputs) {
+			assert.ok(output.includes(`[muted:${remaining}% left]`));
+			assert.ok(output.includes(`[${role}:█`));
+		}
 	}
 });
 
-void test("uses window-bound theme colors for modal and compact quota labels and bars", () => {
+void test("uses theme bar colors at normal quota levels in modal and compact output", () => {
 	const calls: Array<{ name: string; text: string }> = [];
 	const theme = {
 		fg: (name: string, text: string): string => {
@@ -995,7 +994,7 @@ void test("uses window-bound theme colors for modal and compact quota labels and
 	);
 });
 
-void test("renders Session and Weekly labels bold accent while preserving their modal and compact bar colors", () => {
+void test("renders Session and Weekly labels bold accent while preserving normal theme bar colors", () => {
 	const theme = {
 		fg: (name: string, text: string): string =>
 			`\u001B[${name === "accent" ? 36 : name === "mdLink" ? 35 : 90}m${text}\u001B[0m`,

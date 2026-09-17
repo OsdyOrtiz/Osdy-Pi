@@ -81,10 +81,7 @@ function themedRemainingPercent(
 	theme: SimpleTheme,
 	usedPercent: number,
 ): string {
-	return theme.fg(
-		remainingPercentTheme(usedPercent),
-		formatRemainingPercent(usedPercent),
-	);
+	return theme.fg("muted", formatRemainingPercent(usedPercent));
 }
 
 function formatResetRelative(resetAt: number, now: number): string {
@@ -224,7 +221,7 @@ function progress(
 	theme: SimpleTheme,
 	window: CodexUsageWindow,
 	width = 10,
-	fillTheme: "accent" | "mdLink" = "accent",
+	normalFillTheme: "accent" | "mdLink" = "accent",
 ): string {
 	const barWidth = Math.max(0, Math.round(width));
 	const remainingPercent = Number.isFinite(window.usedPercent)
@@ -234,6 +231,9 @@ function progress(
 		0,
 		Math.min(barWidth, Math.round((remainingPercent / 100) * barWidth)),
 	);
+	const thresholdTheme = remainingPercentTheme(window.usedPercent);
+	const fillTheme =
+		thresholdTheme === "muted" ? normalFillTheme : thresholdTheme;
 	return `${theme.fg(fillTheme, "█".repeat(filled))}${theme.fg("muted", "░".repeat(barWidth - filled))}`;
 }
 
