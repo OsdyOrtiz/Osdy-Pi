@@ -25,7 +25,6 @@
 		"bin",
 		"scripts/osdy-pi-account-profiles.mjs",
 		"scripts/osdy-pi-gentle-coexistence.mjs",
-		"scripts/osdy-pi-setup.mjs",
 		"themes",
 		"extensions",
 		"mapche1.png"
