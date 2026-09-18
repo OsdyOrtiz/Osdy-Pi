@@ -4,45 +4,88 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 <img width="1857" height="847" alt="Osdy Pi interface" src="https://github.com/user-attachments/assets/028eeb14-3f43-4f1c-9603-0c55a8d2856d" />
 
-## Changes in this branch
+## Release highlights
 
-Compared with `main`, this branch adds five user-facing improvements:
-
-| Area | What changed |
+| Area | What ships |
 | --- | --- |
-| Message cards | Osdy Pi now uses Pi's native user and assistant message cards instead of rewriting assistant Markdown. Every bundled theme defines native card backgrounds, text colors, and accent stripes; assistant stripes follow the theme accent and user stripes are white. |
-| Header | The former `classic` header is replaced by a theme-aware `neon` header. Header selection now uses `/osdy-pi header ...`, updates immediately, and persists across reloads and sessions. |
-| Mascot | A selectable `bts` mascot joins the existing `current` mascot. Mascot selection is independent from the header, responsive at every supported terminal size, and persisted globally. |
-| Accounts | `/osdy-account` switches Codex profiles in place without restarting Pi. Profile names preserve ASCII casing but remain case-insensitive for identity, and account activation now uses atomic copies, rollback, bounded auth files, and process-safe locks. |
-| Quota | Remaining Codex quota percentages are emphasized in both `/usage` and compact footer/editor bars: warning at 40% or less, error at 15% or less. |
+| Message cards | Pi-native, theme-aware user and assistant cards; assistant accents follow the theme and user accents are white. |
+| Header and mascot | A theme-aware `neon` header and selectable `bts` mascot, both responsive and persisted independently. |
+| Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
+| Quota | `/usage` and compact bars emphasize remaining Codex quota at warning (40% or less) and error (15% or less) thresholds. |
 
-The branch also expands regression coverage for native card theme tokens, responsive Neon/Bts rendering, persisted visual choices, in-place account activation and rollback, profile concurrency, launcher behavior, and quota thresholds.
+## Prerequisites
+
+- [Pi](https://github.com/earendil-works/pi)
+- Node.js **22.19.0 or later**
+- Git, for Osdy Pi's working-tree and diff features (and for Git-based installs)
 
 ## Quick start
 
-Install from npm:
+1. Install Osdy Pi from npm:
+
+   ```bash
+   pi install npm:osdy-pi
+   ```
+
+   Or install directly from GitHub:
+
+   ```bash
+   pi install git:github.com/OsdyOrtiz/Osdy-Pi
+   ```
+
+2. Start Pi:
+
+   ```bash
+   pi
+   ```
+
+Osdy Pi's own extension and all **14 themes** are bundled with this installation—do not install them separately. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
+
+## Optional: complete Osdy Pi suite
+
+Add these maintained extensions after installing Osdy Pi. They are optional; each extends Pi independently.
+
+| Package | Purpose |
+| --- | --- |
+| `gentle-engram` | Persistent memory shared across sessions, compactions, and MCP agents. |
+| `pi-intercom` | Brokered communication between Pi agents and sessions. |
+| `@juicesharp/rpiv-ask-user-question` | Structured, typed questionnaires when an agent needs clarification. |
+| `pi-web-access` | Web search and URL fetching, plus repository, PDF, YouTube, and local-video analysis. |
+| `pi-lens` | Real-time code feedback through LSP, linters, formatters, type checking, and structural analysis. |
+| `pi-btw` | Parallel side conversations through `/btw`. |
+| `@open-pets/pi` | OpenPets integration for Pi. |
+| `pi-playwright` | Playwright browser-automation skills. |
+| `pi-mcp-adapter` | MCP server and tool adapter for Pi. |
+| `pi-subagents-j0k3r` | Markdown-defined subagents, delegation tools, history, and model profiles. |
+| `@juicesharp/rpiv-todo` | A persistent live todo overlay for the agent. |
+| `gentle-pi` | The Gentle senior-architect harness, with SDD/OpenSpec, subagents, TDD evidence, and skills. |
+
+Install the ordinary npm packages once:
 
 ```bash
-pi install npm:osdy-pi
+pi install npm:gentle-engram
+pi install npm:pi-intercom
+pi install npm:@juicesharp/rpiv-ask-user-question
+pi install npm:pi-web-access
+pi install npm:pi-lens
+pi install npm:pi-btw
+pi install npm:@open-pets/pi
+pi install npm:pi-playwright
+pi install npm:pi-mcp-adapter
+pi install npm:pi-subagents-j0k3r
+pi install npm:@juicesharp/rpiv-todo
 ```
 
-Or install directly from GitHub:
+`gentle-pi` is deliberately not included in that package-install block: clone and register it through the coexistence setup below, which applies Osdy-specific exclusions instead of adding a duplicate ordinary package entry.
 
 ```bash
-pi install git:github.com/OsdyOrtiz/Osdy-Pi
+git clone https://github.com/Gentleman-Programming/gentle-pi.git
+osdy-pi gentle setup "$(pwd)/gentle-pi"
 ```
-
-Start Pi normally:
-
-```bash
-pi
-```
-
-`pi install` installs Osdy Pi's extension resources. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
 
 ## Gentle coexistence setup
 
-To persistently load a local Gentle checkout while keeping Osdy Pi's UI authoritative, run:
+To load a local `gentle-pi` checkout while keeping Osdy Pi's UI authoritative, run:
 
 ```bash
 osdy-pi gentle setup /absolute/path/to/gentle-pi
@@ -52,7 +95,7 @@ The command validates that the absolute source is a readable `gentle-pi` package
 
 Gentle Shell intentionally remains fully active underneath Osdy, including its footer and widgets. While Osdy is enabled, Osdy claims the footer and editor; disabling Osdy restores the editor Gentle Shell provided at session startup. Gentle's changes widget may coexist with Osdy's visual widgets.
 
-This intentionally leaves `pi-subagents-j0k3r`, `@juicesharp/rpiv-todo`, and `@juicesharp/rpiv-ask-user-question` package entries untouched, so their external todo, subagent, and question plugins remain authoritative.
+The exclusions prevent Gentle's todo and agents extensions from competing with the suite. `@juicesharp/rpiv-todo` remains the authoritative todo overlay, `pi-subagents-j0k3r` remains the authoritative subagent system, and `@juicesharp/rpiv-ask-user-question` remains the authoritative structured-question plugin; their package entries are left untouched.
 
 ## OpenAI account profiles
 
@@ -275,7 +318,7 @@ Use `working-tree position top` or `bottom` to place the summary above or below 
 
 ## Audio notifications
 
-Osdy Pi can play readable `.mp3` or `.wav` files on macOS and Windows. Other platforms safely skip playback.
+Osdy Pi can play readable `.mp3` or `.wav` files on macOS and Windows. Other platforms safely skip playback. macOS playback requires the system `afplay` command; Windows playback requires `powershell.exe` and the Windows Media Player COM component (`WMPlayer.OCX`).
 
 | Event | Current meaning |
 | --- | --- |
@@ -308,16 +351,22 @@ Precedence is startup flag, then saved global setting, then unconfigured. Empty 
 
 For the normal in-Pi development flow, no global `osdy-pi` link is required:
 
-1. Start the local extension:
+1. Install the checkout's dependencies:
+
+   ```bash
+   npm install
+   ```
+
+2. Start the local extension:
 
    ```bash
    npm run pi:dev
    ```
 
-2. Inside Pi, run `/osdy-account`.
-3. Choose **Add**, enter a profile name, then choose **Switch** and select it.
-4. Without restarting, run `/login` and choose **ChatGPT Plus/Pro (Codex)**.
-5. From then on, `npm run pi:dev` starts the default profile automatically. Use `/osdy-account` for every profile-management action.
+3. Inside Pi, run `/osdy-account`.
+4. Choose **Add**, enter a profile name, then choose **Switch** and select it.
+5. Without restarting, run `/login` and choose **ChatGPT Plus/Pro (Codex)**.
+6. From then on, `npm run pi:dev` starts the default profile automatically. Use `/osdy-account` for every profile-management action.
 
 The terminal interface remains available for recovery and automated testing:
 
