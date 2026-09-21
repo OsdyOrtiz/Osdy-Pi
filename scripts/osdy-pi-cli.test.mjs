@@ -10,7 +10,12 @@ async function createGentleSource(root) {
 	await mkdir(join(source, "extensions"), { recursive: true });
 	await writeFile(join(source, "package.json"), '{"name":"gentle-pi"}\n');
 	await Promise.all(
-		["gentle-shell.ts", "gentle-todo.ts", "gentle-agents.ts"].map((name) =>
+		[
+			"gentle-shell.ts",
+			"gentle-todo.ts",
+			"ask-user-question.ts",
+			"gentle-agents.ts",
+		].map((name) =>
 			writeFile(join(source, "extensions", name), "export {};\n"),
 		),
 	);
@@ -32,5 +37,9 @@ test("gentle setup configures the PI_CODING_AGENT_DIR settings file", async () =
 	const settings = JSON.parse(
 		await readFile(join(agentDir, "settings.json"), "utf8"),
 	);
-	assert.equal(settings.packages.at(-1).source, source);
+	assert.equal(settings.packages.at(-3).source, source);
+	assert.deepEqual(settings.packages.slice(-2), [
+		"npm:@juicesharp/rpiv-ask-user-question",
+		"npm:pi-subagents-j0k3r",
+	]);
 });

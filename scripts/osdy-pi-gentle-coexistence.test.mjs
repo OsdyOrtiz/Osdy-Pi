@@ -9,7 +9,15 @@ import {
 	reconcileGentlePackages,
 } from "./osdy-pi-gentle-coexistence.mjs";
 
-const REQUIRED_EXTENSIONS = ["gentle-todo.ts", "gentle-agents.ts"];
+const REQUIRED_EXTENSIONS = [
+	"gentle-todo.ts",
+	"ask-user-question.ts",
+	"gentle-agents.ts",
+];
+const OSDY_ONLY_PACKAGES = [
+	"npm:@juicesharp/rpiv-ask-user-question",
+	"npm:pi-subagents-j0k3r",
+];
 
 async function createGentleSource(root) {
 	const source = join(root, "gentle-pi");
@@ -33,12 +41,13 @@ test("reconciles Gentle before the first Osdy package while preserving unrelated
 		{
 			theme: "osdy-pi-dark",
 			packages: [
-				"npm:pi-subagents-j0k3r",
+				"npm:PI-SUBAGENTS-J0K3R",
 				"npm:gentle-pi@2.5.0",
 				{ source: "npm:gentle-pi@2.5.0" },
 				{ source, extensions: ["extensions/gentle-shell.ts"] },
 				"npm:@juicesharp/rpiv-todo",
 				"GIT:github.com/OsdyOrtiz/Osdy-Pi",
+				"npm:@juicesharp/rpiv-ask-user-question",
 				"npm:@juicesharp/rpiv-ask-user-question",
 				{ source: "npm:OSDY-PI@1.2.0" },
 			],
@@ -50,15 +59,18 @@ test("reconciles Gentle before the first Osdy package while preserving unrelated
 	assert.deepEqual(result.settings, {
 		theme: "osdy-pi-dark",
 		packages: [
-			"npm:pi-subagents-j0k3r",
 			"npm:@juicesharp/rpiv-todo",
 			{
 				source,
-				extensions: ["-extensions/gentle-todo.ts", "-extensions/gentle-agents.ts"],
+				extensions: [
+					"-extensions/gentle-todo.ts",
+					"-extensions/ask-user-question.ts",
+					"-extensions/gentle-agents.ts",
+				],
 				themes: [],
 			},
+			...OSDY_ONLY_PACKAGES,
 			"GIT:github.com/OsdyOrtiz/Osdy-Pi",
-			"npm:@juicesharp/rpiv-ask-user-question",
 			{ source: "npm:OSDY-PI@1.2.0" },
 		],
 	});
@@ -72,12 +84,16 @@ test("places Gentle before a case-insensitive npm Osdy package", () => {
 	);
 
 	assert.deepEqual(result.settings.packages, [
-		"npm:pi-subagents-j0k3r",
 		{
 			source,
-			extensions: ["-extensions/gentle-todo.ts", "-extensions/gentle-agents.ts"],
+			extensions: [
+				"-extensions/gentle-todo.ts",
+				"-extensions/ask-user-question.ts",
+				"-extensions/gentle-agents.ts",
+			],
 			themes: [],
 		},
+		...OSDY_ONLY_PACKAGES,
 		"NPM:OSDY-PI@1.2.0",
 	]);
 });
@@ -90,12 +106,16 @@ test("appends Gentle when no Osdy package is configured", () => {
 	);
 
 	assert.deepEqual(result.settings.packages, [
-		"npm:pi-subagents-j0k3r",
 		{
 			source,
-			extensions: ["-extensions/gentle-todo.ts", "-extensions/gentle-agents.ts"],
+			extensions: [
+				"-extensions/gentle-todo.ts",
+				"-extensions/ask-user-question.ts",
+				"-extensions/gentle-agents.ts",
+			],
 			themes: [],
 		},
+		...OSDY_ONLY_PACKAGES,
 	]);
 });
 
@@ -103,12 +123,16 @@ test("does not require a rewrite when settings are already canonical", () => {
 	const source = "/absolute/gentle-pi";
 	const settings = {
 		packages: [
-			"npm:pi-subagents-j0k3r",
 			{
 				source,
-				extensions: ["-extensions/gentle-todo.ts", "-extensions/gentle-agents.ts"],
+				extensions: [
+					"-extensions/gentle-todo.ts",
+					"-extensions/ask-user-question.ts",
+					"-extensions/gentle-agents.ts",
+				],
 				themes: [],
 			},
+			...OSDY_ONLY_PACKAGES,
 			"npm:osdy-pi",
 		],
 	};
@@ -127,11 +151,18 @@ test("creates missing settings atomically after validating the Gentle source", a
 
 	assert.equal(result.status, "configured");
 	const settings = JSON.parse(await readFile(settingsPath, "utf8"));
-	assert.deepEqual(settings.packages.at(-1), {
+	assert.deepEqual(settings.packages.slice(-3), [
+		{
 		source,
-		extensions: ["-extensions/gentle-todo.ts", "-extensions/gentle-agents.ts"],
+		extensions: [
+			"-extensions/gentle-todo.ts",
+			"-extensions/ask-user-question.ts",
+			"-extensions/gentle-agents.ts",
+		],
 		themes: [],
-	});
+		},
+		...OSDY_ONLY_PACKAGES,
+	]);
 	assert.equal(
 		(await configureGentleCoexistence(source, { settingsPath })).status,
 		"already configured",
