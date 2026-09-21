@@ -15,14 +15,14 @@ Refresh the Osdy editor immediately after `/osdy-account` activates a different 
 
 - Keep account activation and rendering concerns separated through a small callback boundary.
 - Do not change profile persistence or authentication behavior.
-- Do not commit, push, or open a pull request without explicit user authorization.
+- Do not commit, push, or open a pull request without explicit user authorization; the user authorized commit and push after verification.
 - Artifacts, code, comments, and tests are English.
 
 ## Delivery
 
 - Route: delegated.
 - Writer trigger evidence: the minimal fix spans command logic, runtime wiring, and focused tests.
-- Planned work unit: one uncommitted regression fix with verification evidence.
+- Completed work unit: one regression-fix commit with verification evidence.
 
 ## Tasks
 
@@ -50,4 +50,4 @@ Refresh the Osdy editor immediately after `/osdy-account` activates a different 
 
 ## Commit evidence
 
-Not requested; no commit will be created.
+- `02c1110 fix(account): refresh editor label after switch` — account-switch render invalidation, regression tests, and task evidence.
