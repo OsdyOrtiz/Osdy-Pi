@@ -30,10 +30,12 @@ export interface AccountManagementDependencies {
 	activeProfile?: string | undefined;
 	activate?: (profile: string) => Promise<void>;
 	refreshUsage?: (() => Promise<void>) | undefined;
+	requestRender?: (() => void) | undefined;
 }
 
 export interface AccountProfilesCommandDependencies {
 	refreshUsage?: (() => Promise<void>) | undefined;
+	requestRender?: (() => void) | undefined;
 }
 
 function isProfileName(value: string): boolean {
@@ -67,6 +69,7 @@ export async function switchAccountInPlace(
 	profile: string,
 	activate: (profile: string) => Promise<void>,
 	refreshUsage?: () => Promise<void>,
+	requestRender?: () => void,
 ): Promise<void> {
 	if (!isProfileName(profile)) {
 		ctx.ui.notify(
@@ -86,6 +89,7 @@ export async function switchAccountInPlace(
 		return;
 	}
 	process.env.OSDY_PI_PROFILE_NAME = profile;
+	requestRender?.();
 	try {
 		await refreshUsage?.();
 	} catch {
@@ -425,6 +429,7 @@ export async function manageAccountProfiles(
 				profile,
 				dependencies.activate,
 				dependencies.refreshUsage,
+				dependencies.requestRender,
 			);
 		return;
 	}
@@ -479,6 +484,7 @@ export function registerAccountProfilesCommand(
 				run: runBundledCommand,
 				activeProfile: process.env.OSDY_PI_PROFILE_NAME,
 				refreshUsage: commandDependencies.refreshUsage,
+				requestRender: commandDependencies.requestRender,
 				activate: async (profile) => {
 					const moduleUrl = new URL(
 						"../../scripts/osdy-pi-account-profiles.mjs",

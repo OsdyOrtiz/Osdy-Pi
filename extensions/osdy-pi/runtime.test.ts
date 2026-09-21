@@ -124,12 +124,12 @@ void test("mascot command completes current, Bts, and status while persisting wi
 	assert.match(source, /osdy-pi mascot: \$\{mascotLabel\(state\.mascot\)\}/);
 });
 
-void test("account switching refreshes usage through the active session context", () => {
+void test("account switching requests an editor render independently of usage refresh", () => {
 	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
 
 	assert.match(
 		source,
-		/registerAccountProfilesCommand\(pi, \{[\s\S]*?refreshUsage: async \(\) => \{[\s\S]*?const activeSessionContext = sessionContext;[\s\S]*?await refreshCurrentCodexUsage\(activeSessionContext\)/,
+		/registerAccountProfilesCommand\(pi, \{[\s\S]*?requestRender: \(\) => \{[\s\S]*?state\.tui\?\.requestRender\(\);[\s\S]*?\},[\s\S]*?refreshUsage: async \(\) => \{[\s\S]*?const activeSessionContext = sessionContext;[\s\S]*?await refreshCurrentCodexUsage\(activeSessionContext\)/,
 	);
 });
 
