@@ -33,7 +33,7 @@ Make `osdy` the only local Pi profile that loads `npm:@juicesharp/rpiv-ask-user-
 | OET-001 | Define durable reconciliation | Canonical reconciliation produces exactly one entry for each preferred package and a local Gentle package excluding all three conflicting extensions while retaining unrelated entries. | Complete — canonical package group now contains local Gentle Pi plus the two Osdy-only packages. |
 | OET-002 | Cover behavior with focused tests | Focused tests verify normalization, ordering, idempotence, and retained unrelated packages. | Complete — focused coexistence test: 8 passed, 0 failed; full package test: 154 passed, 0 failed. |
 | OET-003 | Update installed launcher and profile | Every `osdy` launch generates the preferred Osdy-only entries from the official profile without changing the official profile. | Complete — launcher uses a local Gentle package with three exclusions and canonical Osdy-only package entries; `osdy --help` regenerated the profile successfully. |
-| OET-004 | Verify and commit | Required profile, CLI, launcher-readback, and focused-test checks pass; a Conventional Commit records repository behavior, tests, and task evidence. | In progress |
+| OET-004 | Verify and commit | Required profile, CLI, launcher-readback, and focused-test checks pass; a Conventional Commit records repository behavior, tests, and task evidence. | Complete — all required checks passed; work-unit commit `b8c8e69 fix(launcher): isolate Osdy third-party tools`. |
 
 ## Checks
 
@@ -50,6 +50,8 @@ Make `osdy` the only local Pi profile that loads `npm:@juicesharp/rpiv-ask-user-
 - `npm run typecheck`: passed.
 - `npm run lint`: passed.
 - Runtime harness: `osdy --help` exited 0 with no duplicate-tool conflict. `pi --help` exited 0 with no duplicate-tool conflict.
+- Both profile files passed `jq empty`. The official profile contains neither Osdy-only package; the Osdy profile contains each exactly once and excludes `gentle-todo.ts`, `ask-user-question.ts`, and `gentle-agents.ts` from local Gentle Pi.
+- The installed launcher was read after the successful `osdy --help` run. Its regeneration filter removes prior local Gentle and Osdy-only entries, then adds the canonical local Gentle package, both Osdy-only packages, and local Osdy Pi.
 
 ## Rollback boundary
 
@@ -57,4 +59,5 @@ Revert the reconciliation logic, its focused tests, and this task ledger from th
 
 ## Commit evidence
 
-Pending.
+- `b8c8e69 fix(launcher): isolate Osdy third-party tools` — canonical reconciliation, behavior tests, and ODD task evidence.
+- User-home generated launcher and profile were intentionally not committed.
