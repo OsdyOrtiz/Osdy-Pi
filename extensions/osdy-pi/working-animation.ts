@@ -21,15 +21,11 @@ export function renderWorkingWidget(
 		.map((segment) => {
 			if (isWhitespace(segment)) return segment;
 			const index = letterIndex++;
-			let color: "accent" | "borderAccent" | "text";
 			if (index === highlighted) {
-				color = "accent";
-			} else if (index === trailing) {
-				color = "borderAccent";
-			} else {
-				color = "text";
+				const styled = theme.fg("accent", segment);
+				return theme.bold?.(styled) ?? styled;
 			}
-			return theme.fg(color, segment);
+			return theme.fg(index === trailing ? "borderAccent" : "text", segment);
 		})
 		.join("");
 	return [fitCenterVisible(`${theme.fg("accent", spinner)} ${label}`, width)];

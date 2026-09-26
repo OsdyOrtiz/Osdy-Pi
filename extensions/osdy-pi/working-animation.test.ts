@@ -76,6 +76,36 @@ void test("Running label skips spaces, wraps the trailing grapheme, and follows 
 	assert.ok(!renderWorkingWidget(state("A", 3), palette, 20)[0]?.includes(palette.fg("borderAccent", "A")));
 });
 
+void test("only the moving accent grapheme receives active-theme bold without changing width", () => {
+	const boldTheme = {
+		...palette,
+		bold(text: string) { return `\u001B[1m${text}\u001B[22m`; },
+	};
+	const boldAccent = (text: string) => boldTheme.bold(boldTheme.fg("accent", text));
+	const spinner = (frame: number) => boldTheme.fg("accent", WORKING_SPINNER_FRAMES[frame] ?? "");
+	const label = "A\u0301👩‍💻 B";
+	for (const [frame, expected] of [
+		[0, `${boldAccent("A\u0301")}${boldTheme.fg("text", "👩‍💻")} ${boldTheme.fg("borderAccent", "B")}`],
+		[1, `${boldTheme.fg("borderAccent", "A\u0301")}${boldAccent("👩‍💻")} ${boldTheme.fg("text", "B")}`],
+		[2, `${boldTheme.fg("text", "A\u0301")}${boldTheme.fg("borderAccent", "👩‍💻")} ${boldAccent("B")}`],
+	] as const) {
+		const line = renderWorkingWidget(state(label, frame), boldTheme, 40)[0] ?? "";
+		assert.ok(line.includes(`${spinner(frame)} ${expected}`), `frame ${frame} bolds only the accent grapheme`);
+		assert.ok(!line.includes(boldTheme.bold(spinner(frame))), "spinner stays normal");
+		assert.equal(visibleWidth(line.trimStart()), 2 + visibleWidth(label));
+	}
+	const single = renderWorkingWidget(state("A", 3), boldTheme, 20)[0] ?? "";
+	assert.ok(single.includes(`${spinner(3)} ${boldAccent("A")}`), "one-letter label is bold accent only");
+	assert.equal(visibleWidth(single.trimStart()), 3);
+	const otherTheme = {
+		...theme("36", "35", "32"),
+		bold(text: string) { return `\u001B[1m${text}\u001B[22m`; },
+	};
+	assert.ok(renderWorkingWidget(state("AB", 1), otherTheme, 20)[0]?.includes(
+		`${otherTheme.fg("borderAccent", "A")}${otherTheme.bold(otherTheme.fg("accent", "B"))}`,
+	), "next render uses new theme's accent and secondary color");
+});
+
 void test("tab-separated label skips whitespace when advancing the highlight", () => {
 	const label = "A\tB";
 	const line = renderWorkingWidget(state(label, 1), palette, 20)[0] ?? "";
