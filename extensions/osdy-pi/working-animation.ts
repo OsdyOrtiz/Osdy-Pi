@@ -25,7 +25,11 @@ export function renderWorkingWidget(
 				const styled = theme.fg("accent", segment);
 				return theme.bold?.(styled) ?? styled;
 			}
-			return theme.fg(index === trailing ? "borderAccent" : "text", segment);
+			if (index === trailing) {
+				const styled = theme.fg("borderAccent", segment);
+				return theme.inverse?.(styled) ?? styled;
+			}
+			return theme.fg("text", segment);
 		})
 		.join("");
 	return [fitCenterVisible(`${theme.fg("accent", spinner)} ${label}`, width)];

@@ -106,6 +106,39 @@ void test("only the moving accent grapheme receives active-theme bold without ch
 	), "next render uses new theme's accent and secondary color");
 });
 
+void test("inverse pulse travels only on the trailing grapheme without changing layout", () => {
+	const pulseTheme = {
+		...palette,
+		bold(text: string) { return `\u001B[1m${text}\u001B[22m`; },
+		inverse(text: string) { return `\u001B[7m${text}\u001B[27m`; },
+	};
+	const label = "A\u0301👩‍💻 B";
+	const boldAccent = (text: string) => pulseTheme.bold(pulseTheme.fg("accent", text));
+	const pulse = (text: string) => pulseTheme.inverse(pulseTheme.fg("borderAccent", text));
+	for (const [frame, current, expected] of [
+		[0, "A\u0301", `${boldAccent("A\u0301")}${pulseTheme.fg("text", "👩‍💻")} ${pulse("B")}`],
+		[1, "👩‍💻", `${pulse("A\u0301")}${boldAccent("👩‍💻")} ${pulseTheme.fg("text", "B")}`],
+		[2, "B", `${pulseTheme.fg("text", "A\u0301")}${pulse("👩‍💻")} ${boldAccent("B")}`],
+	] as const) {
+		const spinner = pulseTheme.fg("accent", WORKING_SPINNER_FRAMES[frame] ?? "");
+		const line = renderWorkingWidget(state(label, frame), pulseTheme, 40)[0] ?? "";
+		assert.ok(line.includes(`${spinner} ${expected}`), `frame ${frame} pulses only trailing grapheme`);
+		assert.ok(!line.includes(pulseTheme.inverse(spinner)), "spinner is not reversed");
+		assert.ok(!line.includes(pulseTheme.inverse(boldAccent(current))), "current letter is not reversed");
+		assert.equal(visibleWidth(line.trimStart()), 2 + visibleWidth(label));
+	}
+	const single = renderWorkingWidget(state("A", 3), pulseTheme, 20)[0] ?? "";
+	assert.ok(single.includes(`${pulseTheme.fg("accent", WORKING_SPINNER_FRAMES[3] ?? "")} ${boldAccent("A")}`));
+	assert.ok(!single.includes("\u001B[7m"), "one-letter label has no trailing pulse");
+	const changedTheme = {
+		...theme("36", "35", "32"),
+		inverse(text: string) { return `\u001B[7m${text}\u001B[27m`; },
+	};
+	assert.ok(renderWorkingWidget(state("AB", 1), changedTheme, 20)[0]?.includes(
+			`${changedTheme.inverse(changedTheme.fg("borderAccent", "A"))}${changedTheme.fg("accent", "B")}`,
+	), "next render uses the new theme's trailing color and inverse");
+});
+
 void test("tab-separated label skips whitespace when advancing the highlight", () => {
 	const label = "A\tB";
 	const line = renderWorkingWidget(state(label, 1), palette, 20)[0] ?? "";
