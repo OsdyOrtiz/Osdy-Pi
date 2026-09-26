@@ -56,7 +56,7 @@ import {
 	createWorkingController,
 	type WorkingController,
 } from "./working-controller.js";
-import { registerOddTodo } from "./odd-todo-ui.js";
+import { registerTodoTool } from "./todo-tool.js";
 
 function scheduleOsdyRefresh(
 	delayMs: number,
@@ -900,7 +900,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	const settingsStore = createAudioSoundSettingsStore();
 	const editorSettingsStore = createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
-	registerOddTodo(pi);
+	registerTodoTool(pi);
 	const audioRouter = createAudioEventRouter(
 		createAudioNotificationService(
 			pi,
