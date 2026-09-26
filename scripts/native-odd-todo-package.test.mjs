@@ -33,7 +33,10 @@ test("npm package includes the single native extension entry and session TODO mo
 		...(["de", "en", "es", "fr", "pt-BR", "pt", "ru", "uk", "zh"].map((locale) => `extensions/osdy-pi/locales/${locale}.json`)),
 		"README.md",
 	]) assert.equal(names.filter((name) => name === path).length, 1, `${path} must be packed once`);
-	for (const path of ["extensions/osdy-pi/odd-todo-ui.ts", "extensions/osdy-pi/odd-todo-ui.test.ts"]) {
+	for (const path of [
+		"extensions/osdy-pi/odd-todo-ui.ts", "extensions/osdy-pi/odd-todo-ui.test.ts",
+		"extensions/osdy-pi/odd-todo-store.ts", "extensions/osdy-pi/odd-todo-store.test.ts",
+	]) {
 		assert.equal(names.includes(path), false, `${path} must not be packed`);
 	}
 	assert.equal(names.filter((name) => name.endsWith("/todo-tool.ts")).length, 1);
