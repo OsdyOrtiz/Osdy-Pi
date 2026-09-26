@@ -4,6 +4,7 @@ import { listTasks, type TodoStatus, type TodoTask } from "./todo-domain.js";
 import { todoSessionId, type createTodoSessionStore } from "./todo-session.js";
 import { todoI18n, type TodoI18n } from "./todo-i18n.js";
 import { safe } from "./todo-tool.js";
+import { showTodoPanel } from "./todo-panel.js";
 
 const sections: readonly { status: TodoStatus; heading: string; glyph: string }[] = [
  { status: "pending", heading: "── Pending ──", glyph: "○" },
@@ -27,7 +28,9 @@ export function registerTodosCommand(pi: ExtensionAPI, store: ReturnType<typeof 
    }
    const tasks = listTasks(store.get(todoSessionId(ctx.sessionManager.getSessionId())));
    if (!tasks.length) {
-    ctx.ui.notify(i18n.t("command.no_todos", "No todos yet. Ask the agent to add some!"), "info");
+    const empty = i18n.t("command.no_todos", "No todos yet. Ask the agent to add some!");
+    if (ctx.mode === "tui") return showTodoPanel(ctx, () => [empty], i18n.t("overlay.heading", "Todos"));
+    ctx.ui.notify(empty, "info");
     return Promise.resolve();
    }
    const pending = tasks.filter((task) => task.status === "pending").length;
@@ -43,6 +46,7 @@ export function registerTodosCommand(pi: ExtensionAPI, store: ReturnType<typeof 
     const group = tasks.filter((task) => task.status === section.status);
     if (group.length) lines.push(i18n.t(`command.section.${section.status}`, section.heading), ...group.map((task) => line(task, section.glyph)));
    }
+   if (ctx.mode === "tui") return showTodoPanel(ctx, () => lines, i18n.t("overlay.heading", "Todos"));
    ctx.ui.notify(lines.join("\n"), "info");
    return Promise.resolve();
   },
