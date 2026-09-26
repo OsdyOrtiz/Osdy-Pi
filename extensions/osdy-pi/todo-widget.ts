@@ -3,6 +3,7 @@ import type { ExtensionAPI, ExtensionContext, ExtensionUIContext, Theme } from "
 import { truncateToWidth, type TUI } from "@earendil-works/pi-tui";
 import { COLLAPSE_KEY_OFF, getMaxWidgetLines, loadTodoConfig, resolveCollapseKey, type TodoConfig } from "./todo-config.js";
 import type { TodoTask } from "./todo-domain.js";
+import { todoI18n, type TodoI18n } from "./todo-i18n.js";
 import { todoSessionId, type createTodoSessionStore } from "./todo-session.js";
 import { safe } from "./todo-tool.js";
 
@@ -34,7 +35,7 @@ function row(task: TodoTask, theme: Theme, ids: boolean): string {
  return `${glyph}${id} ${subject}${form}${dependencies}`;
 }
 
-export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () => TodoConfig = loadTodoConfig): void {
+export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () => TodoConfig = loadTodoConfig, i18n: TodoI18n = todoI18n): void {
  const shortcut = resolveCollapseKey(config());
  let foreground: string | undefined;
  let ui: ExtensionUIContext | undefined;
@@ -60,10 +61,10 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
   const trunc = (line: string) => truncateToWidth(line, width, "…");
   const done = tasks.filter((task) => task.status === "completed").length;
   const active = tasks.length !== done;
-  const heading = trunc(`${theme.fg(active ? "accent" : "dim", active ? "●" : "○")} ${theme.fg(active ? "accent" : "dim", `Todos (${done}/${tasks.length})`)}`);
+  const heading = trunc(`${theme.fg(active ? "accent" : "dim", active ? "●" : "○")} ${theme.fg(active ? "accent" : "dim", `${i18n.t("overlay.heading", "Todos")} (${done}/${tasks.length})`)}`);
   if (collapsed) {
    const key = resolveCollapseKey(config());
-   const hint = key === COLLAPSE_KEY_OFF ? "collapsed" : `${key} to expand`;
+   const hint = key === COLLAPSE_KEY_OFF ? i18n.t("overlay.collapsed", "collapsed") : i18n.t("overlay.expandHint", "{key} to expand").replace("{key}", key);
    return [heading, trunc(`${theme.fg("dim", "└─")} ${theme.fg("dim", hint)}`), ""];
   }
   const expanded = ui?.getToolsExpanded?.() === true;
@@ -75,8 +76,8 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
    if (task.status === "completed" && !hidden.has(task.id)) pendingHide.add(task.id);
   }
   if (completed + pending > 0) {
-   const parts = [completed ? `${completed} completed` : "", pending ? `${pending} pending` : ""].filter(Boolean);
-   lines.push(trunc(`${theme.fg("dim", "└─")} ${theme.fg("dim", `+${completed + pending} more (${parts.join(", ")})`)}`));
+   const parts = [completed ? `${completed} ${i18n.status("completed")}` : "", pending ? `${pending} ${i18n.status("pending")}` : ""].filter(Boolean);
+   lines.push(trunc(`${theme.fg("dim", "└─")} ${theme.fg("dim", `+${completed + pending} ${i18n.t("overlay.more", "more")} (${parts.join(", ")})`)}`));
   } else {
    const last = lines.length - 1;
    lines[last] = lines[last]?.replace("├─", "└─") ?? "";

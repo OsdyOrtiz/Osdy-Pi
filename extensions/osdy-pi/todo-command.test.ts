@@ -4,6 +4,7 @@ import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { TodoI18n } from "./todo-i18n.js";
 
 registerHooks({ resolve(specifier, context, next) {
  if (specifier.startsWith(".") && specifier.endsWith(".js") && context.parentURL?.endsWith(".ts")) {
@@ -18,7 +19,7 @@ const { registerTodosCommand } = await import("./todo-command.js");
 const { createTodoSessionStore } = await import("./todo-session.js");
 
 type Context = { sessionManager: { getSessionId: () => string; getBranch: () => unknown[] }; hasUI: boolean; ui: { notify: (text: string, level: string) => void } };
-function harness() {
+function harness(i18n?: TodoI18n) {
  const notices: Array<[string, string]> = [];
  const commands = new Map<string, { handler: (args: string, ctx: Context) => Promise<void> }>();
  let execute: ((...args: unknown[]) => Promise<unknown>) | undefined;
@@ -30,7 +31,7 @@ function harness() {
  } as unknown as ExtensionAPI;
  const store = createTodoSessionStore();
  registerTodoTool(pi, store);
- registerTodosCommand(pi, store);
+ registerTodosCommand(pi, store, i18n);
  const context = (id: string, hasUI = true): Context => ({ sessionManager: { getSessionId: () => id, getBranch: () => [] }, hasUI, ui: { notify: (text, level) => { notices.push([text, level]); } } });
  const run = async (ctx: Context, params: Record<string, unknown>) => { assert.ok(execute); await execute("call", params, undefined, undefined, ctx); };
  const show = async (ctx: Context, args = "") => { const command = commands.get("todos"); assert.ok(command); await command.handler(args, ctx); return notices.at(-1); };
@@ -65,6 +66,19 @@ void test("/todos groups visible statuses and treats deleted-only as empty", asy
  await h.run(ctx, { action: "delete", id: 2 });
  await h.run(ctx, { action: "delete", id: 3 });
  assert.deepEqual(await h.show(ctx), ["No todos yet. Ask the agent to add some!", "info"]);
+});
+
+void test("/todos translates UI at invocation time without changing tool responses", async () => {
+ let language = "es";
+ const dictionary: Record<string, string> = { "status.pending": "pendientes", "status.completed": "completadas", "command.section.pending": "── Pendientes ──", "command.no_todos": "Sin tareas", "command.requires_interactive": "Modo interactivo requerido" };
+ const i18n: TodoI18n = { t: (key, fallback) => language === "es" ? dictionary[key] ?? fallback : fallback, status: (status) => language === "es" ? dictionary[`status.${status}`] ?? status : status };
+ const h = harness(i18n); const ctx = h.context("main");
+ assert.deepEqual(await h.show(ctx), ["Sin tareas", "info"]);
+ assert.deepEqual(await h.show(h.context("main", false)), ["Modo interactivo requerido", "error"]);
+ await h.run(ctx, { action: "create", subject: "Write tests" });
+ assert.deepEqual(await h.show(ctx), ["1 pendientes\n── Pendientes ──\n  ○ #1 Write tests", "info"]);
+ language = "en";
+ assert.deepEqual(await h.show(ctx), ["1 pending\n── Pending ──\n  ○ #1 Write tests", "info"]);
 });
 
 void test("command reflects lifecycle replay and shutdown eviction via shared tool store", async () => {

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import type { TodoConfig } from "./todo-config.js";
+import type { TodoI18n } from "./todo-i18n.js";
 
 registerHooks({
  resolve(specifier, context, next) {
@@ -26,7 +27,7 @@ const { createTodoSessionStore } = await import("./todo-session.js");
 const { applyTodo } = await import("./todo-domain.js");
 const { visibleWidth } = await import("@earendil-works/pi-tui");
 const theme = { fg: (_color: string, text: string) => text, strikethrough: (text: string) => `~${text}~` };
-function harness(config: () => TodoConfig = () => ({})) {
+function harness(config: () => TodoConfig = () => ({}), i18n?: TodoI18n) {
  type Context = { hasUI: boolean; ui: typeof ui; sessionManager: { getSessionId(): string } };
  type Factory = (tui: { requestRender(force?: boolean): void }, theme: Theme) => { render(width: number): string[] };
  const handlers = new Map<string, ((event: { toolName?: string }, ctx: Context) => void)[]>();
@@ -36,7 +37,7 @@ function harness(config: () => TodoConfig = () => ({})) {
  const ui = { theme, expanded: false, getToolsExpanded() { return this.expanded; }, setWidget(key: string, factory: Factory | undefined, options?: { placement: string }) { widgets.push({ key, factory, options }); } };
  const pi = { on(name: string, handler: (event: { toolName?: string }, ctx: Context) => void) { handlers.set(name, [...(handlers.get(name) ?? []), handler]); }, registerShortcut(key: string, options: { handler(ctx: Context): void }) { shortcuts.set(key, (ctx) => options.handler(ctx)); } };
  const store = createTodoSessionStore();
- registerTodoWidget(pi as unknown as ExtensionAPI, store, config);
+ registerTodoWidget(pi as unknown as ExtensionAPI, store, config, i18n);
  const ctx = (id: string, hasUI = true, panel = ui): Context => ({ hasUI, ui: panel, sessionManager: { getSessionId: () => id } });
  const emit = (name: string, context: Context, event: { toolName?: string } = {}) => { for (const handler of handlers.get(name) ?? []) handler(event, context); };
  const state = (id: string, tasks: { id: number; subject: string; status: "pending" | "in_progress" | "completed"; blockedBy?: number[]; activeForm?: string }[]) => store.set(id, { tasks, nextId: Math.max(1, ...tasks.map((t) => t.id + 1)) });
@@ -148,6 +149,22 @@ void test("switching collapseKey off mid-session shows collapsed without unbindi
 void test("off disables the collapse shortcut", () => {
  const h = harness(() => ({ collapseKey: "off" }));
  assert.equal(h.shortcuts.size, 0);
+});
+
+void test("widget reads live translations for heading, overflow, statuses and collapse hint", () => {
+ let language = "es";
+ const translations: Record<string, string> = { "overlay.heading": "Tareas", "overlay.more": "más", "overlay.expandHint": "{key} para expandir", "overlay.collapsed": "contraído", "status.completed": "completadas", "status.pending": "pendientes" };
+ const i18n: TodoI18n = { t: (key, fallback) => language === "es" ? translations[key] ?? fallback : fallback, status: (status) => language === "es" ? translations[`status.${status}`] ?? status : status };
+ const h = harness(() => ({ maxWidgetLines: 3 }), i18n); const c = h.ctx("main"); h.emit("session_start", c);
+ h.state("main", [task(1, "completed"), task(2), task(3), task(4)]); h.emit("tool_execution_end", c, { toolName: "todo" });
+ assert.match(h.lines()[0] ?? "", /Tareas/);
+ assert.match(h.lines()[2] ?? "", /1 completadas, 2 pendientes/);
+ assert.match(h.lines()[2] ?? "", /más/);
+ h.shortcuts.get("ctrl+shift+t")?.(c);
+ assert.equal(h.lines()[1], "└─ ctrl+shift+t para expandir");
+ language = "en";
+ assert.equal(h.lines()[0], "● Todos (1/4)");
+ assert.equal(h.lines()[1], "└─ ctrl+shift+t to expand");
 });
 
 void test("headless and child sessions do not bind, refresh, collapse or dispose foreground", () => {
