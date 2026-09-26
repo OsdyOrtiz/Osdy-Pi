@@ -22,14 +22,14 @@ Keep the theme-aware traveling letter wave on Osdy `Working...` and `Running ...
 - Route: delegated writer (renderer and focused tests: multi-file write trigger); README is a bounded documentation update; release metadata spans package and lock, so delegate a release writer; independent verification follows failed native assessment.
 - Two cohesive work units: indicator behavior + README, then 1.4.1 release metadata/delivery. Forecast about 180–260 authored changed lines (excluding unrelated dirt), below ~400; delivery strategy: ask-on-risk.
 - Feature branch: `feat/theme-aware-working`; branch from the current source commit (already integrated in local main); push only explicit staged work, then issue-approved PR and merge into `main` before npm publication.
-- Commit identities and npm artifact integrity: pending.
+- Work-unit commit: `214e09a0dfc0f823741cba8b1f7d838d15a06c9e` (`feat(ui): animate working label with themed Braille`). Release metadata commit and npm artifact integrity: pending.
 
 ## Tasks
 
 | ID | Task | Acceptance criteria | Progress |
 | --- | --- | --- | --- |
-| WAVE-001 | Pair theme-accent Braille spinner with theme-aware letter wave; document and commit | Keep observed RED/GREEN; README describes Braille spinner and theme-dependent moving letters; focused/full checks and work-unit commit identity recorded. | README and independent checks complete — commit pending |
-| REL141-001 | Prepare and deliver 1.4.1 release from integrated main | package/lock agree on 1.4.1; all checks and packed artifact verified; push a feature branch, obtain approved issue and PR, merge verified head into main, publish exact integrated source to npm latest once, read back version/integrity. | Pending |
+| WAVE-001 | Pair theme-accent Braille spinner with theme-aware letter wave; document and commit | Keep observed RED/GREEN; README describes Braille spinner and theme-dependent moving letters; focused/full checks and work-unit commit identity recorded. | Complete — `214e09a` (five intended files, tests and README included) |
+| REL141-001 | Prepare and deliver 1.4.1 release from integrated main | package/lock agree on 1.4.1; all checks and packed artifact verified; push a feature branch, obtain approved issue and PR, merge verified head into main, publish exact integrated source to npm latest once, read back version/integrity. | In progress — metadata verified, commit and remote delivery pending |
 
 ## Checks and evidence
 
@@ -40,8 +40,9 @@ Keep the theme-aware traveling letter wave on Osdy `Working...` and `Running ...
 - Native review assessment and inspect unavailable (`package-local-binary-missing`, no lineage); an independent verifier reviewed the final Braille candidate without blockers.
 - README Status and Editor/working-indicator sections now describe the theme-accent Braille and moving label; independent verification passed five focused tests, typecheck, lint, 124 extension + 56 script tests and diff/whitespace checks. Frame tests do not establish real-time timer accuracy.
 - Interactive TUI/theme-switch smoke: not performed in this session; the user confirmed the visual result locally before requesting release.
-- Rollback boundary: remove only this task's working-widget rendering, tests, and README description; retain unrelated repository modifications.
+- 1.4.1 metadata test-first: exact root/package/lock version assertion failed on 1.4.0 (RED), passed on 1.4.1 (GREEN). Writer and independent verifier passed 5 focused tests, typecheck, lint, 124 extension + 56 script tests and `git diff --check`; `npm pack --dry-run --json` listed 68 entries including README and working-animation source/test, excluding unrelated dirty paths. Parent spot-checked version alignment and diff check; no integrated-source tarball or live npm publication yet.
+- Rollback boundary: remove only this task's working-widget rendering, tests, README description and 1.4.1 release metadata; retain unrelated repository modifications.
 
 ## Next step
 
-Commit WAVE-001 with only its README, renderer, test, UI integration, and task file. Then prepare 1.4.1 metadata and verify the packed candidate, request exact GitHub target/session approval and issue approval as required, integrate via PR, and publish the integrated artifact once to npm latest.
+Commit the verified 1.4.1 release metadata unit. Then request exact GitHub target/session approval and issue approval as required, push and integrate via PR, and publish the exact integrated artifact once to npm latest.
