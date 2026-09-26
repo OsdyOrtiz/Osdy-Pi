@@ -130,7 +130,7 @@ The exclusions prevent Gentle's todo, questionnaire, and agents extensions from 
 
 The model-facing `todo` tool supports `create`, `update`, `list`, `get`, `delete`, and `clear`. Tool results carry full task snapshots; Pi's current session branch is the TODO authority. Session switches and compaction replay the latest valid branch snapshot, rather than sharing one project-wide list. `/todos` is a read-only grouped view (pending, in progress, completed), not an interactive Markdown editor. ODD's `odd/tasks/*.md` ledger and Engram are separate orchestration records: there is no automatic sync with these Pi TODOs.
 
-In interactive Pi, the persistent widget appears above the editor while visible tasks exist. It defaults to 12 rows, summarizes overflow, and hides completed rows on the next turn (including the widget if none remain); expand tool output to view all rows. `ctrl+shift+t` collapses or expands the widget. An isolated Pi TUI loaded the extracted package and showed `/todos` and the above-editor widget from a seeded session snapshot. A clean npm installation, model-driven tool calls and the optional live language SDK are **not yet verified**.
+In interactive Pi, the persistent widget appears above the editor while visible tasks exist. It defaults to 12 rows, summarizes overflow, and hides completed rows on the next turn (including the widget if none remain); expand tool output to view all rows. `ctrl+shift+t` collapses or expands the widget. A temporary npm-packed installation loaded in an isolated Pi TUI; a seeded session snapshot appeared in `/todos` and the above-editor widget. Model-driven tool execution and a normal user-profile launch remain unverified.
 
 ### TODO configuration and language
 
@@ -147,7 +147,7 @@ Create `$XDG_CONFIG_HOME/rpiv-todo/config.json` (with an absolute `XDG_CONFIG_HO
 }
 ```
 
-`maxWidgetLines` must be a number >= 3 (otherwise 12); it is read on widget renders. `collapseKey` accepts a key combination or `"off"` to disable the shortcut; the shortcut binds at extension load, so restart Pi or run `/reload` after changing it. `guidance.promptSnippet` and `guidance.promptGuidelines` override the tool's model guidance at registration; reload after changing them. The optional `@juicesharp/rpiv-i18n` peer enables nine bundled locales (`de`, `en`, `es`, `fr`, `pt-BR`, `pt`, `ru`, `uk`, `zh`); without the SDK the UI uses English. SDK-backed language switching is not yet runtime-verified.
+`maxWidgetLines` must be a number >= 3 (otherwise 12); it is read on widget renders. `collapseKey` accepts a key combination or `"off"` to disable the shortcut; the shortcut binds at extension load, so restart Pi or run `/reload` after changing it. `guidance.promptSnippet` and `guidance.promptGuidelines` override the tool's model guidance at registration; reload after changing them. The optional `@juicesharp/rpiv-i18n` peer enables nine bundled locales (`de`, `en`, `es`, `fr`, `pt-BR`, `pt`, `ru`, `uk`, `zh`); without the SDK the UI uses English. To use `/languages`, also load its Pi extension (for example, `pi install npm:@juicesharp/rpiv-i18n` in your chosen profile); the peer dependency alone does not register that command. An isolated Pi TUI with both extensions loaded switched the TODO widget and `/todos` from English to Spanish.
 
 **Already installed `@juicesharp/rpiv-todo`?** Both packages can register `todo` and `/todos`. Check `pi list` in the Pi profile you intend to use; to use this branch's first-party implementation, explicitly remove the standalone package in that same profile:
 
