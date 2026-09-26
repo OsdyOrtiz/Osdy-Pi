@@ -16,6 +16,12 @@ test("npm package includes the single native extension entry and session TODO mo
 	assert.equal(packed.status, 0, packed.stderr);
 	const [packageInfo] = JSON.parse(packed.stdout);
 	const names = packageInfo.files.map((file) => file.path);
+	const manifest = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
+	const lock = JSON.parse(readFileSync(resolve(root, "package-lock.json"), "utf8"));
+	assert.equal(manifest.version, "1.5.0");
+	assert.equal(lock.version, manifest.version);
+	assert.equal(lock.packages[""].version, manifest.version);
+	assert.equal(packageInfo.version, manifest.version);
 	assert.deepEqual(
 		JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")).pi.extensions,
 		["./extensions/osdy-pi.ts"],
@@ -60,6 +66,12 @@ test("README describes session snapshots rather than ODD-backed TODO editing", a
 	assert.match(readme, /\/todos.*read-only/i);
 	assert.match(readme, /no automatic sync/i);
 	assert.match(readme, /XDG_CONFIG_HOME.*rpiv-todo\/config\.json/);
+	assert.match(readme, /First-party TODO (?:included|ships) starting (?:in |with )?1\.5\.0/i);
+	assert.match(readme, /compaction replay.*unverified/i);
+	assert.match(readme, /language switching.*unverified/i);
+	assert.match(readme, /(?:visual|ANSI) strikethrough.*unverified/i);
+	assert.match(readme, /installed.*profile.*unverified/i);
+	assert.doesNotMatch(readme, /unshipped branch|this branch's first-party TODO changes are \*\*not published\*\*|try this feature branch|unmerged branch/i);
 	assert.doesNotMatch(readme, /native \/todos panel|native ODD ledger|opens the ODD ledger|Markdown ledger, \*\*not Pi conversation history/);
 });
 
