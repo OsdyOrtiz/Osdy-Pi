@@ -33,8 +33,8 @@ The current `~/.local/bin/osdy` launcher regenerates an isolated profile, but it
 
 | ID | Task | Acceptance criteria | Progress |
 | --- | --- | --- | --- |
-| OPS-001 | Own isolated setup and normal-Pi launcher | Explicit setup derives an isolated profile from official settings, preserves user choices, manages only safe owned resources, is idempotent, fails safely, and `osdy` invokes installed Pi without fork/shim. Focused tests prove these behaviors. | Implementation and checks complete — 8/8 focused tests, typecheck and lint passed; awaiting explicit commit authorization to close work unit. |
-| OPS-002 | Wire package CLI and document migration | The package exposes setup and `osdy`; README explains prerequisites, isolation/auth sharing, migration from the existing local launcher, and verification commands; CLI/package tests and applicable full checks pass. | Pending |
+| OPS-001 | Own isolated setup and normal-Pi launcher | Explicit setup derives an isolated profile from official settings, preserves user choices, manages only safe owned resources, is idempotent, fails safely, and `osdy` invokes installed Pi without fork/shim. Focused tests prove these behaviors. | Complete — 8/8 focused tests, typecheck, lint and independent verification passed; committed as `c32bd4c`. |
+| OPS-002 | Wire package CLI and document migration | The package exposes setup and `osdy`; README explains prerequisites, isolation/auth sharing, migration from the existing local launcher, and verification commands; CLI/package tests and applicable full checks pass. | Complete — focused 11/11, full 164/164, typecheck, lint and package dry-run passed; committed as `0253169`. |
 
 ## Verification
 
@@ -43,9 +43,15 @@ The current `~/.local/bin/osdy` launcher regenerates an isolated profile, but it
 - `npm run typecheck`
 - `npm run lint`
 - `git diff --check`
-- Non-destructive runtime scenario in temporary directories; no automatic mutation of the user's home config during tests.
+- Non-destructive runtime scenario in temporary directories passed; no automatic mutation of the user's home config during tests.
+- `npm pack --dry-run --json` confirmed both bins and all three runtime services are included.
+- Live migration of the existing `~/.local/bin/osdy` was intentionally not attempted; the installed global CLI may be shadowed until the user chooses to change PATH or remove that old launcher.
 
 ## Evidence and next step
 
 - Prior read-only map: home launcher is not packaged; old version required a built local fork and PATH shim. The current local launcher now runs installed Pi and preserves isolated settings.
-- OPS-001 writer observed RED (missing module), GREEN (6/6), then RED (2 targeted failures) and GREEN (8/8) for ancestor-symlink confinement and SIGPIPE exit. Independent verifier passed focused tests (8/8), typecheck, lint, and found no remaining severe deterministic finding. An unrelated `scripts/.gitignore` and ignored `.atl/` were auto-generated at nested verifier-session startup; exclude from commit. Next: obtain explicit commit authorization for OPS-001, close its work-unit commit, then wire/package/document OPS-002.
+- OPS-001: RED (missing module), GREEN (6/6), then RED (2 targeted failures) and GREEN (8/8) for ancestor-symlink confinement and SIGPIPE exit. Independent verification passed focused tests, typecheck, and lint with no remaining severe finding. Commit: `c32bd4c feat(launcher): add isolated Osdy profile setup` (414 authored lines, size exception selected).
+- OPS-002: RED (missing entrypoints), GREEN (11/11). Full tests 164/164, typecheck, lint, `git diff --check`, and package dry-run passed independently. Commit: `0253169 feat(setup): expose isolated Osdy profile commands` (79 authored lines).
+- Native assessment was unavailable (`package-local-binary-missing`), so independent verification was used. The verifier noted a pre-existing SIGPIPE exit-status issue in the unrelated `osdy-pi` account launcher for a separate follow-up.
+- Nested verifier-session startup auto-generated an unrelated untracked `scripts/.gitignore` and ignored `.atl/`; neither was committed. No push, PR, package install, or user-home migration was performed.
+- Next: keep the existing local launcher until the user explicitly chooses migration; decide whether to remove the auto-generated untracked `scripts/.gitignore`.
