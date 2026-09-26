@@ -15,12 +15,18 @@ export function renderWorkingWidget(
 	const segments = [...graphemes.segment(state.label)].map(({ segment }) => segment);
 	const letterCount = segments.filter((segment) => !isWhitespace(segment)).length;
 	const highlighted = letterCount > 0 ? state.frame % letterCount : -1;
+	const trailing = letterCount > 1 ? (highlighted + letterCount - 1) % letterCount : -1;
 	let letterIndex = 0;
 	const label = segments
 		.map((segment) => {
 			if (isWhitespace(segment)) return segment;
-			const color = letterIndex++ === highlighted ? "accent" : "text";
-			return theme.fg(color, segment);
+			const index = letterIndex++;
+			if (index === highlighted) {
+				const styled = theme.fg("accent", segment);
+				return theme.bold?.(styled) ?? styled;
+			}
+			if (index === trailing) return theme.fg("warning", segment);
+			return theme.fg("text", segment);
 		})
 		.join("");
 	return [fitCenterVisible(`${theme.fg("accent", spinner)} ${label}`, width)];

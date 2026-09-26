@@ -26,16 +26,16 @@ function state(label: string, frame = 0, active = true): WorkingWidgetState {
 	return { active, label, frame, timer: undefined, tui: undefined };
 }
 
-function theme(base: string, accent: string, muted: string): SimpleTheme {
+function theme(base: string, accent: string, warning: string): SimpleTheme {
 	return {
 		fg(name, text) {
-			const color = name === "accent" ? accent : name === "muted" ? muted : base;
+			const color = name === "accent" ? accent : name === "warning" ? warning : base;
 			return `\u001B[${color}m${text}\u001B[0m`;
 		},
 	};
 }
 
-const palette = theme("37", "33", "90");
+const palette = theme("37", "33", "34");
 void test("original Braille frames advance every 80ms tick, wrap at ten, and use theme accent", () => {
 	assert.equal(WORKING_SPINNER_FRAMES.length, 10);
 	for (let frame = 0; frame <= WORKING_SPINNER_FRAMES.length; frame += 1) {
@@ -47,42 +47,107 @@ void test("original Braille frames advance every 80ms tick, wrap at ten, and use
 	}
 	const at = (frame: number) => renderWorkingWidget(state("Working...", frame), palette, 40)[0] ?? "";
 	assert.ok(at(0).includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[0] ?? "")} ${palette.fg("accent", "W")}${palette.fg("text", "o")}`));
-	assert.ok(at(1).includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[1] ?? "")} ${palette.fg("text", "W")}${palette.fg("accent", "o")}`));
+	assert.ok(at(0).includes(`${palette.fg("text", ".")}${palette.fg("warning", ".")}`), "frame zero wraps the trailing position to the last grapheme");
+	assert.ok(at(1).includes(`${palette.fg("warning", "W")}${palette.fg("accent", "o")}`), "frame one trails the current accent");
 	const runningAt = (frame: number) => renderWorkingWidget(state("Running build...", frame), palette, 40)[0] ?? "";
 	assert.notEqual(runningAt(0), runningAt(10), "letter wave advances when the spinner wraps");
 });
 
-void test("Running label skips spaces, wraps its one highlighted grapheme, and follows theme on next render", () => {
+void test("Running label skips spaces, wraps the trailing grapheme, and follows theme on next render", () => {
 	const label = "Running build...";
-	const changedTheme = theme("36", "35", "34");
+	const changedTheme = theme("36", "35", "32");
 	const first = renderWorkingWidget(state(label, 7), palette, 40)[0] ?? "";
 	const changed = renderWorkingWidget(state(label, 7), changedTheme, 40)[0] ?? "";
 	assert.ok(first.includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[7] ?? "")} `));
 	assert.ok(changed.includes(`${changedTheme.fg("accent", WORKING_SPINNER_FRAMES[7] ?? "")} `));
-	assert.ok(first.includes(`${palette.fg("text", "g")} ${palette.fg("accent", "b")}`));
-	assert.ok(changed.includes(`${changedTheme.fg("text", "g")} ${changedTheme.fg("accent", "b")}`));
+	assert.ok(first.includes(`${palette.fg("warning", "g")} ${palette.fg("accent", "b")}`));
+	assert.ok(changed.includes(`${changedTheme.fg("warning", "g")} ${changedTheme.fg("accent", "b")}`));
+	assert.ok(!changed.includes(palette.fg("warning", "g")), "old trailing color does not persist after theme change");
 	assert.ok(changed.includes(changedTheme.fg("text", "R")));
 	assert.ok(renderWorkingWidget(state("A B", 1), palette, 20)[0]?.includes(
-		`${palette.fg("text", "A")} ${palette.fg("accent", "B")}`,
+		`${palette.fg("warning", "A")} ${palette.fg("accent", "B")}`,
 	));
 	assert.ok(renderWorkingWidget(state("AB", 2), palette, 20)[0]?.includes(
-		`${palette.fg("accent", "A")}${palette.fg("text", "B")}`,
+		`${palette.fg("accent", "A")}${palette.fg("warning", "B")}`,
 	));
+	assert.ok(renderWorkingWidget(state("A", 3), palette, 20)[0]?.includes(
+		`${palette.fg("accent", "A")}`,
+	));
+	assert.ok(!renderWorkingWidget(state("A", 3), palette, 20)[0]?.includes(palette.fg("warning", "A")));
+});
+
+void test("only the moving accent grapheme is bold without changing width", () => {
+	const boldTheme = {
+		...palette,
+		bold(text: string) { return `\u001B[1m${text}\u001B[22m`; },
+	};
+	const spinner = (frame: number) => boldTheme.fg("accent", WORKING_SPINNER_FRAMES[frame] ?? "");
+	const accent = (segment: string) => boldTheme.bold(boldTheme.fg("accent", segment));
+	const label = "A\u0301👩‍💻 B";
+	for (const [frame, expected] of [
+		[0, `${accent("A\u0301")}${boldTheme.fg("text", "👩‍💻")} ${boldTheme.fg("warning", "B")}`],
+		[1, `${boldTheme.fg("warning", "A\u0301")}${accent("👩‍💻")} ${boldTheme.fg("text", "B")}`],
+		[2, `${boldTheme.fg("text", "A\u0301")}${boldTheme.fg("warning", "👩‍💻")} ${accent("B")}`],
+	] as const) {
+		const line = renderWorkingWidget(state(label, frame), boldTheme, 40)[0] ?? "";
+		assert.ok(line.includes(`${spinner(frame)} ${expected}`), `frame ${frame} bolds only the current accent grapheme`);
+		assert.equal(line.split("\u001B[1m").length - 1, 1, "exactly one grapheme is bold");
+		assert.ok(!line.includes("\u001B[7m"), "no inverse effect");
+		assert.equal(visibleWidth(line.trimStart()), 2 + visibleWidth(label));
+	}
+	const single = renderWorkingWidget(state("A", 3), boldTheme, 20)[0] ?? "";
+	assert.ok(single.includes(`${spinner(3)} ${accent("A")}`));
+	assert.equal(single.split("\u001B[1m").length - 1, 1);
+	assert.equal(visibleWidth(single.trimStart()), 3);
+});
+
+void test("trailing warning stays plain even when theme exposes inverse and bold", () => {
+	const pulseTheme = {
+		...palette,
+		bold(text: string) { return `\u001B[1m${text}\u001B[22m`; },
+		inverse(text: string) { return `\u001B[7m${text}\u001B[27m`; },
+	};
+	const accent = (segment: string) => pulseTheme.bold(pulseTheme.fg("accent", segment));
+	const label = "A\u0301👩‍💻 B";
+	for (const [frame, expected] of [
+		[0, `${accent("A\u0301")}${pulseTheme.fg("text", "👩‍💻")} ${pulseTheme.fg("warning", "B")}`],
+		[1, `${pulseTheme.fg("warning", "A\u0301")}${accent("👩‍💻")} ${pulseTheme.fg("text", "B")}`],
+		[2, `${pulseTheme.fg("text", "A\u0301")}${pulseTheme.fg("warning", "👩‍💻")} ${accent("B")}`],
+	] as const) {
+		const spinner = pulseTheme.fg("accent", WORKING_SPINNER_FRAMES[frame] ?? "");
+		const line = renderWorkingWidget(state(label, frame), pulseTheme, 40)[0] ?? "";
+		assert.ok(line.includes(`${spinner} ${expected}`), `frame ${frame} keeps warning plain`);
+		assert.equal(line.split("\u001B[1m").length - 1, 1, "spinner and warning stay unbolded");
+		assert.ok(!line.includes("\u001B[7m"), "no inverse effect");
+		assert.equal(visibleWidth(line.trimStart()), 2 + visibleWidth(label));
+	}
+	const single = renderWorkingWidget(state("A", 3), pulseTheme, 20)[0] ?? "";
+	assert.ok(single.includes(`${pulseTheme.fg("accent", WORKING_SPINNER_FRAMES[3] ?? "")} ${accent("A")}`));
+	assert.equal(single.split("\u001B[1m").length - 1, 1);
+	assert.ok(!single.includes("\u001B[7m"));
+	const changedTheme = {
+		...theme("36", "35", "32"),
+		bold(text: string) { return `<bold>${text}</bold>`; },
+		inverse(text: string) { return `\u001B[7m${text}\u001B[27m`; },
+	};
+	assert.ok(renderWorkingWidget(state("AB", 1), changedTheme, 20)[0]?.includes(
+		`${changedTheme.fg("warning", "A")}${changedTheme.bold(changedTheme.fg("accent", "B"))}`,
+	), "next render uses the new theme's bold and plain trailing color");
 });
 
 void test("tab-separated label skips whitespace when advancing the highlight", () => {
 	const label = "A\tB";
 	const line = renderWorkingWidget(state(label, 1), palette, 20)[0] ?? "";
-	assert.ok(line.includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[1] ?? "")} ${palette.fg("text", "A")}\t${palette.fg("accent", "B")}`));
+	assert.ok(line.includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[1] ?? "")} ${palette.fg("warning", "A")}\t${palette.fg("accent", "B")}`));
 	assert.equal(visibleWidth(line.trimStart()), 2 + visibleWidth(label));
 });
 
 void test("combining marks and ZWJ emoji remain whole graphemes in the traveling wave", () => {
 	const label = "A\u0301👩‍💻 B";
 	for (const [frame, expected] of [
-		[0, `${palette.fg("accent", "A\u0301")}${palette.fg("text", "👩‍💻")} ${palette.fg("text", "B")}`],
-		[1, `${palette.fg("text", "A\u0301")}${palette.fg("accent", "👩‍💻")} ${palette.fg("text", "B")}`],
-		[2, `${palette.fg("text", "A\u0301")}${palette.fg("text", "👩‍💻")} ${palette.fg("accent", "B")}`],
+		[0, `${palette.fg("accent", "A\u0301")}${palette.fg("text", "👩‍💻")} ${palette.fg("warning", "B")}`],
+		[1, `${palette.fg("warning", "A\u0301")}${palette.fg("accent", "👩‍💻")} ${palette.fg("text", "B")}`],
+		[2, `${palette.fg("text", "A\u0301")}${palette.fg("warning", "👩‍💻")} ${palette.fg("accent", "B")}`],
 	] as const) {
 		const line = renderWorkingWidget(state(label, frame), palette, 40)[0] ?? "";
 		assert.ok(line.includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[frame] ?? "")} ${expected}`), `frame ${frame} preserves graphemes`);
