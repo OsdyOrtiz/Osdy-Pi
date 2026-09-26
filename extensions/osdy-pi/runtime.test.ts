@@ -81,6 +81,14 @@ class TestSessionContextProvider {
 	}
 }
 
+void test("runtime passes one session store to exactly one todo tool and command", () => {
+ const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+ assert.equal(source.match(/createTodoSessionStore\(\)/g)?.length, 1);
+ assert.equal(source.match(/registerTodoTool\(pi, todoStore\)/g)?.length, 1);
+ assert.equal(source.match(/registerTodosCommand\(pi, todoStore\)/g)?.length, 1);
+ assert.equal(source.match(/registerTodoWidget\(pi, todoStore\)/g)?.length, 1);
+});
+
 void test("agents setup requires interactive confirmation and reloads only after success", async () => {
 	const notices: string[] = [];
 	let installs = 0;
@@ -347,6 +355,13 @@ void test("enable, disable, and their on/off aliases persist the complete visual
 		source,
 		/settingsStore\.save\(\{[\s\S]*?enabled: state\.enabled,[\s\S]*?editorMode: state\.editorMode,[\s\S]*?workingTreeEnabled: state\.workingTreeEnabled,[\s\S]*?\}\)/,
 	);
+});
+
+void test("registers session-backed todo surfaces without the old ODD tool", () => {
+ const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+ assert.match(source, /import \{ registerTodoTool \} from "\.\/todo-tool\.js"/);
+ assert.match(source, /import \{ registerTodosCommand \} from "\.\/todo-command\.js"/);
+ assert.doesNotMatch(source, /registerOddTodo|odd-todo-ui/);
 });
 
 void test("does not import or register the response-card Markdown transformer", () => {

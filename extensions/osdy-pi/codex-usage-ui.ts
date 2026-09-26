@@ -6,6 +6,7 @@ import {
 	type TUI,
 } from "@earendil-works/pi-tui";
 import type { CodexUsageSnapshot, CodexUsageWindow } from "./codex-usage.js";
+import { doubleBorderBox, MODAL_OVERLAY_OPTIONS } from "./modal-frame.js";
 import type { CodexUsageState, SimpleTheme } from "./types.js";
 
 export type CodexUsageViewState = CodexUsageState;
@@ -18,13 +19,7 @@ export type CodexUsagePresentation = {
 	model?: string | undefined;
 };
 
-export const CODEX_USAGE_OVERLAY_OPTIONS = {
-	anchor: "center",
-	width: 96,
-	minWidth: 48,
-	maxHeight: "92%",
-	margin: 1,
-} as const;
+export const CODEX_USAGE_OVERLAY_OPTIONS = MODAL_OVERLAY_OPTIONS;
 
 const ESCAPE = String.fromCharCode(27);
 const BELL = String.fromCharCode(7);
@@ -177,31 +172,6 @@ function borderBox(
 			(line) => `${theme.fg("border", "│")}${pad(line)}${theme.fg("border", "│")}`,
 		),
 		theme.fg("border", `╰${"─".repeat(innerWidth)}╯`),
-	];
-}
-
-function doubleBorderBox(
-	theme: SimpleTheme,
-	width: number,
-	title: string,
-	lines: string[],
-): string[] {
-	const innerWidth = Math.max(1, width - 2);
-	const heading = truncateToWidth(` ${title} `, innerWidth, "...", true);
-	const leftWidth = Math.floor(
-		Math.max(0, innerWidth - visibleWidth(heading)) / 2,
-	);
-	const rightWidth = Math.max(0, innerWidth - visibleWidth(heading) - leftWidth);
-	const pad = (line: string): string => {
-		const text = truncateToWidth(line, innerWidth, "...", true);
-		return `${text}${" ".repeat(Math.max(0, innerWidth - visibleWidth(text)))}`;
-	};
-	return [
-		`${theme.fg("border", `╔${"═".repeat(leftWidth)}`)}${theme.fg("accent", heading)}${theme.fg("border", `${"═".repeat(rightWidth)}╗`)}`,
-		...lines.map(
-			(line) => `${theme.fg("border", "║")}${pad(line)}${theme.fg("border", "║")}`,
-		),
-		theme.fg("border", `╚${"═".repeat(innerWidth)}╝`),
 	];
 }
 

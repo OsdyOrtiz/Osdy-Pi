@@ -56,6 +56,10 @@ import {
 	createWorkingController,
 	type WorkingController,
 } from "./working-controller.js";
+import { registerTodoTool } from "./todo-tool.js";
+import { registerTodosCommand } from "./todo-command.js";
+import { createTodoSessionStore } from "./todo-session.js";
+import { registerTodoWidget } from "./todo-widget.js";
 
 function scheduleOsdyRefresh(
 	delayMs: number,
@@ -899,6 +903,10 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	const settingsStore = createAudioSoundSettingsStore();
 	const editorSettingsStore = createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
+	const todoStore = createTodoSessionStore();
+	registerTodoTool(pi, todoStore);
+	registerTodosCommand(pi, todoStore);
+	registerTodoWidget(pi, todoStore);
 	const audioRouter = createAudioEventRouter(
 		createAudioNotificationService(
 			pi,
