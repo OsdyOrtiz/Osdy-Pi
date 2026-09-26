@@ -21,14 +21,8 @@ export function renderWorkingWidget(
 		.map((segment) => {
 			if (isWhitespace(segment)) return segment;
 			const index = letterIndex++;
-			if (index === highlighted) {
-				const styled = theme.fg("accent", segment);
-				return theme.bold?.(styled) ?? styled;
-			}
-			if (index === trailing) {
-				const styled = theme.fg("borderAccent", segment);
-				return theme.inverse?.(styled) ?? styled;
-			}
+			if (index === highlighted) return theme.fg("accent", segment);
+			if (index === trailing) return theme.fg("warning", segment);
 			return theme.fg("text", segment);
 		})
 		.join("");

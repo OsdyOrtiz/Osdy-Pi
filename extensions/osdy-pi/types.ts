@@ -129,6 +129,4 @@ export type AssistantSessionEntry = {
 
 export type SimpleTheme = {
 	fg(name: string, text: string): string;
-	bold?(text: string): string;
-	inverse?(text: string): string;
 };
