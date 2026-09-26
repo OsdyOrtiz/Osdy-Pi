@@ -130,7 +130,13 @@ The exclusions prevent Gentle's todo, questionnaire, and agents extensions from 
 
 The model-facing `todo` tool supports `create`, `update`, `list`, `get`, `delete`, and `clear`. Tool results carry full task snapshots; Pi's current session branch is the TODO authority. Session switches and compaction replay the latest valid branch snapshot, rather than sharing one project-wide list. `/todos` opens a read-only, grouped modal (pending, in progress, completed) in interactive Pi; scroll with arrow or Page Up/Down keys and close with Esc or q. The refreshed modal adds a completed-task progress meter, theme-aware status groups and a scroll-position footer while keeping every task reachable. It is not an interactive Markdown editor. In non-terminal modes with UI support, it retains notification output. ODD's `odd/tasks/*.md` ledger and Engram are separate orchestration records: there is no automatic sync with these Pi TODOs.
 
-In interactive Pi, the persistent widget appears above the editor while visible tasks exist. By default it shows up to five task rows (excluding heading, overflow hint, and spacer), summarizes overflow, and keeps completed rows visible with crossed-out subjects on subsequent turns; expand tool output to view all rows. `ctrl+shift+t` collapses or expands the widget. A temporary npm-packed installation loaded in an isolated Pi TUI; a seeded session snapshot appeared in `/todos` and the above-editor widget. Model-driven tool execution and a normal user-profile launch remain unverified.
+In interactive Pi, the persistent widget appears above the editor while visible tasks exist. By default it shows up to five task rows (excluding heading, overflow hint, and spacer), summarizes overflow, and keeps completed rows visible with crossed-out subjects on subsequent turns; expand tool output to view all rows. `ctrl+shift+t` collapses or expands the widget.
+
+### Try this feature branch
+
+Start Pi with this checkout loaded, ask the agent to track a task with `todo`, then run `/todos`. The widget shows up to five tasks by default; the modal shows the entire grouped list with arrow/Page Up/Down scrolling. A separately installed npm release will not include this unmerged branch. If your `maxWidgetLines` configuration overrides the default, set it to `7` to show five task rows.
+
+**Verification so far:** 187 extension tests, 60 script tests, typecheck, and lint passed. A disposable Pi TUI with seeded pending, in-progress, and completed tasks showed the modal's progress meter, grouped rows, scroll footer, and close behavior. The model calling `todo` in a normal authenticated user session remains unverified; this branch is not yet released.
 
 ### TODO configuration and language
 
