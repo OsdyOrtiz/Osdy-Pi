@@ -349,6 +349,13 @@ void test("enable, disable, and their on/off aliases persist the complete visual
 	);
 });
 
+void test("registers native ODD todo tool and command without session-history task state", () => {
+ const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+ assert.match(source, /import \{ registerOddTodo \} from "\.\/odd-todo-ui\.js"/);
+ assert.match(source, /registerOddTodo\(pi\)/);
+ assert.doesNotMatch(source, /appendEntry\("todo"/);
+});
+
 void test("does not import or register the response-card Markdown transformer", () => {
 	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
 
