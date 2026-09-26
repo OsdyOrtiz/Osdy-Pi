@@ -26,16 +26,16 @@ function state(label: string, frame = 0, active = true): WorkingWidgetState {
 	return { active, label, frame, timer: undefined, tui: undefined };
 }
 
-function theme(base: string, accent: string, muted: string): SimpleTheme {
+function theme(base: string, accent: string, borderAccent: string): SimpleTheme {
 	return {
 		fg(name, text) {
-			const color = name === "accent" ? accent : name === "muted" ? muted : base;
+			const color = name === "accent" ? accent : name === "borderAccent" ? borderAccent : base;
 			return `\u001B[${color}m${text}\u001B[0m`;
 		},
 	};
 }
 
-const palette = theme("37", "33", "90");
+const palette = theme("37", "33", "34");
 void test("original Braille frames advance every 80ms tick, wrap at ten, and use theme accent", () => {
 	assert.equal(WORKING_SPINNER_FRAMES.length, 10);
 	for (let frame = 0; frame <= WORKING_SPINNER_FRAMES.length; frame += 1) {
@@ -47,42 +47,48 @@ void test("original Braille frames advance every 80ms tick, wrap at ten, and use
 	}
 	const at = (frame: number) => renderWorkingWidget(state("Working...", frame), palette, 40)[0] ?? "";
 	assert.ok(at(0).includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[0] ?? "")} ${palette.fg("accent", "W")}${palette.fg("text", "o")}`));
-	assert.ok(at(1).includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[1] ?? "")} ${palette.fg("text", "W")}${palette.fg("accent", "o")}`));
+	assert.ok(at(0).includes(`${palette.fg("text", ".")}${palette.fg("borderAccent", ".")}`), "frame zero wraps the trailing position to the last grapheme");
+	assert.ok(at(1).includes(`${palette.fg("borderAccent", "W")}${palette.fg("accent", "o")}`), "frame one trails the current accent");
 	const runningAt = (frame: number) => renderWorkingWidget(state("Running build...", frame), palette, 40)[0] ?? "";
 	assert.notEqual(runningAt(0), runningAt(10), "letter wave advances when the spinner wraps");
 });
 
-void test("Running label skips spaces, wraps its one highlighted grapheme, and follows theme on next render", () => {
+void test("Running label skips spaces, wraps the trailing grapheme, and follows theme on next render", () => {
 	const label = "Running build...";
-	const changedTheme = theme("36", "35", "34");
+	const changedTheme = theme("36", "35", "32");
 	const first = renderWorkingWidget(state(label, 7), palette, 40)[0] ?? "";
 	const changed = renderWorkingWidget(state(label, 7), changedTheme, 40)[0] ?? "";
 	assert.ok(first.includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[7] ?? "")} `));
 	assert.ok(changed.includes(`${changedTheme.fg("accent", WORKING_SPINNER_FRAMES[7] ?? "")} `));
-	assert.ok(first.includes(`${palette.fg("text", "g")} ${palette.fg("accent", "b")}`));
-	assert.ok(changed.includes(`${changedTheme.fg("text", "g")} ${changedTheme.fg("accent", "b")}`));
+	assert.ok(first.includes(`${palette.fg("borderAccent", "g")} ${palette.fg("accent", "b")}`));
+	assert.ok(changed.includes(`${changedTheme.fg("borderAccent", "g")} ${changedTheme.fg("accent", "b")}`));
+	assert.ok(!changed.includes(palette.fg("borderAccent", "g")), "old secondary color does not persist after theme change");
 	assert.ok(changed.includes(changedTheme.fg("text", "R")));
 	assert.ok(renderWorkingWidget(state("A B", 1), palette, 20)[0]?.includes(
-		`${palette.fg("text", "A")} ${palette.fg("accent", "B")}`,
+		`${palette.fg("borderAccent", "A")} ${palette.fg("accent", "B")}`,
 	));
 	assert.ok(renderWorkingWidget(state("AB", 2), palette, 20)[0]?.includes(
-		`${palette.fg("accent", "A")}${palette.fg("text", "B")}`,
+		`${palette.fg("accent", "A")}${palette.fg("borderAccent", "B")}`,
 	));
+	assert.ok(renderWorkingWidget(state("A", 3), palette, 20)[0]?.includes(
+		`${palette.fg("accent", "A")}`,
+	));
+	assert.ok(!renderWorkingWidget(state("A", 3), palette, 20)[0]?.includes(palette.fg("borderAccent", "A")));
 });
 
 void test("tab-separated label skips whitespace when advancing the highlight", () => {
 	const label = "A\tB";
 	const line = renderWorkingWidget(state(label, 1), palette, 20)[0] ?? "";
-	assert.ok(line.includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[1] ?? "")} ${palette.fg("text", "A")}\t${palette.fg("accent", "B")}`));
+	assert.ok(line.includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[1] ?? "")} ${palette.fg("borderAccent", "A")}\t${palette.fg("accent", "B")}`));
 	assert.equal(visibleWidth(line.trimStart()), 2 + visibleWidth(label));
 });
 
 void test("combining marks and ZWJ emoji remain whole graphemes in the traveling wave", () => {
 	const label = "A\u0301👩‍💻 B";
 	for (const [frame, expected] of [
-		[0, `${palette.fg("accent", "A\u0301")}${palette.fg("text", "👩‍💻")} ${palette.fg("text", "B")}`],
-		[1, `${palette.fg("text", "A\u0301")}${palette.fg("accent", "👩‍💻")} ${palette.fg("text", "B")}`],
-		[2, `${palette.fg("text", "A\u0301")}${palette.fg("text", "👩‍💻")} ${palette.fg("accent", "B")}`],
+		[0, `${palette.fg("accent", "A\u0301")}${palette.fg("text", "👩‍💻")} ${palette.fg("borderAccent", "B")}`],
+		[1, `${palette.fg("borderAccent", "A\u0301")}${palette.fg("accent", "👩‍💻")} ${palette.fg("text", "B")}`],
+		[2, `${palette.fg("text", "A\u0301")}${palette.fg("borderAccent", "👩‍💻")} ${palette.fg("accent", "B")}`],
 	] as const) {
 		const line = renderWorkingWidget(state(label, frame), palette, 40)[0] ?? "";
 		assert.ok(line.includes(`${palette.fg("accent", WORKING_SPINNER_FRAMES[frame] ?? "")} ${expected}`), `frame ${frame} preserves graphemes`);

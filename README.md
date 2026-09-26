@@ -365,7 +365,7 @@ The default `auto` editor mode preserves the responsive behavior: it uses the fr
 
 In auto or extended mode at a non-small width, the framed editor shows the model and thinking level in its title and session usage in its footer. For an account-profile launch, the left title shows the active profile name instead of `Osdy-Pi`. When the native editor is effective (simple mode or any small terminal), the Osdy footer instead shows model, active profile when present, thinking, and usage rows before its path/branch and status rows. It uses the currently active Pi/Osdy theme palette; no separate editor theme selector exists. Usage covers input, output, cache read, cache write when present, cost, and context. If Pi supports autocomplete, the editor uses Pi's native autocomplete rendering while the completion UI is visible.
 
-While work is active, Osdy Pi shows the original Braille spinner above the editor in the selected theme's accent color. A highlight travels across the `Working...` and `Running ...` letters using the active theme's accent and text colors; the spinner and label update when the theme changes. Osdy Pi hides Pi's built-in working row while enabled to avoid a duplicate indicator.
+While work is active, Osdy Pi shows the original Braille spinner above the editor in the selected theme's accent color. A two-color wave travels across the `Working...` and `Running ...` letters: the current letter uses the active theme's `accent`, the trailing letter uses `borderAccent`, and the rest use `text`. Some palettes may give those two accents similar or identical hues; the spinner and label update when the theme changes. Osdy Pi hides Pi's built-in working row while enabled to avoid a duplicate indicator.
 
 ## Working tree and diff
 
