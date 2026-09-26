@@ -33,14 +33,14 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
-   Already installed a pinned `npm:osdy-pi@1.3.0` in **normal Pi**? Replace it with the published version (no uninstall or `--local` needed):
+   Already installed a pinned `npm:osdy-pi@1.3.0` or `npm:osdy-pi@1.4.0` in **normal Pi**? Once 1.4.1 is published, replace the older pin (no uninstall or `--local` needed):
 
    ```bash
-   pi install npm:osdy-pi@1.4.0
+   pi install npm:osdy-pi@1.4.1
    pi list
    ```
 
-   Check that `pi list` shows `npm:osdy-pi@1.4.0`, then restart Pi or run `/reload`. `pi update` does not move a pinned npm version. Installing Osdy does not automatically install Joker; use the [explicit agents setup](#explicit-joker-agents-setup-in-normal-pi) after updating if you want Joker in normal Pi.
+   Check that `pi list` shows `npm:osdy-pi@1.4.1`, then restart Pi or run `/reload`. `pi update` does not move a pinned npm version. Installing Osdy does not automatically install Joker; use the [explicit agents setup](#explicit-joker-agents-setup-in-normal-pi) after updating if you want Joker in normal Pi.
 
 2. Start Pi:
 
@@ -217,7 +217,7 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 | Header and mascot | Independently selectable `osdy-theme`/`neon` headers and `current`/`bts` mascots |
 | Messages | Pi-native, theme-aware user and assistant message cards |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
-| Status | Custom working spinner, responsive footer metrics, dynamic extension statuses, and Codex subscription quota with low-capacity emphasis |
+| Status | Theme-aware Braille spinner and animated working label, responsive footer metrics, dynamic extension statuses, and Codex subscription quota with low-capacity emphasis |
 | Git | Working-tree summary and a centered, filterable diff panel |
 | Audio | Optional event sounds on macOS and Windows |
 
@@ -335,7 +335,7 @@ The default `auto` editor mode preserves the responsive behavior: it uses the fr
 
 In auto or extended mode at a non-small width, the framed editor shows the model and thinking level in its title and session usage in its footer. For an account-profile launch, the left title shows the active profile name instead of `Osdy-Pi`. When the native editor is effective (simple mode or any small terminal), the Osdy footer instead shows model, active profile when present, thinking, and usage rows before its path/branch and status rows. It uses the currently active Pi/Osdy theme palette; no separate editor theme selector exists. Usage covers input, output, cache read, cache write when present, cost, and context. If Pi supports autocomplete, the editor uses Pi's native autocomplete rendering while the completion UI is visible.
 
-A custom spinner appears above the editor while work is active. Osdy Pi hides Pi's built-in working row while enabled to avoid a duplicate indicator.
+While work is active, Osdy Pi shows the original Braille spinner above the editor in the selected theme's accent color. A highlight travels across the `Working...` and `Running ...` letters using the active theme's accent and text colors; the spinner and label update when the theme changes. Osdy Pi hides Pi's built-in working row while enabled to avoid a duplicate indicator.
 
 ## Working tree and diff
 
