@@ -12,6 +12,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 | Header and mascot | A theme-aware `neon` header and selectable `bts` mascot, both responsive and persisted independently. |
 | Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
 | Quota | `/usage` and compact bars emphasize remaining Codex quota at warning (40% or less) and error (15% or less) thresholds. |
+| TODO (unshipped branch) | First-party `todo` snapshots track the Pi session branch; `/todos` reads them without editing. ODD Markdown remains separate. |
 
 ## Prerequisites
 
@@ -33,14 +34,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
-   Already installed a pinned `npm:osdy-pi@1.3.0` or `npm:osdy-pi@1.4.0` in **normal Pi**? Once 1.4.1 is published, replace the older pin (no uninstall or `--local` needed):
-
-   ```bash
-   pi install npm:osdy-pi@1.4.1
-   pi list
-   ```
-
-   Check that `pi list` shows `npm:osdy-pi@1.4.1`, then restart Pi or run `/reload`. `pi update` does not move a pinned npm version. Installing Osdy does not automatically install Joker; use the [explicit agents setup](#explicit-joker-agents-setup-in-normal-pi) after updating if you want Joker in normal Pi.
+   Already using a pinned npm version? `pi update` does not move a pinned version. This branch's first-party TODO changes are **not published**; use a checkout of this branch to evaluate them. Installing Osdy does not automatically install Joker; see [explicit agents setup](#explicit-joker-agents-setup-in-normal-pi).
 
 2. Start Pi:
 
@@ -82,7 +76,6 @@ Add these maintained extensions after installing Osdy Pi. They are optional; eac
 | `pi-playwright` | Playwright browser-automation skills. |
 | `pi-mcp-adapter` | MCP server and tool adapter for Pi. |
 | `pi-subagents-j0k3r` | Markdown-defined subagents, delegation tools, history, and model profiles. |
-| `@juicesharp/rpiv-todo` | A persistent live todo overlay for the agent. |
 | `gentle-pi` | The Gentle senior-architect harness, with SDD/OpenSpec, subagents, TDD evidence, and skills. |
 
 Install the ordinary npm packages once:
@@ -98,7 +91,6 @@ pi install npm:@open-pets/pi
 pi install npm:pi-playwright
 pi install npm:pi-mcp-adapter
 pi install npm:pi-subagents-j0k3r
-pi install npm:@juicesharp/rpiv-todo
 ```
 
 `gentle-pi` is deliberately not included in that package-install block: clone and register it through the coexistence setup below, which applies Osdy-specific exclusions instead of adding a duplicate ordinary package entry.
@@ -128,11 +120,48 @@ To load a local `gentle-pi` checkout while keeping Osdy Pi's UI authoritative, r
 osdy-pi gentle setup /absolute/path/to/gentle-pi
 ```
 
-The command validates that the absolute source is a readable `gentle-pi` package with Gentle's todo and agents extensions before atomically updating `$PI_CODING_AGENT_DIR/settings.json` (or `~/.pi/agent/settings.json`). It registers the local package immediately before the first configured Osdy Pi package entry, so Gentle Shell initializes first, with exclusions only for Gentle's `gentle-todo.ts` and `gentle-agents.ts`, plus `themes: []`. Restart Pi or run `/reload` after setup.
+The command validates that the absolute source is a readable `gentle-pi` package with Gentle's todo and agents extensions before atomically updating `$PI_CODING_AGENT_DIR/settings.json` (or `~/.pi/agent/settings.json`). It registers the local package immediately before the first configured Osdy Pi package entry, so Gentle Shell initializes first, with exclusions for Gentle's `gentle-todo.ts`, `ask-user-question.ts`, and `gentle-agents.ts`, plus `themes: []`. Restart Pi or run `/reload` after setup.
 
 Gentle Shell intentionally remains fully active underneath Osdy, including its footer and widgets. While Osdy is enabled, Osdy claims the footer and editor; disabling Osdy restores the editor Gentle Shell provided at session startup. Gentle's changes widget may coexist with Osdy's visual widgets.
 
-The exclusions prevent Gentle's todo and agents extensions from competing with the suite. `@juicesharp/rpiv-todo` remains the authoritative todo overlay, `pi-subagents-j0k3r` remains the authoritative subagent system, and `@juicesharp/rpiv-ask-user-question` remains the authoritative structured-question plugin; their package entries are left untouched.
+The exclusions prevent Gentle's todo, questionnaire, and agents extensions from competing with the suite. Osdy's session-branch snapshots are authoritative for its `todo` tool and read-only `/todos` command; `pi-subagents-j0k3r` remains the subagent system and `@juicesharp/rpiv-ask-user-question` remains the structured-question plugin. This setup does **not** remove an independently installed `@juicesharp/rpiv-todo` package or edit its package entry. Remove that package yourself as described below to avoid duplicate `todo` and `/todos` registrations.
+
+## First-party TODO on this branch (not yet released)
+
+The model-facing `todo` tool supports `create`, `update`, `list`, `get`, `delete`, and `clear`. Tool results carry full task snapshots; Pi's current session branch is the TODO authority. Session switches and compaction replay the latest valid branch snapshot, rather than sharing one project-wide list. `/todos` opens a read-only, grouped modal (pending, in progress, completed) in interactive Pi; scroll with arrow or Page Up/Down keys and close with Esc or q. The refreshed modal adds a completed-task progress meter, theme-aware status groups and a scroll-position footer while keeping every task reachable. It is not an interactive Markdown editor. In non-terminal modes with UI support, it retains notification output. ODD's `odd/tasks/*.md` ledger and Engram are separate orchestration records: there is no automatic sync with these Pi TODOs.
+
+In interactive Pi, the persistent widget appears above the editor while visible tasks exist. By default it shows up to five task rows (excluding heading, overflow hint, and spacer), summarizes overflow, and keeps completed rows visible with crossed-out subjects on subsequent turns; expand tool output to view all rows. `ctrl+shift+t` collapses or expands the widget.
+
+### Try this feature branch
+
+Start Pi with this checkout loaded, ask the agent to track a task with `todo`, then run `/todos`. The widget shows up to five tasks by default; the modal shows the entire grouped list with arrow/Page Up/Down scrolling. A separately installed npm release will not include this unmerged branch. If your `maxWidgetLines` configuration overrides the default, set it to `7` to show five task rows.
+
+**Verification so far:** 187 extension tests, 60 script tests, typecheck, and lint passed. A disposable Pi TUI with seeded pending, in-progress, and completed tasks showed the modal's progress meter, grouped rows, scroll footer, and close behavior. In a bounded authenticated Pi RPC smoke using this checkout's extension, two model turns exercised all six `todo` actions with seven successful tool results; the second turn listed task #1 as still completed. A separate authenticated TUI smoke observed widget creation/update and `/todos` refreshing to show progress and the task. A separate RPC lifecycle check observed an empty new session and the completed task on switching back. Compaction returned “Nothing to compact (session too small),” so replay after compaction remains unverified. Optional language switching, ANSI strikethrough of the completed row in the authenticated TUI, and launch under an installed Osdy account profile remain unverified. This is not full parity or a release.
+
+### TODO configuration and language
+
+Create `$XDG_CONFIG_HOME/rpiv-todo/config.json` (with an absolute `XDG_CONFIG_HOME`); when absent, Osdy falls back to `~/.config/rpiv-todo/config.json`. Invalid JSON uses defaults. For example:
+
+```json
+{
+  "maxWidgetLines": 7,
+  "collapseKey": "ctrl+shift+t",
+  "guidance": {
+    "promptSnippet": "Track multi-step work",
+    "promptGuidelines": ["Update task status as work progresses"]
+  }
+}
+```
+
+`maxWidgetLines` must be a number >= 3 (otherwise 7); it is read on widget renders. `collapseKey` accepts a key combination or `"off"` to disable the shortcut; the shortcut binds at extension load, so restart Pi or run `/reload` after changing it. `guidance.promptSnippet` and `guidance.promptGuidelines` override the tool's model guidance at registration; reload after changing them. The optional `@juicesharp/rpiv-i18n` peer enables nine bundled locales (`de`, `en`, `es`, `fr`, `pt-BR`, `pt`, `ru`, `uk`, `zh`); without the SDK the UI uses English. To use `/languages`, also load its Pi extension (for example, `pi install npm:@juicesharp/rpiv-i18n` in your chosen profile); the peer dependency alone does not register that command. An isolated Pi TUI with both extensions loaded switched the TODO widget and `/todos` from English to Spanish.
+
+**Already installed `@juicesharp/rpiv-todo`?** Both packages can register `todo` and `/todos`. Check `pi list` in the Pi profile you intend to use; to use this branch's first-party implementation, explicitly remove the standalone package in that same profile:
+
+```bash
+pi remove npm:@juicesharp/rpiv-todo
+```
+
+For a project-local installation, run `pi remove -l npm:@juicesharp/rpiv-todo` in that project instead. Restart Pi or run `/reload`, then check `/todos` shows session tasks, not a document panel. Osdy never uninstalls another package or silently changes package settings. If you need the standalone package, disable the conflicting extension via Pi package configuration instead.
 
 ## OpenAI account profiles
 
@@ -300,6 +329,7 @@ The enabled state, editor mode, working-tree visibility preference, header, and 
 | Main | `/osdy-pi` |
 | Main | `/osdy-pi enable\|disable\|on\|off\|status` |
 | Accounts | `/osdy-account` |
+| Session TODO (unshipped branch) | `/todos` (read-only) |
 | Header | `/osdy-pi header osdy-theme\|neon\|status` |
 | Mascot | `/osdy-pi mascot current\|bts\|status` |
 | Editor | `/osdy-pi editor auto\|extended\|simple\|on\|off\|toggle\|status` |
