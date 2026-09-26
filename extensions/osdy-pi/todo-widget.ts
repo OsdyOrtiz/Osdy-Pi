@@ -1,12 +1,12 @@
 // Widget behavior adapted independently from @juicesharp/rpiv-todo@2.11.0 (MIT); see root LICENSE.
 import type { ExtensionAPI, ExtensionContext, ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type TUI } from "@earendil-works/pi-tui";
+import { COLLAPSE_KEY_OFF, getMaxWidgetLines, loadTodoConfig, resolveCollapseKey, type TodoConfig } from "./todo-config.js";
 import type { TodoTask } from "./todo-domain.js";
 import { todoSessionId, type createTodoSessionStore } from "./todo-session.js";
 import { safe } from "./todo-tool.js";
 
 const KEY = "osdy-todos";
-const SHORTCUT = "ctrl+shift+t";
 type Store = ReturnType<typeof createTodoSessionStore>;
 
 function layout(tasks: TodoTask[], budget: number) {
@@ -34,7 +34,8 @@ function row(task: TodoTask, theme: Theme, ids: boolean): string {
  return `${glyph}${id} ${subject}${form}${dependencies}`;
 }
 
-export function registerTodoWidget(pi: ExtensionAPI, store: Store): void {
+export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () => TodoConfig = loadTodoConfig): void {
+ const shortcut = resolveCollapseKey(config());
  let foreground: string | undefined;
  let ui: ExtensionUIContext | undefined;
  let mounted = false;
@@ -60,9 +61,13 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store): void {
   const done = tasks.filter((task) => task.status === "completed").length;
   const active = tasks.length !== done;
   const heading = trunc(`${theme.fg(active ? "accent" : "dim", active ? "●" : "○")} ${theme.fg(active ? "accent" : "dim", `Todos (${done}/${tasks.length})`)}`);
-  if (collapsed) return [heading, trunc(`${theme.fg("dim", "└─")} ${theme.fg("dim", `${SHORTCUT} to expand`)}`), ""];
+  if (collapsed) {
+   const key = resolveCollapseKey(config());
+   const hint = key === COLLAPSE_KEY_OFF ? "collapsed" : `${key} to expand`;
+   return [heading, trunc(`${theme.fg("dim", "└─")} ${theme.fg("dim", hint)}`), ""];
+  }
   const expanded = ui?.getToolsExpanded?.() === true;
-  const { rows, completed, pending } = layout(tasks, expanded ? tasks.length : 11);
+  const { rows, completed, pending } = layout(tasks, expanded ? tasks.length : getMaxWidgetLines(config()) - 1);
   const ids = tasks.some((task) => (task.blockedBy?.length ?? 0) > 0);
   const lines = [heading];
   for (const task of rows) {
@@ -118,7 +123,7 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store): void {
   for (const task of pendingHide) hidden.add(task);
   pendingHide.clear(); refresh();
  });
- pi.registerShortcut(SHORTCUT, { description: "Collapse or expand the todo widget", handler: (ctx) => {
+ if (shortcut !== COLLAPSE_KEY_OFF) pi.registerShortcut(shortcut as Parameters<ExtensionAPI["registerShortcut"]>[0], { description: "Collapse or expand the todo widget", handler: (ctx) => {
   if (!foregroundEvent(ctx) || !mounted) return;
   collapsed = !collapsed; tui?.requestRender(true);
  } });

@@ -1,6 +1,7 @@
 // TODO tool contract adapted from @juicesharp/rpiv-todo@2.11.0 (MIT); see root LICENSE.
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { loadTodoConfig, validateGuidance, type TodoConfig } from "./todo-config.js";
 import { applyTodo, getTaskWithBlocks, listTasks, type TodoOp, type TodoState } from "./todo-domain.js";
 import { todoSessionId, type createTodoSessionStore } from "./todo-session.js";
 
@@ -68,7 +69,8 @@ function content(op: TodoOp, state: TodoState): string {
  }
 }
 
-export function registerTodoTool(pi: ExtensionAPI, store: ReturnType<typeof createTodoSessionStore>): void {
+export function registerTodoTool(pi: ExtensionAPI, store: ReturnType<typeof createTodoSessionStore>, config: () => TodoConfig = loadTodoConfig): void {
+ const guidance = validateGuidance(config().guidance);
  const id = (ctx: { sessionManager: { getSessionId(): string | undefined } }) => todoSessionId(ctx.sessionManager.getSessionId());
  const replay = (ctx: { sessionManager: { getSessionId(): string | undefined; getBranch(): ReturnType<Parameters<Parameters<ExtensionAPI["on"]>[1]>[1]["sessionManager"]["getBranch"]> } }) => {
   store.replaceFromBranch(id(ctx), ctx.sessionManager.getBranch());
@@ -80,7 +82,7 @@ export function registerTodoTool(pi: ExtensionAPI, store: ReturnType<typeof crea
  pi.registerTool({
   name: "todo", label: "Todo",
   description: "Manage a task list for tracking multi-step progress. Actions: create (new task), update (change status/fields/dependencies), list (all tasks, optionally filtered by status), get (single task details), delete (tombstone), clear (reset all). Status: pending → in_progress → completed, plus deleted tombstone. Use this to plan and track multi-step work like research, design, and implementation.",
-  promptSnippet: "Manage a task list to track multi-step progress", promptGuidelines,
+  promptSnippet: guidance.promptSnippet ?? "Manage a task list to track multi-step progress", promptGuidelines: guidance.promptGuidelines ?? promptGuidelines,
   parameters,
   execute(_toolCallId, params, _signal, _onUpdate, ctx) {
    const session = id(ctx);

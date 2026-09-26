@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import type { TodoConfig } from "./todo-config.js";
 
 registerHooks({
  resolve(specifier, context, next) {
@@ -25,7 +26,7 @@ const { createTodoSessionStore } = await import("./todo-session.js");
 const { applyTodo } = await import("./todo-domain.js");
 const { visibleWidth } = await import("@earendil-works/pi-tui");
 const theme = { fg: (_color: string, text: string) => text, strikethrough: (text: string) => `~${text}~` };
-function harness() {
+function harness(config: () => TodoConfig = () => ({})) {
  type Context = { hasUI: boolean; ui: typeof ui; sessionManager: { getSessionId(): string } };
  type Factory = (tui: { requestRender(force?: boolean): void }, theme: Theme) => { render(width: number): string[] };
  const handlers = new Map<string, ((event: { toolName?: string }, ctx: Context) => void)[]>();
@@ -35,7 +36,7 @@ function harness() {
  const ui = { theme, expanded: false, getToolsExpanded() { return this.expanded; }, setWidget(key: string, factory: Factory | undefined, options?: { placement: string }) { widgets.push({ key, factory, options }); } };
  const pi = { on(name: string, handler: (event: { toolName?: string }, ctx: Context) => void) { handlers.set(name, [...(handlers.get(name) ?? []), handler]); }, registerShortcut(key: string, options: { handler(ctx: Context): void }) { shortcuts.set(key, (ctx) => options.handler(ctx)); } };
  const store = createTodoSessionStore();
- registerTodoWidget(pi as unknown as ExtensionAPI, store);
+ registerTodoWidget(pi as unknown as ExtensionAPI, store, config);
  const ctx = (id: string, hasUI = true, panel = ui): Context => ({ hasUI, ui: panel, sessionManager: { getSessionId: () => id } });
  const emit = (name: string, context: Context, event: { toolName?: string } = {}) => { for (const handler of handlers.get(name) ?? []) handler(event, context); };
  const state = (id: string, tasks: { id: number; subject: string; status: "pending" | "in_progress" | "completed"; blockedBy?: number[]; activeForm?: string }[]) => store.set(id, { tasks, nextId: Math.max(1, ...tasks.map((t) => t.id + 1)) });
@@ -117,6 +118,36 @@ void test("overflow unfinished tail reports pending and hides completed first", 
  h.emit("tool_execution_end", c, { toolName: "todo" });
  assert.match(h.lines()[11] ?? "", /\+5 more \(1 completed, 4 pending\)/);
  assert.doesNotMatch(h.lines().join(" "), /Task 1(?!\d)/);
+});
+
+void test("configured budget changes each render while key binds once and hint follows config", () => {
+ let config: TodoConfig = { maxWidgetLines: 3, collapseKey: "alt+f5" };
+ const h = harness(() => config); const c = h.ctx("main"); h.emit("session_start", c);
+ h.state("main", Array.from({ length: 5 }, (_, i) => task(i + 1)));
+ h.emit("tool_execution_end", c, { toolName: "todo" });
+ assert.equal(h.lines().length, 4);
+ config = { maxWidgetLines: 8, collapseKey: "ctrl+g" };
+ assert.equal(h.lines().length, 7);
+ assert.equal(h.shortcuts.has("ctrl+g"), false);
+ h.shortcuts.get("alt+f5")?.(c);
+ assert.match(h.lines()[1] ?? "", /ctrl\+g to expand/);
+});
+
+void test("switching collapseKey off mid-session shows collapsed without unbinding the shortcut", () => {
+ let config: TodoConfig = { collapseKey: "alt+f5" };
+ const h = harness(() => config); const c = h.ctx("main"); h.emit("session_start", c);
+ h.state("main", [task(1)]); h.emit("tool_execution_end", c, { toolName: "todo" }); h.lines();
+ config = { collapseKey: "off" };
+ assert.equal(h.shortcuts.has("alt+f5"), true);
+ h.shortcuts.get("alt+f5")?.(c);
+ assert.deepEqual(h.lines(), ["● Todos (0/1)", "└─ collapsed", ""]);
+ h.shortcuts.get("alt+f5")?.(c);
+ assert.equal(h.lines()[1], "└─ ○ Task 1");
+});
+
+void test("off disables the collapse shortcut", () => {
+ const h = harness(() => ({ collapseKey: "off" }));
+ assert.equal(h.shortcuts.size, 0);
 });
 
 void test("headless and child sessions do not bind, refresh, collapse or dispose foreground", () => {

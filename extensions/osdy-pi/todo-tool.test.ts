@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Compile } from "typebox/compile";
+import type { TodoConfig } from "./todo-config.js";
 
 registerHooks({
  resolve(specifier, context, next) {
@@ -23,13 +24,13 @@ type Context = { sessionManager: { getSessionId: () => string; getBranch: () => 
 function context(id: string, branch: unknown[] = [], hasUI = true): Context {
  return { sessionManager: { getSessionId: () => id, getBranch: () => branch }, hasUI };
 }
-function harness() {
+function harness(config: () => TodoConfig = () => ({})) {
  type Result = { content: [{ text: string }]; details: { tasks: unknown[]; error?: string } };
- type Tool = { name: string; label: string; parameters: { properties: Record<string, unknown> }; promptGuidelines: string[]; execute: (...args: unknown[]) => Promise<Result> };
+ type Tool = { name: string; label: string; parameters: { properties: Record<string, unknown> }; promptGuidelines: string[]; promptSnippet: string; execute: (...args: unknown[]) => Promise<Result> };
  const tools: Tool[] = [];
  const events = new Map<string, (event: unknown, ctx: Context) => Promise<void> | void>();
  const commands: string[] = [];
- registerTodoTool({ registerTool: (tool: Tool) => { tools.push(tool); }, on: (name: string, handler: (event: unknown, ctx: Context) => void) => { events.set(name, handler); }, registerCommand: (name: string) => { commands.push(name); } } as unknown as ExtensionAPI, createTodoSessionStore());
+ registerTodoTool({ registerTool: (tool: Tool) => { tools.push(tool); }, on: (name: string, handler: (event: unknown, ctx: Context) => void) => { events.set(name, handler); }, registerCommand: (name: string) => { commands.push(name); } } as unknown as ExtensionAPI, createTodoSessionStore(), config);
  const run = (ctx: Context, params: Record<string, unknown>): Promise<Result> => { assert.ok(tools[0]); return tools[0].execute("call", params, undefined, undefined, ctx); };
  const emit = async (name: string, ctx: Context) => { const handler = events.get(name); assert.ok(handler); await handler({}, ctx); };
  return { tools, events, commands, run, emit };
@@ -44,6 +45,18 @@ void test("registers one rpiv-compatible tool without a command", () => {
  assert.deepEqual(Object.keys(tools[0].parameters.properties), ["action", "subject", "description", "activeForm", "status", "blockedBy", "addBlockedBy", "removeBlockedBy", "owner", "metadata", "id", "includeDeleted"]);
  assert.equal(tools[0].promptGuidelines.length, 8);
  assert.deepEqual(commands, []);
+});
+
+void test("valid guidance is captured at registration, invalid fields retain defaults", () => {
+ let config: TodoConfig = { guidance: { promptSnippet: "Custom", promptGuidelines: ["first"] } };
+ const h = harness(() => config);
+ assert.equal(h.tools[0]?.promptSnippet, "Custom");
+ assert.deepEqual(h.tools[0]?.promptGuidelines, ["first"]);
+ config = { guidance: { promptSnippet: "Later", promptGuidelines: ["later"] } };
+ assert.equal(h.tools[0]?.promptSnippet, "Custom");
+ const fallback = harness(() => ({ guidance: { promptSnippet: "", promptGuidelines: ["valid", ""] } }));
+ assert.equal(fallback.tools[0]?.promptSnippet, "Manage a task list to track multi-step progress");
+ assert.equal(fallback.tools[0]?.promptGuidelines.length, 8);
 });
 
 void test("registered tool parameters compile and validate actions and fields", () => {
