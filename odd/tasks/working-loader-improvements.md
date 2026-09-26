@@ -9,7 +9,7 @@ Make the above-editor `Working...` / `Running ...` animation more noticeable whi
 - Only update `extensions/osdy-pi/working-animation.ts`, its deterministic tests, and the matching README description. Do not change spinner timing, controller cleanup, theme JSON, package metadata, or the unrelated dirty files in the original checkout.
 
 ## Work unit
-- [x] **WAVE-SECONDARY-001 — Render and document the two-color wave.** Added an `accent` current grapheme and trailing `borderAccent` grapheme without changing the spinner, timing, other letters or layout. Writer observed four focused RED failures before the renderer change, then five GREEN focused tests. Independent verifier confirmed the final five focused tests, 187 extension and 60 script tests, typecheck, lint and `git diff --check`; a distinct theme-switch fixture closes the stale-secondary blind spot. Changed paths are renderer, tests and README. Manual interactive theme-switch smoke was not run. Rollback: revert only this work unit's renderer, tests and README behavior; leave previous working lifecycle and theme palettes intact. Commit identity: pending local work-unit commit.
+- [x] **WAVE-SECONDARY-001 — Render and document the two-color wave.** Added an `accent` current grapheme and trailing `borderAccent` grapheme without changing the spinner, timing, other letters or layout. Writer observed four focused RED failures before the renderer change, then five GREEN focused tests. Independent verifier confirmed the final five focused tests, 187 extension and 60 script tests, typecheck, lint and `git diff --check`; a distinct theme-switch fixture closes the stale-secondary blind spot. Changed paths are renderer, tests and README. Manual interactive theme-switch smoke was not run. Rollback: revert only this work unit's renderer, tests and README behavior; leave previous working lifecycle and theme palettes intact. Work-unit commit: `82f3006cf64a7bcb894267a36d0e2a57880402ed` (`feat(ui): animate working letters in two theme colors`, 67 changed diff lines including this ledger).
 
 ## Verification
 - Focused test command: `node --test --experimental-strip-types extensions/osdy-pi/working-animation.test.ts`.
@@ -17,4 +17,4 @@ Make the above-editor `Working...` / `Running ...` animation more noticeable whi
 - Real interactive theme-switch smoke is optional and must be reported as skipped unless observed. A test theme can prove the renderer consumes current theme colors, not visual contrast in every palette.
 
 ## Next step
-Commit the verified work unit on this local feature branch, record its identity, and keep the original dirty checkout untouched. No push, PR, merge or release has been requested for this feature.
+Try the animation in an interactive session if a visual judgment is needed. The work unit is committed locally; no push, PR, merge or release has been requested for this feature. Keep the original dirty checkout untouched.
