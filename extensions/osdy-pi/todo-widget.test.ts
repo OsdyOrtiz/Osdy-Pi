@@ -40,12 +40,12 @@ function harness(config: () => TodoConfig = () => ({}), i18n?: TodoI18n) {
  registerTodoWidget(pi as unknown as ExtensionAPI, store, config, i18n);
  const ctx = (id: string, hasUI = true, panel = ui): Context => ({ hasUI, ui: panel, sessionManager: { getSessionId: () => id } });
  const emit = (name: string, context: Context, event: { toolName?: string } = {}) => { for (const handler of handlers.get(name) ?? []) handler(event, context); };
- const state = (id: string, tasks: { id: number; subject: string; status: "pending" | "in_progress" | "completed"; blockedBy?: number[]; activeForm?: string }[]) => store.set(id, { tasks, nextId: Math.max(1, ...tasks.map((t) => t.id + 1)) });
+ const state = (id: string, tasks: { id: number; subject: string; status: "pending" | "in_progress" | "completed" | "deleted"; blockedBy?: number[]; activeForm?: string }[]) => store.set(id, { tasks, nextId: Math.max(1, ...tasks.map((t) => t.id + 1)) });
  const action = (id: string, kind: "create" | "clear", subject?: string) => store.set(id, applyTodo(store.get(id), kind, subject === undefined ? {} : { subject }).state);
  const lines = (width = 80): string[] => widgets.at(-1)?.factory?.({ requestRender(force?: boolean) { renders.push(force === true); } }, theme as Theme).render(width) ?? [];
  return { ui, widgets, renders, shortcuts, ctx, emit, state, action, lines };
 }
-const task = (id: number, status: "pending" | "in_progress" | "completed" = "pending", extra: { activeForm?: string; blockedBy?: number[] } = {}) => ({ id, status, subject: `Task ${id}`, ...extra });
+const task = (id: number, status: "pending" | "in_progress" | "completed" | "deleted" = "pending", extra: { activeForm?: string; blockedBy?: number[] } = {}) => ({ id, status, subject: `Task ${id}`, ...extra });
 
 void test("foreground widget renders glyphs, ids, metadata and truncates by terminal width", () => {
  const h = harness(); const c = h.ctx("main"); h.emit("session_start", c);
@@ -57,37 +57,49 @@ void test("foreground widget renders glyphs, ids, metadata and truncates by term
  h.emit("tool_execution_end", c, { toolName: "todo" }); assert.deepEqual(h.renders, [false]);
 });
 
-void test("completed rows hide next turn, collapse shortcut toggles and empty unregisters", () => {
+void test("completed rows remain struck through across turns, collapse toggles and empty unregisters", () => {
  const h = harness(); const c = h.ctx("main"); h.emit("session_start", c);
  h.state("main", [task(1, "completed")]); h.emit("tool_execution_end", c, { toolName: "todo" });
- assert.equal(h.lines()[1], "└─ ✓ ~Task 1~");
+ assert.deepEqual(h.lines(), ["○ Todos (1/1)", "└─ ✓ ~Task 1~", ""]);
  h.shortcuts.get("ctrl+shift+t")?.(c); assert.match(h.lines()[1] ?? "", /ctrl\+shift\+t to expand/);
  h.shortcuts.get("ctrl+shift+t")?.(c); assert.deepEqual(h.renders, [true, true]);
- h.emit("agent_start", c); assert.deepEqual(h.lines(), []);
- h.emit("tool_execution_end", c, { toolName: "todo" }); assert.equal(h.widgets.at(-1)?.factory, undefined);
+ h.emit("agent_start", c); assert.deepEqual(h.lines(), ["○ Todos (1/1)", "└─ ✓ ~Task 1~", ""]);
+ h.emit("agent_start", c); assert.deepEqual(h.lines(), ["○ Todos (1/1)", "└─ ✓ ~Task 1~", ""]);
+ h.action("main", "clear"); h.emit("tool_execution_end", c, { toolName: "todo" });
+ assert.deepEqual(h.lines(), []); assert.equal(h.widgets.at(-1)?.factory, undefined);
 });
 
 void test("clear resets allocated IDs without hiding a new pending task", () => {
  const h = harness(); const c = h.ctx("main"); h.emit("session_start", c);
  h.state("main", [task(1, "completed")]); h.emit("tool_execution_end", c, { toolName: "todo" }); h.lines();
- h.emit("agent_start", c); assert.deepEqual(h.lines(), []);
+ h.emit("agent_start", c); assert.equal(h.lines()[1], "└─ ✓ ~Task 1~");
  h.action("main", "clear"); h.emit("tool_execution_end", c, { toolName: "todo" });
  h.action("main", "create", "New task"); h.emit("tool_execution_end", c, { toolName: "todo" });
  assert.deepEqual(h.lines().slice(0, -1), ["● Todos (0/1)", "└─ ○ New task"]);
 });
 
-void test("replacement of a hidden completed task with pending makes its ID visible", () => {
+void test("replacement of a completed task with pending makes its reused ID visible", () => {
  const h = harness(); const c = h.ctx("main"); h.emit("session_start", c);
  h.state("main", [task(1, "completed")]); h.emit("tool_execution_end", c, { toolName: "todo" }); h.lines();
  h.emit("agent_start", c); h.state("main", [task(1)]); h.emit("tool_execution_end", c, { toolName: "todo" });
  assert.deepEqual(h.lines().slice(0, -1), ["● Todos (0/1)", "└─ ○ Task 1"]);
 });
 
-void test("pending hide is discarded when a completed row is replaced before the next turn", () => {
+void test("replacement before the next turn displays the current pending status", () => {
  const h = harness(); const c = h.ctx("main"); h.emit("session_start", c);
  h.state("main", [task(1, "completed")]); h.emit("tool_execution_end", c, { toolName: "todo" }); h.lines();
  h.state("main", [task(1)]); h.emit("agent_start", c);
  assert.deepEqual(h.lines().slice(0, -1), ["● Todos (0/1)", "└─ ○ Task 1"]);
+});
+
+void test("deleted tasks remain excluded while completed and pending tasks persist across turns", () => {
+ const h = harness(); const c = h.ctx("main"); h.emit("session_start", c);
+ h.state("main", [task(1, "deleted"), task(2, "completed"), task(3)]);
+ h.emit("tool_execution_end", c, { toolName: "todo" });
+ h.emit("agent_start", c); h.emit("agent_start", c);
+ assert.deepEqual(h.lines(), ["● Todos (1/2)", "├─ ✓ ~Task 2~", "└─ ○ Task 3", ""]);
+ h.state("main", [task(1, "deleted")]); h.emit("tool_execution_end", c, { toolName: "todo" });
+ assert.deepEqual(h.lines(), []);
 });
 
 void test("overflow drops completed first and expands on Pi tool expansion", () => {
@@ -98,13 +110,13 @@ void test("overflow drops completed first and expands on Pi tool expansion", () 
  h.ui.expanded = true; assert.equal(h.lines().length, 17);
 });
 
-void test("branch lifecycle resets completed hiding and rebinds replacement UI safely", () => {
+void test("branch lifecycle retains completed rows and rebinds replacement UI safely", () => {
  const h = harness(); const main = h.ctx("main"); h.emit("session_start", main);
  h.state("main", [task(1, "completed")]); h.emit("tool_execution_end", main, { toolName: "todo" }); h.lines();
- h.emit("agent_start", main); assert.equal(h.widgets.at(-1)?.factory, undefined);
+ h.emit("agent_start", main); assert.equal(h.lines()[1], "└─ ✓ ~Task 1~");
  h.emit("session_tree", main); assert.equal(h.widgets.at(-1)?.options?.placement, "aboveEditor");
- h.lines(); h.emit("agent_start", main); h.emit("session_compact", main);
- assert.match(h.lines()[1] ?? "", /Task 1/);
+ h.emit("agent_start", main); h.emit("session_compact", main);
+ assert.equal(h.lines()[1], "└─ ✓ ~Task 1~");
  const replacement = h.ctx("main", true, { ...h.ui });
  h.emit("session_start", replacement);
  assert.equal(h.widgets.at(-2)?.factory, undefined);

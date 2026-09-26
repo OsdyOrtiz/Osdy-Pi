@@ -42,19 +42,7 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
  let mounted = false;
  let tui: TUI | undefined;
  let collapsed = false;
- const pendingHide = new Set<number>();
- const hidden = new Set<number>();
- let lastNextId: number | undefined;
- const reset = () => { pendingHide.clear(); hidden.clear(); lastNextId = undefined; };
- const visible = () => {
-  const state = store.get(foreground ?? "");
-  if (lastNextId !== undefined && state.nextId < lastNextId) { pendingHide.clear(); hidden.clear(); }
-  lastNextId = state.nextId;
-  const completed = new Set(state.tasks.filter((task) => task.status === "completed").map((task) => task.id));
-  for (const id of pendingHide) if (!completed.has(id)) pendingHide.delete(id);
-  for (const id of hidden) if (!completed.has(id)) hidden.delete(id);
-  return state.tasks.filter((task) => task.status !== "deleted" && !hidden.has(task.id));
- };
+ const visible = () => store.get(foreground ?? "").tasks.filter((task) => task.status !== "deleted");
  const render = (theme: Theme, width: number): string[] => {
   const tasks = visible();
   if (!tasks.length) return [];
@@ -73,7 +61,6 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
   const lines = [heading];
   for (const task of rows) {
    lines.push(trunc(`${theme.fg("dim", "├─")} ${row(task, theme, ids)}`));
-   if (task.status === "completed" && !hidden.has(task.id)) pendingHide.add(task.id);
   }
   if (completed + pending > 0) {
    const parts = [completed ? `${completed} ${i18n.status("completed")}` : "", pending ? `${pending} ${i18n.status("pending")}` : ""].filter(Boolean);
@@ -105,24 +92,17 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
   if (foreground !== undefined && foreground !== session) return;
   if (ui && ui !== ctx.ui && mounted) ui.setWidget(KEY, undefined);
   if (ui !== ctx.ui) { mounted = false; tui = undefined; }
-  foreground = session; ui = ctx.ui; reset(); refresh();
+  foreground = session; ui = ctx.ui; refresh();
  });
- pi.on("session_compact", (_event, ctx) => { if (foregroundEvent(ctx)) { reset(); refresh(); } });
- pi.on("session_tree", (_event, ctx) => { if (foregroundEvent(ctx)) { reset(); refresh(); } });
+ pi.on("session_compact", (_event, ctx) => { if (foregroundEvent(ctx)) refresh(); });
+ pi.on("session_tree", (_event, ctx) => { if (foregroundEvent(ctx)) refresh(); });
  pi.on("session_shutdown", (_event, ctx) => {
   if (!foregroundEvent(ctx)) return;
   if (mounted) ui?.setWidget(KEY, undefined);
-  mounted = false; tui = undefined; ui = undefined; foreground = undefined; collapsed = false; reset();
+  mounted = false; tui = undefined; ui = undefined; foreground = undefined; collapsed = false;
  });
  pi.on("tool_execution_end", (event, ctx) => {
   if (event.toolName === "todo" && event.isError !== true && foregroundEvent(ctx)) refresh();
- });
- pi.on("agent_start", (_event, ctx) => {
-  if (!foregroundEvent(ctx)) return;
-  visible(); // Reconcile snapshots before carrying completed rows into the next turn.
-  if (pendingHide.size === 0) return;
-  for (const task of pendingHide) hidden.add(task);
-  pendingHide.clear(); refresh();
  });
  if (shortcut !== COLLAPSE_KEY_OFF) pi.registerShortcut(shortcut as Parameters<ExtensionAPI["registerShortcut"]>[0], { description: "Collapse or expand the todo widget", handler: (ctx) => {
   if (!foregroundEvent(ctx) || !mounted) return;
