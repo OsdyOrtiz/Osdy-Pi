@@ -41,6 +41,22 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 Osdy Pi's own extension and all **14 themes** are bundled with this installation—do not install them separately. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
 
+### Optional: isolated `osdy` command
+
+Use this path when you want **installed, normal Pi** with Osdy-specific settings and sessions, without changing the official Pi profile. `pi install` loads package resources in Pi; it does not guarantee that package executables are available on your shell's `PATH`. To use the packaged commands, install the CLI separately (or run the scripts directly from a checkout):
+
+```bash
+npm install --global osdy-pi
+osdy-pi setup
+osdy
+```
+
+From an Osdy Pi checkout, `node bin/osdy-pi.mjs setup` or `node bin/osdy.mjs setup` works without a global CLI installation; `node bin/osdy.mjs` launches Pi. `osdy-pi setup` is explicit and repeatable; `osdy` also checks/reconciles the isolated profile before each launch and forwards its arguments to the installed `pi` executable. The default source is `~/.pi/agent`, the isolated destination is `~/.pi/osdy-agent`, and the Osdy source is the package containing the CLI. Set `OSDY_PI_SOURCE_AGENT_DIR`, `OSDY_PI_AGENT_DIR`, or `OSDY_PI_EXTENSION_ROOT` to override them with absolute paths. The setup needs one valid local `gentle-pi` checkout declared as an absolute source in official Pi's package settings; if none or several match, set `GENTLE_PI_EXTENSION_ROOT=/absolute/path/to/gentle-pi` before setup and launch. Missing or invalid Gentle sources fail with an actionable error rather than silently omitting Gentle. No Pi fork, build, or PATH shim is required.
+
+**What is isolated?** Official `~/.pi/agent/settings.json` is read but never rewritten by `osdy-pi setup` or `osdy`. Osdy keeps its own settings, selected theme, sessions, crash logs, and command history. Other existing top-level official resources are linked into the isolated profile only when absent—including `auth.json`, so credentials are **shared**, not isolated. Existing isolated files and symlinks are not replaced; the managed isolated settings are reconciled atomically. Named Codex accounts under `/osdy-account` are a separate feature, not this profile separation.
+
+**Already have `~/.local/bin/osdy`?** Check `type -a osdy` (or `command -v osdy`) before using the new command: a home-local launcher earlier on `PATH` still wins. Setup does **not** remove or replace it. To try the packaged launcher without changing PATH, use `node "$(npm root -g)/osdy-pi/bin/osdy.mjs" --version` after installing the CLI; `node "$(npm root -g)/osdy-pi/bin/osdy.mjs" setup` runs the same explicit setup. Compare `pi --version` and `osdy --version` once the intended command resolves. Keep the old launcher until you confirm which executable you want; migration/removal is manual.
+
 ## Optional: complete Osdy Pi suite
 
 Add these maintained extensions after installing Osdy Pi. They are optional; each extends Pi independently.
