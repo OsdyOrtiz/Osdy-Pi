@@ -11,9 +11,9 @@ const KEY = "osdy-todos";
 type Store = ReturnType<typeof createTodoSessionStore>;
 
 function layout(tasks: TodoTask[], budget: number) {
- if (tasks.length <= budget) return { rows: tasks, completed: 0, pending: 0 };
+ const slots = Math.max(0, Math.floor(budget - 1));
+ if (tasks.length <= slots) return { rows: tasks, completed: 0, pending: 0 };
  const unfinished = tasks.filter((task) => task.status !== "completed");
- const slots = Math.max(0, budget - 1);
  if (unfinished.length > slots) return { rows: unfinished.slice(0, slots), completed: tasks.length - unfinished.length, pending: unfinished.length - slots };
  const kept = new Set(unfinished);
  for (const task of tasks) {
@@ -56,7 +56,7 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
    return [heading, trunc(`${theme.fg("dim", "└─")} ${theme.fg("dim", hint)}`), ""];
   }
   const expanded = ui?.getToolsExpanded?.() === true;
-  const { rows, completed, pending } = layout(tasks, expanded ? tasks.length : getMaxWidgetLines(config()) - 1);
+  const { rows, completed, pending } = layout(tasks, expanded ? tasks.length + 1 : getMaxWidgetLines(config()) - 1);
   const ids = tasks.some((task) => (task.blockedBy?.length ?? 0) > 0);
   const lines = [heading];
   for (const task of rows) {

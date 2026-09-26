@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
-export const DEFAULT_MAX_WIDGET_LINES = 12;
+export const DEFAULT_MAX_WIDGET_LINES = 7;
 export const DEFAULT_COLLAPSE_KEY = "ctrl+shift+t";
 export const COLLAPSE_KEY_OFF = "off";
 

@@ -40,15 +40,15 @@ void test("XDG wins, legacy is used only when XDG is missing; relative XDG uses 
 void test("invalid JSON warns and defaults without falling back; non-object JSON silently defaults", () => {
  const warnings: string[] = [];
  const bad = fixture({ [primary]: "{", [legacy]: '{"maxWidgetLines":5}' }, xdg);
- assert.equal(getMaxWidgetLines(loadTodoConfig({ ...bad, warn: (message: string) => warnings.push(message) })), 12);
+ assert.equal(getMaxWidgetLines(loadTodoConfig({ ...bad, warn: (message: string) => warnings.push(message) })), 7);
  assert.match(warnings[0] ?? "", /rpiv-config: invalid JSON at .*config.json/);
  for (const value of ["null", "[]", '"hello"', "42"]) {
-  assert.equal(getMaxWidgetLines(loadTodoConfig(fixture({ [primary]: value }, xdg))), 12);
+  assert.equal(getMaxWidgetLines(loadTodoConfig(fixture({ [primary]: value }, xdg))), 7);
  }
 });
 
 void test("widget budget and collapse key validate independently", () => {
- for (const value of [undefined, null, "3", 2, -1]) assert.equal(getMaxWidgetLines({ maxWidgetLines: value }), 12);
+ for (const value of [undefined, null, "3", 2, -1]) assert.equal(getMaxWidgetLines({ maxWidgetLines: value }), 7);
  assert.equal(getMaxWidgetLines({ maxWidgetLines: 3 }), 3);
  assert.equal(getMaxWidgetLines({ maxWidgetLines: 100 }), 100);
  for (const value of [undefined, null, "", "  ", "ctr+]", "ctrl+ctrl+t", "ctrl+f13", "ctrl++t", "ctrl+unknown+t", "~user"]) {
