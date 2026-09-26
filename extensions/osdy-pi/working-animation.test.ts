@@ -76,26 +76,28 @@ void test("Running label skips spaces, wraps the trailing grapheme, and follows 
 	assert.ok(!renderWorkingWidget(state("A", 3), palette, 20)[0]?.includes(palette.fg("warning", "A")));
 });
 
-void test("moving graphemes use plain accent and warning without text effects or width changes", () => {
+void test("only the moving accent grapheme is bold without changing width", () => {
 	const boldTheme = {
 		...palette,
 		bold(text: string) { return `\u001B[1m${text}\u001B[22m`; },
 	};
 	const spinner = (frame: number) => boldTheme.fg("accent", WORKING_SPINNER_FRAMES[frame] ?? "");
+	const accent = (segment: string) => boldTheme.bold(boldTheme.fg("accent", segment));
 	const label = "A\u0301👩‍💻 B";
 	for (const [frame, expected] of [
-		[0, `${boldTheme.fg("accent", "A\u0301")}${boldTheme.fg("text", "👩‍💻")} ${boldTheme.fg("warning", "B")}`],
-		[1, `${boldTheme.fg("warning", "A\u0301")}${boldTheme.fg("accent", "👩‍💻")} ${boldTheme.fg("text", "B")}`],
-		[2, `${boldTheme.fg("text", "A\u0301")}${boldTheme.fg("warning", "👩‍💻")} ${boldTheme.fg("accent", "B")}`],
+		[0, `${accent("A\u0301")}${boldTheme.fg("text", "👩‍💻")} ${boldTheme.fg("warning", "B")}`],
+		[1, `${boldTheme.fg("warning", "A\u0301")}${accent("👩‍💻")} ${boldTheme.fg("text", "B")}`],
+		[2, `${boldTheme.fg("text", "A\u0301")}${boldTheme.fg("warning", "👩‍💻")} ${accent("B")}`],
 	] as const) {
 		const line = renderWorkingWidget(state(label, frame), boldTheme, 40)[0] ?? "";
-		assert.ok(line.includes(`${spinner(frame)} ${expected}`), `frame ${frame} uses plain theme colors`);
-		assert.ok(!line.includes("\u001B[1m"), "no bold effect even when theme exposes bold");
+		assert.ok(line.includes(`${spinner(frame)} ${expected}`), `frame ${frame} bolds only the current accent grapheme`);
+		assert.equal(line.split("\u001B[1m").length - 1, 1, "exactly one grapheme is bold");
+		assert.ok(!line.includes("\u001B[7m"), "no inverse effect");
 		assert.equal(visibleWidth(line.trimStart()), 2 + visibleWidth(label));
 	}
 	const single = renderWorkingWidget(state("A", 3), boldTheme, 20)[0] ?? "";
-	assert.ok(single.includes(`${spinner(3)} ${boldTheme.fg("accent", "A")}`));
-	assert.ok(!single.includes("\u001B[1m"));
+	assert.ok(single.includes(`${spinner(3)} ${accent("A")}`));
+	assert.equal(single.split("\u001B[1m").length - 1, 1);
 	assert.equal(visibleWidth(single.trimStart()), 3);
 });
 
@@ -105,29 +107,32 @@ void test("trailing warning stays plain even when theme exposes inverse and bold
 		bold(text: string) { return `\u001B[1m${text}\u001B[22m`; },
 		inverse(text: string) { return `\u001B[7m${text}\u001B[27m`; },
 	};
+	const accent = (segment: string) => pulseTheme.bold(pulseTheme.fg("accent", segment));
 	const label = "A\u0301👩‍💻 B";
 	for (const [frame, expected] of [
-		[0, `${pulseTheme.fg("accent", "A\u0301")}${pulseTheme.fg("text", "👩‍💻")} ${pulseTheme.fg("warning", "B")}`],
-		[1, `${pulseTheme.fg("warning", "A\u0301")}${pulseTheme.fg("accent", "👩‍💻")} ${pulseTheme.fg("text", "B")}`],
-		[2, `${pulseTheme.fg("text", "A\u0301")}${pulseTheme.fg("warning", "👩‍💻")} ${pulseTheme.fg("accent", "B")}`],
+		[0, `${accent("A\u0301")}${pulseTheme.fg("text", "👩‍💻")} ${pulseTheme.fg("warning", "B")}`],
+		[1, `${pulseTheme.fg("warning", "A\u0301")}${accent("👩‍💻")} ${pulseTheme.fg("text", "B")}`],
+		[2, `${pulseTheme.fg("text", "A\u0301")}${pulseTheme.fg("warning", "👩‍💻")} ${accent("B")}`],
 	] as const) {
 		const spinner = pulseTheme.fg("accent", WORKING_SPINNER_FRAMES[frame] ?? "");
 		const line = renderWorkingWidget(state(label, frame), pulseTheme, 40)[0] ?? "";
-		assert.ok(line.includes(`${spinner} ${expected}`), `frame ${frame} uses plain fg colors`);
-		assert.ok(!line.includes("\u001B[1m"), "no bold effect");
+		assert.ok(line.includes(`${spinner} ${expected}`), `frame ${frame} keeps warning plain`);
+		assert.equal(line.split("\u001B[1m").length - 1, 1, "spinner and warning stay unbolded");
 		assert.ok(!line.includes("\u001B[7m"), "no inverse effect");
 		assert.equal(visibleWidth(line.trimStart()), 2 + visibleWidth(label));
 	}
 	const single = renderWorkingWidget(state("A", 3), pulseTheme, 20)[0] ?? "";
-	assert.ok(single.includes(`${pulseTheme.fg("accent", WORKING_SPINNER_FRAMES[3] ?? "")} ${pulseTheme.fg("accent", "A")}`));
-	assert.ok(!single.includes("\u001B[1m") && !single.includes("\u001B[7m"));
+	assert.ok(single.includes(`${pulseTheme.fg("accent", WORKING_SPINNER_FRAMES[3] ?? "")} ${accent("A")}`));
+	assert.equal(single.split("\u001B[1m").length - 1, 1);
+	assert.ok(!single.includes("\u001B[7m"));
 	const changedTheme = {
 		...theme("36", "35", "32"),
+		bold(text: string) { return `<bold>${text}</bold>`; },
 		inverse(text: string) { return `\u001B[7m${text}\u001B[27m`; },
 	};
 	assert.ok(renderWorkingWidget(state("AB", 1), changedTheme, 20)[0]?.includes(
-		`${changedTheme.fg("warning", "A")}${changedTheme.fg("accent", "B")}`,
-	), "next render uses the new theme's plain trailing color");
+		`${changedTheme.fg("warning", "A")}${changedTheme.bold(changedTheme.fg("accent", "B"))}`,
+	), "next render uses the new theme's bold and plain trailing color");
 });
 
 void test("tab-separated label skips whitespace when advancing the highlight", () => {
