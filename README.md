@@ -12,7 +12,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 | Header and mascot | A theme-aware `neon` header and selectable `bts` mascot, both responsive and persisted independently. |
 | Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
 | Quota | `/usage` and compact bars emphasize remaining Codex quota at warning (40% or less) and error (15% or less) thresholds. |
-| ODD tasks | Native `/todos` panel and `todo` tool read and update the project's `odd/tasks/*.md` ledger. |
+| TODO (unshipped branch) | First-party `todo` snapshots track the Pi session branch; `/todos` reads them without editing. ODD Markdown remains separate. |
 
 ## Prerequisites
 
@@ -34,14 +34,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
-   Already installed a pinned `npm:osdy-pi@1.3.0` or `npm:osdy-pi@1.4.0` in **normal Pi**? Once 1.4.1 is published, replace the older pin (no uninstall or `--local` needed):
-
-   ```bash
-   pi install npm:osdy-pi@1.4.1
-   pi list
-   ```
-
-   Check that `pi list` shows `npm:osdy-pi@1.4.1`, then restart Pi or run `/reload`. `pi update` does not move a pinned npm version. Installing Osdy does not automatically install Joker; use the [explicit agents setup](#explicit-joker-agents-setup-in-normal-pi) after updating if you want Joker in normal Pi.
+   Already using a pinned npm version? `pi update` does not move a pinned version. This branch's first-party TODO changes are **not published**; use a checkout of this branch to evaluate them. Installing Osdy does not automatically install Joker; see [explicit agents setup](#explicit-joker-agents-setup-in-normal-pi).
 
 2. Start Pi:
 
@@ -131,21 +124,38 @@ The command validates that the absolute source is a readable `gentle-pi` package
 
 Gentle Shell intentionally remains fully active underneath Osdy, including its footer and widgets. While Osdy is enabled, Osdy claims the footer and editor; disabling Osdy restores the editor Gentle Shell provided at session startup. Gentle's changes widget may coexist with Osdy's visual widgets.
 
-The exclusions prevent Gentle's todo, questionnaire, and agents extensions from competing with the suite. Osdy's native ODD ledger is authoritative for its `todo` tool and `/todos` panel; `pi-subagents-j0k3r` remains the subagent system and `@juicesharp/rpiv-ask-user-question` remains the structured-question plugin. This setup does **not** remove an independently installed `@juicesharp/rpiv-todo` package or edit its package entry. Remove that package yourself as described below to avoid duplicate `todo` and `/todos` registrations.
+The exclusions prevent Gentle's todo, questionnaire, and agents extensions from competing with the suite. Osdy's session-branch snapshots are authoritative for its `todo` tool and read-only `/todos` command; `pi-subagents-j0k3r` remains the subagent system and `@juicesharp/rpiv-ask-user-question` remains the structured-question plugin. This setup does **not** remove an independently installed `@juicesharp/rpiv-todo` package or edit its package entry. Remove that package yourself as described below to avoid duplicate `todo` and `/todos` registrations.
 
-## ODD tasks: native `/todos` and `todo`
+## First-party TODO on this branch (not yet released)
 
-From a project with Markdown task documents in `odd/tasks/*.md`, run `/todos` in interactive Pi. The panel lists documents (choose one if several exist); use arrows to navigate, Enter to open, `a` to add a checklist item, Space to toggle a checkbox, `r` to refresh, `d` to return to the document list, and `q` or Esc to close. The model-facing `todo` tool supports `list`, `read`, `add`, and `set`: list documents, read a selected document for stable item IDs and its revision, then pass that revision and item ID for checkbox changes (or revision and text to add). When several documents exist, name the document explicitly; Osdy will not guess. Only checklist items in a selected file under the project's `odd/tasks/` are edited. The Markdown ledger, **not Pi conversation history**, is authoritative across sessions; this is not a general-purpose Markdown editor or an Engram sync.
+The model-facing `todo` tool supports `create`, `update`, `list`, `get`, `delete`, and `clear`. Tool results carry full task snapshots; Pi's current session branch is the TODO authority. Session switches and compaction replay the latest valid branch snapshot, rather than sharing one project-wide list. `/todos` is a read-only grouped view (pending, in progress, completed), not an interactive Markdown editor. ODD's `odd/tasks/*.md` ledger and Engram are separate orchestration records: there is no automatic sync with these Pi TODOs.
 
-If an edit reports a revision conflict, refresh/read the document again, inspect the latest IDs and revision, then retry the intended change. Osdy serializes its own writes and checks revisions before atomically replacing a file, but a non-cooperating external editor can write between the final check and rename. This is **not** a cross-process transactional guarantee; review the ledger after simultaneous external edits. The panel requires interactive TUI; in headless modes use the tool or inspect the ledger directly.
+In interactive Pi, the persistent widget appears above the editor while visible tasks exist. It defaults to 12 rows, summarizes overflow, and hides completed rows on the next turn (including the widget if none remain); expand tool output to view all rows. `ctrl+shift+t` collapses or expands the widget. The tool remains usable without a TUI, but interactive Pi rendering and real SDK integration have **not** been smoke-verified on this branch.
 
-**Already installed `@juicesharp/rpiv-todo`?** It is a separate store and may also register `todo` and `/todos`. To use Osdy's native ODD tasks without duplicate registrations, check the relevant Pi profile with `pi list`, then explicitly remove the standalone package in that same profile:
+### TODO configuration and language
+
+Create `$XDG_CONFIG_HOME/rpiv-todo/config.json` (with an absolute `XDG_CONFIG_HOME`); when absent, Osdy falls back to `~/.config/rpiv-todo/config.json`. Invalid JSON uses defaults. For example:
+
+```json
+{
+  "maxWidgetLines": 12,
+  "collapseKey": "ctrl+shift+t",
+  "guidance": {
+    "promptSnippet": "Track multi-step work",
+    "promptGuidelines": ["Update task status as work progresses"]
+  }
+}
+```
+
+`maxWidgetLines` must be a number >= 3 (otherwise 12); it is read on widget renders. `collapseKey` accepts a key combination or `"off"` to disable the shortcut; the shortcut binds at extension load, so restart Pi or run `/reload` after changing it. `guidance.promptSnippet` and `guidance.promptGuidelines` override the tool's model guidance at registration; reload after changing them. The optional `@juicesharp/rpiv-i18n` peer enables nine bundled locales (`de`, `en`, `es`, `fr`, `pt-BR`, `pt`, `ru`, `uk`, `zh`); without the SDK the UI uses English. SDK-backed language switching is not yet runtime-verified.
+
+**Already installed `@juicesharp/rpiv-todo`?** Both packages can register `todo` and `/todos`. Check `pi list` in the Pi profile you intend to use; to use this branch's first-party implementation, explicitly remove the standalone package in that same profile:
 
 ```bash
 pi remove npm:@juicesharp/rpiv-todo
 ```
 
-For project-local installs, use `pi remove -l npm:@juicesharp/rpiv-todo` in that project instead. Restart Pi or run `/reload` and verify `/todos` opens the ODD ledger. Osdy does not uninstall another package or silently mutate your package settings. Keep the standalone package only if you deliberately disable the conflicting extension through Pi package configuration.
+For a project-local installation, run `pi remove -l npm:@juicesharp/rpiv-todo` in that project instead. Restart Pi or run `/reload`, then check `/todos` shows session tasks, not a document panel. Osdy never uninstalls another package or silently changes package settings. If you need the standalone package, disable the conflicting extension via Pi package configuration instead.
 
 ## OpenAI account profiles
 
@@ -313,7 +323,7 @@ The enabled state, editor mode, working-tree visibility preference, header, and 
 | Main | `/osdy-pi` |
 | Main | `/osdy-pi enable\|disable\|on\|off\|status` |
 | Accounts | `/osdy-account` |
-| ODD tasks | `/todos` |
+| Session TODO (unshipped branch) | `/todos` (read-only) |
 | Header | `/osdy-pi header osdy-theme\|neon\|status` |
 | Mascot | `/osdy-pi mascot current\|bts\|status` |
 | Editor | `/osdy-pi editor auto\|extended\|simple\|on\|off\|toggle\|status` |
