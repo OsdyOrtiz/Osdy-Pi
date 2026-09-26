@@ -12,6 +12,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 | Header and mascot | A theme-aware `neon` header and selectable `bts` mascot, both responsive and persisted independently. |
 | Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
 | Quota | `/usage` and compact bars emphasize remaining Codex quota at warning (40% or less) and error (15% or less) thresholds. |
+| ODD tasks | Native `/todos` panel and `todo` tool read and update the project's `odd/tasks/*.md` ledger. |
 
 ## Prerequisites
 
@@ -82,7 +83,6 @@ Add these maintained extensions after installing Osdy Pi. They are optional; eac
 | `pi-playwright` | Playwright browser-automation skills. |
 | `pi-mcp-adapter` | MCP server and tool adapter for Pi. |
 | `pi-subagents-j0k3r` | Markdown-defined subagents, delegation tools, history, and model profiles. |
-| `@juicesharp/rpiv-todo` | A persistent live todo overlay for the agent. |
 | `gentle-pi` | The Gentle senior-architect harness, with SDD/OpenSpec, subagents, TDD evidence, and skills. |
 
 Install the ordinary npm packages once:
@@ -98,7 +98,6 @@ pi install npm:@open-pets/pi
 pi install npm:pi-playwright
 pi install npm:pi-mcp-adapter
 pi install npm:pi-subagents-j0k3r
-pi install npm:@juicesharp/rpiv-todo
 ```
 
 `gentle-pi` is deliberately not included in that package-install block: clone and register it through the coexistence setup below, which applies Osdy-specific exclusions instead of adding a duplicate ordinary package entry.
@@ -128,11 +127,25 @@ To load a local `gentle-pi` checkout while keeping Osdy Pi's UI authoritative, r
 osdy-pi gentle setup /absolute/path/to/gentle-pi
 ```
 
-The command validates that the absolute source is a readable `gentle-pi` package with Gentle's todo and agents extensions before atomically updating `$PI_CODING_AGENT_DIR/settings.json` (or `~/.pi/agent/settings.json`). It registers the local package immediately before the first configured Osdy Pi package entry, so Gentle Shell initializes first, with exclusions only for Gentle's `gentle-todo.ts` and `gentle-agents.ts`, plus `themes: []`. Restart Pi or run `/reload` after setup.
+The command validates that the absolute source is a readable `gentle-pi` package with Gentle's todo and agents extensions before atomically updating `$PI_CODING_AGENT_DIR/settings.json` (or `~/.pi/agent/settings.json`). It registers the local package immediately before the first configured Osdy Pi package entry, so Gentle Shell initializes first, with exclusions for Gentle's `gentle-todo.ts`, `ask-user-question.ts`, and `gentle-agents.ts`, plus `themes: []`. Restart Pi or run `/reload` after setup.
 
 Gentle Shell intentionally remains fully active underneath Osdy, including its footer and widgets. While Osdy is enabled, Osdy claims the footer and editor; disabling Osdy restores the editor Gentle Shell provided at session startup. Gentle's changes widget may coexist with Osdy's visual widgets.
 
-The exclusions prevent Gentle's todo and agents extensions from competing with the suite. `@juicesharp/rpiv-todo` remains the authoritative todo overlay, `pi-subagents-j0k3r` remains the authoritative subagent system, and `@juicesharp/rpiv-ask-user-question` remains the authoritative structured-question plugin; their package entries are left untouched.
+The exclusions prevent Gentle's todo, questionnaire, and agents extensions from competing with the suite. Osdy's native ODD ledger is authoritative for its `todo` tool and `/todos` panel; `pi-subagents-j0k3r` remains the subagent system and `@juicesharp/rpiv-ask-user-question` remains the structured-question plugin. This setup does **not** remove an independently installed `@juicesharp/rpiv-todo` package or edit its package entry. Remove that package yourself as described below to avoid duplicate `todo` and `/todos` registrations.
+
+## ODD tasks: native `/todos` and `todo`
+
+From a project with Markdown task documents in `odd/tasks/*.md`, run `/todos` in interactive Pi. The panel lists documents (choose one if several exist); use arrows to navigate, Enter to open, `a` to add a checklist item, Space to toggle a checkbox, `r` to refresh, `d` to return to the document list, and `q` or Esc to close. The model-facing `todo` tool supports `list`, `read`, `add`, and `set`: list documents, read a selected document for stable item IDs and its revision, then pass that revision and item ID for checkbox changes (or revision and text to add). When several documents exist, name the document explicitly; Osdy will not guess. Only checklist items in a selected file under the project's `odd/tasks/` are edited. The Markdown ledger, **not Pi conversation history**, is authoritative across sessions; this is not a general-purpose Markdown editor or an Engram sync.
+
+If an edit reports a revision conflict, refresh/read the document again, inspect the latest IDs and revision, then retry the intended change. Osdy serializes its own writes and checks revisions before atomically replacing a file, but a non-cooperating external editor can write between the final check and rename. This is **not** a cross-process transactional guarantee; review the ledger after simultaneous external edits. The panel requires interactive TUI; in headless modes use the tool or inspect the ledger directly.
+
+**Already installed `@juicesharp/rpiv-todo`?** It is a separate store and may also register `todo` and `/todos`. To use Osdy's native ODD tasks without duplicate registrations, check the relevant Pi profile with `pi list`, then explicitly remove the standalone package in that same profile:
+
+```bash
+pi remove npm:@juicesharp/rpiv-todo
+```
+
+For project-local installs, use `pi remove -l npm:@juicesharp/rpiv-todo` in that project instead. Restart Pi or run `/reload` and verify `/todos` opens the ODD ledger. Osdy does not uninstall another package or silently mutate your package settings. Keep the standalone package only if you deliberately disable the conflicting extension through Pi package configuration.
 
 ## OpenAI account profiles
 
@@ -300,6 +313,7 @@ The enabled state, editor mode, working-tree visibility preference, header, and 
 | Main | `/osdy-pi` |
 | Main | `/osdy-pi enable\|disable\|on\|off\|status` |
 | Accounts | `/osdy-account` |
+| ODD tasks | `/todos` |
 | Header | `/osdy-pi header osdy-theme\|neon\|status` |
 | Mascot | `/osdy-pi mascot current\|bts\|status` |
 | Editor | `/osdy-pi editor auto\|extended\|simple\|on\|off\|toggle\|status` |
