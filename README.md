@@ -130,7 +130,7 @@ The exclusions prevent Gentle's todo, questionnaire, and agents extensions from 
 
 The model-facing `todo` tool supports `create`, `update`, `list`, `get`, `delete`, and `clear`. Tool results carry full task snapshots; Pi's current session branch is the TODO authority. Session switches and compaction replay the latest valid branch snapshot, rather than sharing one project-wide list. `/todos` is a read-only grouped view (pending, in progress, completed), not an interactive Markdown editor. ODD's `odd/tasks/*.md` ledger and Engram are separate orchestration records: there is no automatic sync with these Pi TODOs.
 
-In interactive Pi, the persistent widget appears above the editor while visible tasks exist. It defaults to 12 rows, summarizes overflow, and hides completed rows on the next turn (including the widget if none remain); expand tool output to view all rows. `ctrl+shift+t` collapses or expands the widget. The tool remains usable without a TUI, but interactive Pi rendering and real SDK integration have **not** been smoke-verified on this branch.
+In interactive Pi, the persistent widget appears above the editor while visible tasks exist. It defaults to 12 rows, summarizes overflow, and hides completed rows on the next turn (including the widget if none remain); expand tool output to view all rows. `ctrl+shift+t` collapses or expands the widget. An isolated Pi TUI loaded the extracted package and showed `/todos` and the above-editor widget from a seeded session snapshot. A clean npm installation, model-driven tool calls and the optional live language SDK are **not yet verified**.
 
 ### TODO configuration and language
 

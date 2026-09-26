@@ -26,7 +26,9 @@ function context(id: string, branch: unknown[] = [], hasUI = true): Context {
 }
 function harness(config: () => TodoConfig = () => ({})) {
  type Result = { content: [{ text: string }]; details: { tasks: unknown[]; error?: string } };
- type Tool = { name: string; label: string; parameters: { properties: Record<string, unknown> }; promptGuidelines: string[]; promptSnippet: string; execute: (...args: unknown[]) => Promise<Result> };
+ type Rendered = { render(width: number): string[] };
+ type Theme = { fg: (color: string, text: string) => string; bold: (text: string) => string };
+ type Tool = { name: string; label: string; parameters: { properties: Record<string, unknown> }; promptGuidelines: string[]; promptSnippet: string; execute: (...args: unknown[]) => Promise<Result>; renderCall: (args: Record<string, unknown>, theme: Theme) => Rendered; renderResult: (result: Result, opts: unknown, theme: Theme) => Rendered };
  const tools: Tool[] = [];
  const events = new Map<string, (event: unknown, ctx: Context) => Promise<void> | void>();
  const commands: string[] = [];
@@ -90,6 +92,31 @@ void test("tool returns full snapshots, sanitized content, and rejection envelop
  assert.equal((await h.run(ctx, { action: "list" })).content[0].text, "[pending] #2 Ship ⛓ #1");
  assert.equal((await h.run(ctx, { action: "list", includeDeleted: true, status: "deleted" })).content[0].text, "[deleted] #1 Write tests");
  assert.equal((await h.run(ctx, { action: "clear" })).content[0].text, "Cleared 2 tasks");
+});
+
+void test("registered hooks use foreground only and render execution status without changing the result envelope", async () => {
+ const h = harness();
+ const theme = { fg: (color: string, value: string) => `<${color}>${value}</${color}>`, bold: (value: string) => `<b>${value}</b>` };
+ const tool = h.tools[0]; assert.ok(tool);
+ const renderCall = (args: Record<string, unknown>) => tool.renderCall(args, theme).render(200).join("\n").trimEnd();
+ const renderResult = (result: Awaited<ReturnType<typeof h.run>>) => tool.renderResult(result, {}, theme).render(200).join("\n").trimEnd();
+ const foreground = context("foreground-a");
+ await h.emit("session_start", foreground);
+ const created = await h.run(foreground, { action: "create", subject: "Parent" });
+ assert.equal(renderResult(created), "<dim>○ pending</dim>");
+ assert.equal(renderCall({ action: "get", id: 1 }), "<toolTitle><b>todo </b></toolTitle><muted>›</muted> <accent>Parent</accent>");
+ const sibling = context("sibling");
+ await h.run(sibling, { action: "create", subject: "Private sibling" });
+ assert.equal(renderCall({ action: "update", id: 1 }), "<toolTitle><b>todo </b></toolTitle><muted>→</muted> <accent>Parent</accent>");
+ assert.equal(renderCall({ action: "get", id: 2 }), "<toolTitle><b>todo </b></toolTitle><muted>›</muted> <accent>#2</accent>");
+ await h.emit("session_start", context("sibling", [], false));
+ assert.equal(renderCall({ action: "get", id: 1 }), "<toolTitle><b>todo </b></toolTitle><muted>›</muted> <accent>Parent</accent>");
+ const updated = await h.run(foreground, { action: "update", id: 1, status: "completed" });
+ assert.equal(renderResult(updated), "<success>● completed</success>");
+ assert.equal(renderResult(await h.run(foreground, { action: "list" })), "<success>✓</success>");
+ await h.emit("session_shutdown", foreground);
+ await h.emit("session_start", context("sibling", [{ type: "message", message: { role: "toolResult", toolName: "todo", details: { tasks: [{ id: 1, subject: "Private sibling", status: "pending" }], nextId: 2 } } }]));
+ assert.equal(renderCall({ action: "get", id: 1 }), "<toolTitle><b>todo </b></toolTitle><muted>›</muted> <accent>Private sibling</accent>");
 });
 
 void test("session lifecycle replays same-session branch replacements and isolates child", async () => {

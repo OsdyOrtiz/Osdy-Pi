@@ -4,6 +4,7 @@ import { Type } from "typebox";
 import { loadTodoConfig, validateGuidance, type TodoConfig } from "./todo-config.js";
 import { applyTodo, getTaskWithBlocks, listTasks, type TodoOp, type TodoState } from "./todo-domain.js";
 import { todoSessionId, type createTodoSessionStore } from "./todo-session.js";
+import { renderTodoCall, renderTodoResult } from "./todo-tool-render.js";
 
 const parameters = Type.Object({
  action: Type.Union(["create", "update", "list", "get", "delete", "clear"].map((value) => Type.Literal(value))),
@@ -71,14 +72,15 @@ function content(op: TodoOp, state: TodoState): string {
 
 export function registerTodoTool(pi: ExtensionAPI, store: ReturnType<typeof createTodoSessionStore>, config: () => TodoConfig = loadTodoConfig): void {
  const guidance = validateGuidance(config().guidance);
+ let foreground: string | undefined;
  const id = (ctx: { sessionManager: { getSessionId(): string | undefined } }) => todoSessionId(ctx.sessionManager.getSessionId());
  const replay = (ctx: { sessionManager: { getSessionId(): string | undefined; getBranch(): ReturnType<Parameters<Parameters<ExtensionAPI["on"]>[1]>[1]["sessionManager"]["getBranch"]> } }) => {
   store.replaceFromBranch(id(ctx), ctx.sessionManager.getBranch());
  };
- pi.on("session_start", (_event, ctx) => { replay(ctx); });
+ pi.on("session_start", (_event, ctx) => { if (ctx.hasUI && foreground === undefined) foreground = id(ctx); replay(ctx); });
  pi.on("session_compact", (_event, ctx) => { replay(ctx); });
  pi.on("session_tree", (_event, ctx) => { replay(ctx); });
- pi.on("session_shutdown", (_event, ctx) => { store.evict(id(ctx)); });
+ pi.on("session_shutdown", (_event, ctx) => { store.evict(id(ctx)); if (foreground === id(ctx)) foreground = undefined; });
  pi.registerTool({
   name: "todo", label: "Todo",
   description: "Manage a task list for tracking multi-step progress. Actions: create (new task), update (change status/fields/dependencies), list (all tasks, optionally filtered by status), get (single task details), delete (tombstone), clear (reset all). Status: pending → in_progress → completed, plus deleted tombstone. Use this to plan and track multi-step work like research, design, and implementation.",
@@ -91,6 +93,12 @@ export function registerTodoTool(pi: ExtensionAPI, store: ReturnType<typeof crea
    return Promise.resolve({ content: [{ type: "text" as const, text: content(result.op, result.state) }],
     details: { action: params.action, params, tasks: result.state.tasks, nextId: result.state.nextId,
      ...(result.op.kind === "error" ? { error: result.op.message } : {}) } });
+  },
+  renderCall(args, theme) {
+   return renderTodoCall(args, theme, store.get(foreground ?? ""));
+  },
+  renderResult(result, _opts, theme) {
+   return renderTodoResult(result, theme);
   },
  });
 }
