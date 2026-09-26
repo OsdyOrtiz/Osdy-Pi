@@ -4,7 +4,7 @@ import { chmod, mkdtemp, mkdir, readFile, readdir, lstat, symlink, writeFile } f
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { setupOsdyProfile } from "./osdy-pi-profile-setup.mjs";
+import { resourceLinkType, setupOsdyProfile } from "./osdy-pi-profile-setup.mjs";
 
 async function fixture() {
 	const root = await mkdtemp(join(tmpdir(), "osdy-profile-"));
@@ -25,6 +25,20 @@ async function fixture() {
 	await mkdir(join(officialDir, "npm"));
 	return { root, officialDir, profileDir, gentleRoot, osdyRoot, settings };
 }
+
+test("Windows link types follow directory targets, including links to directories", async () => {
+	const paths = await fixture();
+	const directory = join(paths.officialDir, "npm");
+	const alias = join(paths.officialDir, "npm-alias");
+	await symlink(directory, alias, process.platform === "win32" ? "junction" : "dir");
+	assert.equal(await resourceLinkType(directory, "win32"), "junction");
+	assert.equal(await resourceLinkType(alias, "win32"), "junction");
+	assert.equal(await resourceLinkType(join(paths.officialDir, "auth.json"), "win32"), "file");
+	assert.equal(await resourceLinkType(directory, "darwin"), undefined);
+	assert.equal(await resourceLinkType(join(paths.officialDir, "auth.json"), "linux"), undefined);
+	await setupOsdyProfile(paths);
+	assert.equal((await lstat(join(paths.profileDir, "npm-alias"))).isSymbolicLink(), true);
+});
 
 test("creates an isolated profile, keeps official bytes and shares resources explicitly", async () => {
 	const paths = await fixture();

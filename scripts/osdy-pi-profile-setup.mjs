@@ -95,6 +95,11 @@ async function optionalEntry(path) {
 	}
 }
 
+export async function resourceLinkType(source, platform = process.platform) {
+	if (platform !== "win32") return undefined;
+	return (await stat(source)).isDirectory() ? "junction" : "file";
+}
+
 async function canonicalDestination(path) {
 	try {
 		return await realpath(path);
@@ -147,13 +152,14 @@ export async function setupOsdyProfile({ officialDir, profileDir, osdyRoot, gent
 		if (ISOLATED_NAMES.has(name)) continue;
 		const destination = join(targetDir, name);
 		if (await optionalEntry(destination)) continue;
-		links.push({ destination, source: join(sourceDir, name) });
+		const source = join(sourceDir, name);
+		links.push({ destination, source, type: await resourceLinkType(source) });
 	}
 	if (!profileState) await mkdir(targetDir, { recursive: true, mode: 0o700 });
 	if (!sessionsState) await mkdir(sessions, { mode: 0o700 });
-	for (const { destination, source } of links) {
+	for (const { destination, source, type } of links) {
 		// Never overwrite a user entry created between validation and linking.
-		try { await symlink(source, destination); }
+		try { await symlink(source, destination, type); }
 		catch (error) { if (error.code !== "EEXIST") throw error; }
 	}
 	if (current !== next) {
