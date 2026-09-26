@@ -103,6 +103,23 @@ void test("TUI /todos gets localized grouped read-only content without mutating 
  assert.deepEqual(await h.show(h.context("main", true, "rpc")), ["1 pendientes\n── Pendientes ──\n  ○ #1 Write tests", "info"]);
 });
 
+void test("TUI /todos supplies semantic rows while RPC keeps its exact grouped notification", async () => {
+ const h = harness(); const ctx = h.context("main", true, "tui");
+ await h.run(ctx, { action: "create", subject: "First" });
+ await h.run(ctx, { action: "create", subject: "Second" });
+ await h.run(ctx, { action: "update", id: 2, status: "completed" });
+ await h.show(ctx);
+ const colors: string[] = [];
+ const panel = h.modals[0]?.factory({ terminal: { rows: 20 }, requestRender() {} },
+  { fg: (color: string, text: string) => { colors.push(`${color}:${text}`); return text; } }, null, () => {}) as { render(width: number): string[] };
+ const frame = panel.render(48).join("\n");
+ assert.match(frame, /█████░░░░░ 1\/2 completed/);
+ assert.match(frame, /Pending[\s\S]*Completed/);
+ assert.ok(colors.some((line) => line === "warning:── Pending ──"));
+ assert.ok(colors.some((line) => line === "success:  ✓ #2 Second"));
+ assert.deepEqual(await h.show(h.context("main")), ["1/2 completed · 1 pending\n── Pending ──\n  ○ #1 First\n── Completed ──\n  ✓ #2 Second", "info"]);
+});
+
 void test("command reflects lifecycle replay and shutdown eviction via shared tool store", async () => {
  const h = harness();
  const parent = h.context("parent");

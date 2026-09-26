@@ -13,6 +13,7 @@ registerHooks({ resolve(specifier, context, next) {
 } });
 
 const { showTodoPanel } = await import("./todo-panel.js");
+const { visibleWidth } = await import("@earendil-works/pi-tui");
 const theme = { fg: (_color: string, text: string) => text };
 
 async function openPanel(rows: number, lines: () => string[]) {
@@ -35,7 +36,7 @@ function assertFullFrame(panel: { render(width: number): string[] }, rows: numbe
  assert.ok(frame.length <= cap, `frame of ${frame.length} rows exceeds overlay cap ${cap}`);
  assert.match(frame[0] ?? "", /^╔.*╗$/);
  assert.match(frame.at(-1) ?? "", /^╚.*╝$/, "lower border must survive Pi overlay clipping");
- assert.ok(frame.every((line) => line.length === width));
+ assert.ok(frame.every((line) => visibleWidth(line) === width));
  assert.match(frame.at(-2) ?? "", /esc\/q close/, "controls remain inside the lower border");
  return frame;
 }
@@ -100,8 +101,55 @@ void test("todo panel truncates colored controls inside a narrow frame", async (
  const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g");
  const frame = panel.render(24).map((line) => line.replace(ansi, ""));
  assert.ok(frame.every((line) => line.length === 24));
- assert.match(frame.at(-2) ?? "", /↑\/↓ scroll/);
+ assert.match(frame.at(-2) ?? "", /esc\/q close/);
  assert.match(frame.at(-1) ?? "", /^╚.*╝$/);
+});
+
+void test("todo panel themes semantic status rows and progress without styling translated text by parsing it", async () => {
+ const colors: string[] = [];
+ let panel: { render(width: number): string[] } | undefined;
+ const ctx = { ui: { custom: (factory: (...args: unknown[]) => unknown) => {
+  panel = factory({ terminal: { rows: 20 }, requestRender: () => {} },
+   { fg: (color: string, text: string) => { colors.push(`${color}:${text}`); return text; } }, null, () => {}) as typeof panel;
+  return Promise.resolve();
+ } } };
+ await showTodoPanel(ctx as unknown as Parameters<typeof showTodoPanel>[0], () => [
+  { text: "1/3 completadas · 2 pendientes", kind: "summary", done: 1, total: 3 },
+  { text: "── Pendientes ──", kind: "section", status: "pending" },
+  { text: "  ○ #1 Build", kind: "task", status: "pending" },
+  { text: "── Completadas ──", kind: "section", status: "completed" },
+  { text: "  ✓ #2 Done", kind: "task", status: "completed" },
+ ], "Todos");
+ assert.ok(panel);
+ assert.match(panel.render(48).join("\n"), /███░░░░░░░ 1\/3 completadas/);
+ assert.ok(colors.some((line) => line === "warning:── Pendientes ──"));
+ assert.ok(colors.some((line) => line === "muted:  ○ #1 Build"));
+ assert.ok(colors.some((line) => line === "success:── Completadas ──"));
+ assert.ok(colors.some((line) => line === "success:  ✓ #2 Done"));
+});
+
+void test("footer tracks visible positions through pages, resize and narrow ANSI frames", async () => {
+ const state = await openPanel(12, () => Array.from({ length: 21 }, (_, i) => `row ${i}`));
+ const footer = () => state.panel.render(48).at(-2) ?? "";
+ assert.match(footer(), /1-7\/21/);
+ state.panel.handleInput("\x1b[6~");
+ assert.match(footer(), /8-14\/21/);
+ for (let i = 0; i < 10; i++) state.panel.handleInput("\x1b[6~");
+ assert.match(footer(), /15-21\/21/);
+ state.terminal.rows = 20;
+ assert.match(footer(), /7-21\/21/);
+ state.terminal.rows = 12;
+ assert.match(footer(), /7-13\/21/);
+ const colored = { ui: { custom: (factory: (...args: unknown[]) => unknown) => {
+  const panel = factory({ terminal: { rows: 12 }, requestRender() {} },
+   { fg: (_color: string, text: string) => `\x1b[35m${text}\x1b[0m` }, null, () => {}) as { render(width: number): string[] };
+  const frame = panel.render(24);
+  assert.ok(frame.every((line) => visibleWidth(line) === 24));
+  assert.match(frame.at(-2) ?? "", /1-1/);
+  assert.match(frame.at(-2) ?? "", /esc\/q close/);
+  return Promise.resolve();
+ } } };
+ await showTodoPanel(colored as unknown as Parameters<typeof showTodoPanel>[0], () => ["one"], "Todos");
 });
 
 void test("todo panel shows a complete frame for short and empty lists and closes with Esc", async () => {

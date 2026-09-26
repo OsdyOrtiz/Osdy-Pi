@@ -1,15 +1,33 @@
 import { matchesKey, type Component, type TUI } from "@earendil-works/pi-tui";
 import { doubleBorderBox, MODAL_OVERLAY_OPTIONS } from "./modal-frame.js";
 import type { SimpleTheme } from "./types.js";
+import type { TodoStatus } from "./todo-domain.js";
+
+export type TodoPanelRow =
+ | { text: string; kind: "summary"; done: number; total: number }
+ | { text: string; kind: "section" | "task"; status: TodoStatus }
+ | { text: string; kind: "space" };
+type PanelLine = string | TodoPanelRow;
+
+function styledRow(theme: SimpleTheme, row: PanelLine): string {
+ if (typeof row === "string") return row;
+ if (row.kind === "summary") {
+  const filled = Math.round(10 * row.done / row.total);
+  return `${theme.fg("success", "█".repeat(filled))}${theme.fg("muted", "░".repeat(10 - filled))} ${theme.fg("accent", row.text)}`;
+ }
+ if (row.kind === "space") return "";
+ const color = row.status === "completed" ? "success" : row.status === "in_progress" ? "accent" : row.kind === "section" ? "warning" : "muted";
+ return theme.fg(color, row.text);
+}
 
 class TodoPanel implements Component {
  private offset = 0;
  private readonly tui: TUI;
  private readonly theme: SimpleTheme;
- private readonly lines: () => string[];
+ private readonly lines: () => PanelLine[];
  private readonly title: string;
  private readonly close: () => void;
- constructor(tui: TUI, theme: SimpleTheme, lines: () => string[], title: string, close: () => void) {
+ constructor(tui: TUI, theme: SimpleTheme, lines: () => PanelLine[], title: string, close: () => void) {
   this.tui = tui;
   this.theme = theme;
   this.lines = lines;
@@ -48,8 +66,10 @@ class TodoPanel implements Component {
   this.offset = Math.min(this.offset, Math.max(0, lines.length - size));
   const cap = this.heightCap();
   if (cap < 3) return doubleBorderBox(this.theme, width, this.title, []).slice(-cap);
-  const hint = this.theme.fg("muted", "↑/↓ scroll · PgUp/PgDn page · esc/q close");
-  return doubleBorderBox(this.theme, width, this.title, [...lines.slice(this.offset, this.offset + size), hint]);
+  const first = lines.length ? this.offset + 1 : 0;
+  const last = Math.min(lines.length, this.offset + size);
+  const hint = this.theme.fg("muted", `${first}-${last}/${lines.length} · esc/q close · ↑/↓ scroll · PgUp/PgDn page`);
+  return doubleBorderBox(this.theme, width, this.title, [...lines.slice(this.offset, this.offset + size).map((row) => styledRow(this.theme, row)), hint]);
  }
 
  invalidate(): void {}
@@ -58,7 +78,7 @@ class TodoPanel implements Component {
 /** Show read-only lines; each invocation owns a fresh, keyboard-scrollable overlay. */
 export async function showTodoPanel(
  ctx: { ui: { custom<T>(factory: (tui: TUI, theme: SimpleTheme, keybindings: unknown, done: (value: T) => void) => Component, options: { overlay: boolean; overlayOptions: typeof MODAL_OVERLAY_OPTIONS }): Promise<T> } },
- lines: () => string[],
+ lines: () => PanelLine[],
  title: string,
 ): Promise<void> {
  await ctx.ui.custom<void>(
