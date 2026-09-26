@@ -39,9 +39,9 @@ import {
 	STACKED_HEADER_MIN_ROWS,
 	type MascotConfig,
 	type ScaledHeaderArt,
-	WORKING_SPINNER_FRAMES,
 } from "./constants.js";
 import { formatPath } from "./format.js";
+import { renderWorkingWidget } from "./working-animation.js";
 import { contextUsageData, modelLabel } from "./metrics.js";
 import {
 	formatModelMetadata,
@@ -363,13 +363,7 @@ class OsdyWorkingWidget implements Component {
 	}
 
 	render(width: number): string[] {
-		if (!this.state.active) return [];
-		const frame =
-			WORKING_SPINNER_FRAMES[this.state.frame % WORKING_SPINNER_FRAMES.length] ??
-			WORKING_SPINNER_FRAMES[0] ??
-			"⠋";
-		const line = `${this.theme.fg("accent", frame)} ${this.theme.fg("muted", this.state.label)}`;
-		return [fitCenterVisible(line, width)];
+		return renderWorkingWidget(this.state, this.theme, width);
 	}
 
 	invalidate(): void {}
