@@ -17,6 +17,7 @@ registerHooks({
 });
 
 const { registerTodoTool } = await import("./todo-tool.js");
+const { createTodoSessionStore } = await import("./todo-session.js");
 
 type Context = { sessionManager: { getSessionId: () => string; getBranch: () => unknown[] }; hasUI: boolean };
 function context(id: string, branch: unknown[] = [], hasUI = true): Context {
@@ -28,7 +29,7 @@ function harness() {
  const tools: Tool[] = [];
  const events = new Map<string, (event: unknown, ctx: Context) => Promise<void> | void>();
  const commands: string[] = [];
- registerTodoTool({ registerTool: (tool: Tool) => { tools.push(tool); }, on: (name: string, handler: (event: unknown, ctx: Context) => void) => { events.set(name, handler); }, registerCommand: (name: string) => { commands.push(name); } } as unknown as ExtensionAPI);
+ registerTodoTool({ registerTool: (tool: Tool) => { tools.push(tool); }, on: (name: string, handler: (event: unknown, ctx: Context) => void) => { events.set(name, handler); }, registerCommand: (name: string) => { commands.push(name); } } as unknown as ExtensionAPI, createTodoSessionStore());
  const run = (ctx: Context, params: Record<string, unknown>): Promise<Result> => { assert.ok(tools[0]); return tools[0].execute("call", params, undefined, undefined, ctx); };
  const emit = async (name: string, ctx: Context) => { const handler = events.get(name); assert.ok(handler); await handler({}, ctx); };
  return { tools, events, commands, run, emit };

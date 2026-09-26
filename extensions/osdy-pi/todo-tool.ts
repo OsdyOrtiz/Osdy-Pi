@@ -2,7 +2,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { applyTodo, getTaskWithBlocks, listTasks, type TodoOp, type TodoState } from "./todo-domain.js";
-import { createTodoSessionStore, todoSessionId } from "./todo-session.js";
+import { todoSessionId, type createTodoSessionStore } from "./todo-session.js";
 
 const parameters = Type.Object({
  action: Type.Union(["create", "update", "list", "get", "delete", "clear"].map((value) => Type.Literal(value))),
@@ -31,7 +31,7 @@ const promptGuidelines = [
 ];
 
 /* eslint-disable no-control-regex -- terminal escape sequences must be removed before rendering */
-function safe(value: string): string {
+export function safe(value: string): string {
  return value.replace(/(?:\u001b\[|\u009b)[0-?]*[ -/]*[@-~]/g, "")
   .replace(/(?:\u001b\]|\u009d)[^\u0007\u009c\u001b]*(?:\u0007|\u009c|\u001b\\)?/g, "")
   .replace(/\u001b./g, "").replace(/[\u2028\u2029]/g, " ")
@@ -68,8 +68,7 @@ function content(op: TodoOp, state: TodoState): string {
  }
 }
 
-export function registerTodoTool(pi: ExtensionAPI): void {
- const store = createTodoSessionStore();
+export function registerTodoTool(pi: ExtensionAPI, store: ReturnType<typeof createTodoSessionStore>): void {
  const id = (ctx: { sessionManager: { getSessionId(): string | undefined } }) => todoSessionId(ctx.sessionManager.getSessionId());
  const replay = (ctx: { sessionManager: { getSessionId(): string | undefined; getBranch(): ReturnType<Parameters<Parameters<ExtensionAPI["on"]>[1]>[1]["sessionManager"]["getBranch"]> } }) => {
   store.replaceFromBranch(id(ctx), ctx.sessionManager.getBranch());
