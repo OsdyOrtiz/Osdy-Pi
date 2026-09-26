@@ -29,8 +29,8 @@ Publish the portable isolated-profile setup and normal-Pi `osdy` launcher from r
 
 | ID | Task | Acceptance criteria | Progress |
 | --- | --- | --- | --- |
-| REL-001 | Prepare versioned release candidate | Package and lock agree on `1.3.0`; focused metadata check observes RED then GREEN; full checks, tarball contents and temporary-directory CLI smoke pass; commit identity recorded. | Implementation and checks complete — RED/GREEN metadata; 165/165 tests, typecheck, lint, diff-check and packed CLI smoke passed; awaiting commit authorization. |
-| REL-002 | Review and publish release | Approved release issue and PR link the candidate, merged commit identity is verified, npm registry/account/version are confirmed, one publish attempt succeeds and registry readback confirms exact version; otherwise document the blocker. | Issue #10 created and approved; PR, merge, npm identity confirmation and publish remain pending separate grants. |
+| REL-001 | Prepare versioned release candidate | Package and lock agree on `1.3.0`; focused metadata check observes RED then GREEN; full checks, tarball contents and temporary-directory CLI smoke pass; commit identity recorded. | Complete — RED/GREEN metadata; 165/165 tests, typecheck, lint, diff-check and packed CLI smoke passed; committed as `fb6960b`. |
+| REL-002 | Review and publish release | Approved release issue and PR link the candidate, merged commit identity is verified, npm registry/account/version are confirmed, one publish attempt succeeds and registry readback confirms exact version; otherwise document the blocker. | Issue #10 created and approved; user authorized branch push and PR with `Closes #10`. Merge, npm identity confirmation and publish remain pending separate grants. |
 
 ## Verification
 
@@ -40,4 +40,4 @@ Publish the portable isolated-profile setup and normal-Pi `osdy` launcher from r
 
 ## Next step
 
-Engram mirror created. Focused version assertion exited 1 as expected (`1.2.0` vs `1.3.0`), then passed after metadata edits. Independent verifier observed 165/165 tests, typecheck, lint, diff-check and extracted `osdy-pi-1.3.0.tgz` CLI smoke using temporary official/Gentle/Osdy fixtures; official settings bytes unchanged and no user-home write. An initial smoke assertion used a noncanonical macOS `/var` path and omitted fixture auth, then passed with corrected fixture; independent diagnosis found no product defect. Approved release issue: #10. Next: obtain explicit commit authorization, then prepare the PR; npm publish is not yet authorized.
+Engram mirror created. Focused version assertion exited 1 as expected (`1.2.0` vs `1.3.0`), then passed after metadata edits. Independent verifier observed 165/165 tests, typecheck, lint, diff-check and extracted `osdy-pi-1.3.0.tgz` CLI smoke using temporary official/Gentle/Osdy fixtures; official settings bytes unchanged and no user-home write. An initial smoke assertion used a noncanonical macOS `/var` path and omitted fixture auth, then passed with corrected fixture; independent diagnosis found no product defect. Approved release issue: #10. Work-unit commit: `fb6960b chore(release): prepare osdy-pi 1.3.0`. User authorized push and PR with `Closes #10`, not merge or npm publish. Next: push release branch, open PR and check its merge/CI state; npm publish remains unauthorized until exact registry/account confirmation.
