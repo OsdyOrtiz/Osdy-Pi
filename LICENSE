@@ -1,6 +1,11 @@
 MIT License
 
 Copyright (c) 2026 Osdy
+Copyright (c) 2026 juicesharp
+
+TODO portions are adapted from @juicesharp/rpiv-todo@2.11.0
+(https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-todo),
+licensed under the MIT terms below.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
