@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import ts from "typescript";
 
 registerHooks({
@@ -43,6 +43,7 @@ const { PLUGIN_EVENTS, subscribeQuestionPromptAudioNotification } =
 const {
 	createActiveSessionRefresh,
 	getOsdyCommandCompletions,
+	handleAgentsSetupCommand,
 	refreshCodexUsage,
 } = await import("./runtime.js");
 
@@ -79,6 +80,39 @@ class TestSessionContextProvider {
 		return this.context;
 	}
 }
+
+void test("agents setup requires interactive confirmation and reloads only after success", async () => {
+	const notices: string[] = [];
+	let installs = 0;
+	let reloads = 0;
+	let accepted = false;
+	const ui = {
+		confirm: (_title: string, message: string) => {
+			assert.match(message, /pi-subagents-j0k3r/);
+			assert.match(message, /gentle-agents\.ts/);
+			assert.match(message, /settings\.json/);
+			return Promise.resolve(accepted);
+		},
+		notify: (message: string) => { notices.push(message); },
+	};
+	const ctx = { mode: "tui", hasUI: true, cwd: "/tmp", ui, reload: () => { reloads++; return Promise.resolve(); } } as unknown as ExtensionCommandContext;
+	const setup = () => { installs++; return Promise.resolve({ installed: true, changed: true, gentleCount: 1 }); };
+	await handleAgentsSetupCommand("setup", ctx, setup);
+	assert.equal(installs, 0);
+	accepted = true;
+	await handleAgentsSetupCommand("setup", ctx, setup);
+	assert.equal(installs, 1);
+	assert.equal(reloads, 1);
+	await handleAgentsSetupCommand("status", ctx, setup, () => Promise.resolve({ jokerInstalled: true, gentleCount: 1, filtered: true }));
+	assert.ok(notices.some((notice) => notice.includes("agent exclusion complete")));
+	await handleAgentsSetupCommand("invalid", ctx, setup);
+	assert.equal(installs, 1);
+	assert.ok(notices.some((notice) => notice.includes("Usage:")));
+	assert.deepEqual(getOsdyCommandCompletions("agents"), [
+		{ value: "agents setup", label: "agents setup" },
+		{ value: "agents status", label: "agents status" },
+	]);
+});
 
 void test("header command completes only catalog choices and is persisted through session wiring", () => {
 	assert.deepEqual(getOsdyCommandCompletions("header"), [

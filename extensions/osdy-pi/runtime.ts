@@ -1,7 +1,11 @@
 import type {
 	ExtensionAPI,
+	ExtensionCommandContext,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { inspectJokerAgents, setupJokerAgents } from "./agent-coexistence-setup.js";
 import { createAudioEventRouter } from "./audio-event-router.js";
 import { registerAudioNotificationFlags } from "./audio-notification-config.js";
 import { createAudioNotificationService } from "./audio-notification-service.js";
@@ -250,6 +254,7 @@ export function getOsdyCommandCompletions(prefix: string) {
 			"on",
 			"off",
 			"status",
+			"agents",
 			"sound",
 			"working-tree",
 			"editor",
@@ -257,6 +262,9 @@ export function getOsdyCommandCompletions(prefix: string) {
 			"header",
 			"diff",
 		].map((value) => ({ value, label: value }));
+	}
+	if (trimmed === "agents") {
+		return ["agents setup", "agents status"].map((value) => ({ value, label: value }));
 	}
 	if (trimmed === "sound") {
 		return [{ value: "sound setup", label: "sound setup" }];
@@ -302,6 +310,7 @@ export function getOsdyCommandCompletions(prefix: string) {
 			"on",
 			"off",
 			"status",
+			"agents",
 			"sound",
 			"working-tree",
 			"editor",
@@ -311,6 +320,12 @@ export function getOsdyCommandCompletions(prefix: string) {
 		]
 			.filter((value) => value.startsWith(valuePrefix))
 			.map((value) => ({ value, label: value }));
+	}
+	if (parts[0] === "agents" && parts.length === 2) {
+		const valuePrefix = parts[1] ?? "";
+		return ["setup", "status"]
+			.filter((value) => value.startsWith(valuePrefix))
+			.map((value) => ({ value: `agents ${value}`, label: `agents ${value}` }));
 	}
 	if (parts[0] === "sound" && parts.length === 2) {
 		const valuePrefix = parts[1] ?? "";
@@ -692,6 +707,49 @@ function registerUsageCommand(
 	});
 }
 
+export async function handleAgentsSetupCommand(
+	action: string | undefined,
+	ctx: ExtensionCommandContext,
+	setup: typeof setupJokerAgents = setupJokerAgents,
+	inspect: typeof inspectJokerAgents = inspectJokerAgents,
+): Promise<void> {
+	if (action !== "setup" && action !== "status") {
+		ctx.ui.notify("Usage: /osdy-pi agents setup|status", "warning");
+		return;
+	}
+	if (!ctx.hasUI) {
+		ctx.ui.notify("Agents setup requires an interactive confirmation.", "warning");
+		return;
+	}
+	const target = join(homedir(), ".pi", "agent");
+	if (action === "status") {
+		try {
+			const status = await inspect({ agentDir: target, cwd: ctx.cwd, env: process.env });
+			ctx.ui.notify(`Joker ${status.jokerInstalled ? "installed" : "not installed"}; ${status.gentleCount} Gentle entries; agent exclusion ${status.filtered ? "complete" : "incomplete"}.`, "info");
+		} catch (error) {
+			ctx.ui.notify(`Agents status unavailable: ${error instanceof Error ? error.message : "unknown error"}`, "warning");
+		}
+		return;
+	}
+	const confirmed = await ctx.ui.confirm(
+		"Set up Joker agents in normal Pi?",
+		`Target: ${join(target, "settings.json")}\nInstall npm:pi-subagents-j0k3r with Pi and exclude only -extensions/gentle-agents.ts from eligible Gentle packages. No isolated profile or credentials are changed.`,
+	);
+	if (!confirmed) return;
+	try {
+		const result = await setup({ agentDir: target, cwd: ctx.cwd, env: process.env });
+		ctx.ui.notify(`Joker agents ready (${result.gentleCount} Gentle entries checked). Reloading resources.`, "info");
+	} catch (error) {
+		ctx.ui.notify(`Agents setup failed: ${error instanceof Error ? error.message : "unknown error"}. Check settings and retry after resolving the error.`, "error");
+		return;
+	}
+	try {
+		await ctx.reload();
+	} catch {
+		ctx.ui.notify("Agents setup saved, but reload failed; restart Pi to apply the changes.", "warning");
+	}
+}
+
 function registerCommand(
 	pi: ExtensionAPI,
 	state: OsdyState,
@@ -709,6 +767,10 @@ function registerCommand(
 		getArgumentCompletions: getOsdyCommandCompletions,
 		handler: async (args, ctx) => {
 			const [action = "status", ...rest] = parseCommandArgs(args);
+			if (action === "agents") {
+				await handleAgentsSetupCommand(rest.length === 1 ? rest[0] : undefined, ctx);
+				return;
+			}
 			if (["enable", "on"].includes(action)) {
 				await enableOsdyPi(
 					pi,
@@ -797,7 +859,7 @@ function registerCommand(
 				return;
 			}
 			ctx.ui.notify(
-				`Usage: /osdy-pi enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff`,
+				`Usage: /osdy-pi agents setup|status | enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff`,
 				"warning",
 			);
 		},

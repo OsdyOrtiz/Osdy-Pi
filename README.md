@@ -99,6 +99,18 @@ git clone https://github.com/Gentleman-Programming/gentle-pi.git
 osdy-pi gentle setup "$(pwd)/gentle-pi"
 ```
 
+## Explicit Joker agents setup in normal Pi
+
+After `pi install npm:osdy-pi`, open **normal personal Pi** (not `osdy`'s isolated profile) and run:
+
+```text
+/osdy-pi agents setup
+```
+
+Review the confirmation: it names `~/.pi/agent/settings.json`, installs `npm:pi-subagents-j0k3r` using Pi's package command, and adds only `-extensions/gentle-agents.ts` to each eligible Gentle package entry. It preserves unrelated settings and Gentle resources; if no Gentle package is present, it only installs Joker. After success, Pi reloads resources (restart Pi if reload fails). `/osdy-pi agents status` checks the personal Joker/Gentle setup without writing. Cancel changes nothing; rerunning is safe. This command is available inside Pi after the Pi package install—no global npm CLI or package postinstall hook is required.
+
+Gentle package detection supports `npm:gentle-pi` and validated local checkouts (absolute, settings-relative, `~/`, and `file:` paths). Remote Git/HTTPS Gentle sources are not reconciled: when recognized, setup stops before installing Joker rather than reporting a false success. Register a local Gentle checkout or npm Gentle source in personal Pi first; the existing `osdy-pi gentle setup /absolute/path/to/gentle-pi` command can configure local coexistence if you have that CLI. Setup refuses an isolated/custom `$PI_CODING_AGENT_DIR` or a project-local Gentle override because a personal filter cannot reliably control those contexts. Run it in normal Pi without a conflicting project package; an invalid settings file or failed install produces an error rather than silently applying only part of the filter. It does not edit credentials.
+
 ## Gentle coexistence setup
 
 To load a local `gentle-pi` checkout while keeping Osdy Pi's UI authoritative, run:
