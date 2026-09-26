@@ -27,6 +27,7 @@ test("npm package includes the single native extension entry and session TODO mo
 		"extensions/osdy-pi/todo-command.ts",
 		"extensions/osdy-pi/todo-domain.ts",
 		"extensions/osdy-pi/todo-session.ts",
+		"extensions/osdy-pi/todo-widget.ts",
 		"README.md",
 	]) assert.equal(names.filter((name) => name === path).length, 1, `${path} must be packed once`);
 	assert.equal(names.filter((name) => name.endsWith("/todo-tool.ts")).length, 1);
@@ -41,6 +42,7 @@ test("packed entry wires Osdy and exactly one native todo registration", async (
 	assert.equal(runtime.match(/createTodoSessionStore\(\)/g)?.length, 1);
 	assert.equal(runtime.match(/registerTodoTool\(pi, todoStore\)/g)?.length, 1);
 	assert.equal(runtime.match(/registerTodosCommand\(pi, todoStore\)/g)?.length, 1);
+	assert.equal(runtime.match(/registerTodoWidget\(pi, todoStore\)/g)?.length, 1);
 	assert.doesNotMatch(runtime, /registerOddTodo|odd-todo-ui/);
 	assert.equal(todo.match(/pi\.registerTool\(\{/g)?.length, 1);
 	assert.doesNotMatch(todo, /registerCommand\(/);

@@ -86,6 +86,7 @@ void test("runtime passes one session store to exactly one todo tool and command
  assert.equal(source.match(/createTodoSessionStore\(\)/g)?.length, 1);
  assert.equal(source.match(/registerTodoTool\(pi, todoStore\)/g)?.length, 1);
  assert.equal(source.match(/registerTodosCommand\(pi, todoStore\)/g)?.length, 1);
+ assert.equal(source.match(/registerTodoWidget\(pi, todoStore\)/g)?.length, 1);
 });
 
 void test("agents setup requires interactive confirmation and reloads only after success", async () => {
