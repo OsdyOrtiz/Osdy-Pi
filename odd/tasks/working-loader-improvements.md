@@ -14,7 +14,7 @@ Make the above-editor `Working...` / `Running ...` animation more noticeable whi
 ## Verification
 - Focused test command: `node --test --experimental-strip-types extensions/osdy-pi/working-animation.test.ts`.
 - Full checks: `npm run typecheck`, `npm run lint`, `npm test`, `git diff --check`.
-- Real interactive theme-switch smoke is optional and must be reported as skipped unless observed. A test theme can prove the renderer consumes current theme colors, not visual contrast in every palette.
+- Real interactive theme-switch smoke was not performed. A test theme proves the renderer consumes current theme colors, not visual contrast in every palette. Native review inspect was blocked by `package-local-binary-missing`; no lineage or approval was created, so an independent verifier checked the work unit.
 
 ## Next step
 Try the animation in an interactive session if a visual judgment is needed. The work unit is committed locally; no push, PR, merge or release has been requested for this feature. Keep the original dirty checkout untouched.
