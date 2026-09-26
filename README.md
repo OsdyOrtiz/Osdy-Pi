@@ -33,6 +33,15 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
+   Already installed a pinned `npm:osdy-pi@1.3.0` in **normal Pi**? Replace it with the published version (no uninstall or `--local` needed):
+
+   ```bash
+   pi install npm:osdy-pi@1.4.0
+   pi list
+   ```
+
+   Check that `pi list` shows `npm:osdy-pi@1.4.0`, then restart Pi or run `/reload`. `pi update` does not move a pinned npm version. Installing Osdy does not automatically install Joker; use the [explicit agents setup](#explicit-joker-agents-setup-in-normal-pi) after updating if you want Joker in normal Pi.
+
 2. Start Pi:
 
    ```bash
