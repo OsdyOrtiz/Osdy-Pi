@@ -11,10 +11,18 @@ import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
 const GENTLE_PACKAGE_NAME = "gentle-pi";
-const REQUIRED_EXTENSIONS = ["gentle-todo.ts", "gentle-agents.ts"];
+const REQUIRED_EXTENSIONS = [
+	"gentle-todo.ts",
+	"ask-user-question.ts",
+	"gentle-agents.ts",
+];
 const EXCLUDED_EXTENSIONS = REQUIRED_EXTENSIONS.map(
 	(extension) => `-extensions/${extension}`,
 );
+const OSDY_ONLY_PACKAGE_SOURCES = [
+	"npm:@juicesharp/rpiv-ask-user-question",
+	"npm:pi-subagents-j0k3r",
+];
 
 const nodeFileSystem = { access, mkdir, readFile, rename, stat, writeFile };
 
@@ -24,6 +32,13 @@ function isRecord(value) {
 
 function isGentleNpmSource(value) {
 	return typeof value === "string" && /^npm:gentle-pi(?:@[^\s]+)?$/i.test(value);
+}
+
+function isOsdyOnlyPackageSource(value) {
+	return (
+		typeof value === "string" &&
+		OSDY_ONLY_PACKAGE_SOURCES.includes(value.trim().toLowerCase())
+	);
 }
 
 function isOsdyPackageSource(value) {
@@ -49,6 +64,10 @@ function canonicalPackage(sourcePath) {
 	};
 }
 
+function canonicalOsdyOnlyPackages() {
+	return [...OSDY_ONLY_PACKAGE_SOURCES];
+}
+
 export function getPiSettingsPath(env = process.env, home = homedir()) {
 	const configuredDir = env.PI_CODING_AGENT_DIR?.trim();
 	return join(configuredDir || join(home, ".pi", "agent"), "settings.json");
@@ -63,15 +82,22 @@ export function reconcileGentlePackages(settings, sourcePath) {
 	const packages = settings.packages ?? [];
 	const retained = packages.filter((entry) => {
 		const source = packageSource(entry);
-		return source !== sourcePath && !isGentleNpmSource(source);
+		return (
+			source !== sourcePath &&
+			!isGentleNpmSource(source) &&
+			!isOsdyOnlyPackageSource(source)
+		);
 	});
-	const canonicalGentle = canonicalPackage(sourcePath);
+	const canonicalPackages = [
+		canonicalPackage(sourcePath),
+		...canonicalOsdyOnlyPackages(),
+	];
 	const firstOsdyIndex = retained.findIndex((entry) =>
 		isOsdyPackageSource(packageSource(entry)),
 	);
 	const nextPackages = [...retained];
-	if (firstOsdyIndex === -1) nextPackages.push(canonicalGentle);
-	else nextPackages.splice(firstOsdyIndex, 0, canonicalGentle);
+	if (firstOsdyIndex === -1) nextPackages.push(...canonicalPackages);
+	else nextPackages.splice(firstOsdyIndex, 0, ...canonicalPackages);
 	const nextSettings = {
 		...settings,
 		packages: nextPackages,

@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { setupOsdyProfile } from "../scripts/osdy-pi-profile-setup.mjs";
 import { configureGentleCoexistence } from "../scripts/osdy-pi-gentle-coexistence.mjs";
 import {
 	clearDefaultAccount,
@@ -26,7 +30,7 @@ function writeStderr(message) {
 
 function printUsage() {
 	writeStderr(
-		"Usage: osdy-pi gentle setup <absolute-source-path> | account list | create <name> | add <name> | rename <old> <new> | remove <name> --confirm <name> [--replacement <other>] | use <name> [-- <pi args...] | default [<name> | --clear]",
+		"Usage: osdy-pi setup | gentle setup <absolute-source-path> | account list | create <name> | add <name> | rename <old> <new> | remove <name> --confirm <name> [--replacement <other>] | use <name> [-- <pi args...] | default [<name> | --clear]",
 	);
 }
 
@@ -66,7 +70,17 @@ function startPi(plan) {
 
 try {
 	const args = process.argv.slice(2);
-	if (args[0] === "gentle") {
+	if (args[0] === "setup") {
+		if (args.length !== 1) throw new Error("Usage: osdy-pi setup");
+		const home = homedir();
+		const result = await setupOsdyProfile({
+			officialDir: process.env.OSDY_PI_SOURCE_AGENT_DIR || join(home, ".pi", "agent"),
+			profileDir: process.env.OSDY_PI_AGENT_DIR || join(home, ".pi", "osdy-agent"),
+			osdyRoot: process.env.OSDY_PI_EXTENSION_ROOT || resolve(dirname(fileURLToPath(import.meta.url)), ".."),
+			gentleRoot: process.env.GENTLE_PI_EXTENSION_ROOT || undefined,
+		});
+		writeStdout(`Isolated Osdy profile ${result.status}: ${result.profileDir}`);
+	} else if (args[0] === "gentle") {
 		if (args[1] !== "setup" || args.length !== 3)
 			throw new Error("Usage: osdy-pi gentle setup <absolute-source-path>");
 		const result = await configureGentleCoexistence(args[2]);

@@ -859,6 +859,9 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		if (codexUsageAbort === abort) codexUsageAbort = undefined;
 	};
 	registerAccountProfilesCommand(pi, {
+		requestRender: () => {
+			state.tui?.requestRender();
+		},
 		refreshUsage: async () => {
 			const activeSessionContext = sessionContext;
 			if (activeSessionContext)

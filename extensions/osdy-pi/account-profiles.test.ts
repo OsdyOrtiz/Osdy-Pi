@@ -465,10 +465,14 @@ void test("switches in place after idle without spawning or shutting down", asyn
 			Promise.resolve().then(() => {
 				events.push("refresh");
 			}),
+		() => {
+			events.push(`render ${process.env.OSDY_PI_PROFILE_NAME}`);
+		},
 	);
 	assert.deepEqual(events, [
 		"idle",
 		"activate work",
+		"render work",
 		"refresh",
 		"Switched to work. Your next request uses this account.",
 	]);
@@ -476,6 +480,7 @@ void test("switches in place after idle without spawning or shutting down", asyn
 
 void test("keeps the current account when in-place activation fails", async () => {
 	const notices: string[] = [];
+	let renderRequested = false;
 	await switchAccountInPlace(
 		{
 			isIdle: () => true,
@@ -489,7 +494,11 @@ void test("keeps the current account when in-place activation fails", async () =
 		"work",
 		() => Promise.reject(new Error("unsafe auth")),
 		() => Promise.resolve(assert.fail("must not refresh")),
+		() => {
+			renderRequested = true;
+		},
 	);
+	assert.equal(renderRequested, false);
 	assert.deepEqual(notices, [
 		"Cannot switch accounts: the account files could not be safely activated.",
 	]);
