@@ -427,7 +427,7 @@ void test("Tokyo Night uses original palette tokens for message stripes", () => 
 			userMessageText: theme.colors.userMessageText,
 		},
 		{
-			assistantMessageBg: "elevated",
+			assistantMessageBg: "#343b55",
 			assistantMessageAccentBg: "blue",
 			assistantMessageText: "text",
 			userMessageAccentBg: "#FFFFFF",

@@ -357,7 +357,7 @@ Usage loads once when the session starts and refreshes when the modal opens or `
 
 Osdy Pi delegates conversation rendering to Pi's native message-card components. It does not install a Markdown transformer or inject card markup into assistant responses. This preserves Pi's own streaming, selection, and Markdown behavior while allowing every bundled Osdy theme to style the native cards.
 
-User and assistant cards have separate background, text, and accent tokens. Assistant accents follow each theme's primary accent; user accents are white for a consistent visual distinction. Disabling Osdy Pi continues to restore the underlying Gentle Shell or Pi presentation normally.
+Every bundled theme gives user and assistant cards distinct, readable backgrounds automatically; no message markup or manual highlighting is needed. Lucent Orange uses an explicit dark user-card background so the distinction does not depend on the terminal's unknown default color. Assistant accents follow each theme's primary accent; user accents stay white. Background separation and text contrast are checked across all 14 palettes with `node --test scripts/message-card-contrast.test.mjs`. Actual appearance still depends on terminal color rendering. Disabling Osdy Pi continues to restore the underlying Gentle Shell or Pi presentation normally.
 
 ## Editor and working indicator
 

@@ -37,7 +37,7 @@
     "assistantMessageAccentBg": "orange",
     "assistantMessageText": "text",
     "userMessageAccentBg": "#FFFFFF",
-    "userMessageBg": "",
+    "userMessageBg": "#202020",
     "userMessageText": "text",
     "customMessageLabel": "secondary",
     "toolPendingBg": "subtle",

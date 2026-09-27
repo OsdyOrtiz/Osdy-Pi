@@ -36,7 +36,7 @@
     "searchMatchText": "background",
     "customMessageBg": "elevated",
     "customMessageText": "text",
-    "assistantMessageBg": "elevated",
+    "assistantMessageBg": "#343b55",
     "assistantMessageAccentBg": "blue",
     "assistantMessageText": "text",
     "userMessageAccentBg": "#FFFFFF",
