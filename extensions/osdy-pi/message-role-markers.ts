@@ -2,14 +2,12 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Text } from "@earendil-works/pi-tui";
 
 const ENTRY_TYPE = "osdy-pi-role-marker";
-type Role = "user" | "assistant";
-type Marker = { role: Role };
+type Marker = { role: "assistant" };
 
 export function registerMessageRoleMarkers(
  pi: Pick<ExtensionAPI, "on" | "appendEntry" | "registerEntryRenderer">,
  isEnabled: () => boolean,
 ): void {
- let seenUsers = new WeakSet<object>();
  let pendingAssistant = false;
  const eligible = (ctx: ExtensionContext): boolean => isEnabled() && ctx.mode === "tui" && ctx.hasUI;
  const visible = (content: unknown): boolean =>
@@ -18,12 +16,12 @@ export function registerMessageRoleMarkers(
    const block = part as { type?: unknown; text?: unknown };
    return block.type === "text" && typeof block.text === "string" && Boolean(block.text.trim());
   });
- const reset = (): void => { seenUsers = new WeakSet<object>(); pendingAssistant = false; };
+ const reset = (): void => { pendingAssistant = false; };
 
  pi.registerEntryRenderer<Marker>(ENTRY_TYPE, (entry, _options, theme) => {
   const role = entry.data?.role;
-  if (role !== "user" && role !== "assistant") return undefined;
-  const text = new Text(theme.fg("muted", role === "user" ? "👤" : "🦝"), 0, 0);
+  if (role !== "assistant") return undefined;
+  const text = new Text(theme.fg("muted", "🦝"), 0, 0);
   return {
    render: (width: number) => !Number.isInteger(width) || width < 2 ? [""] : text.render(width),
    invalidate: () => text.invalidate(),
@@ -32,10 +30,6 @@ export function registerMessageRoleMarkers(
  pi.on("message_start", (event, ctx) => {
   if (event.message.role === "user") {
    pendingAssistant = false;
-   if (eligible(ctx) && !seenUsers.has(event.message)) {
-    seenUsers.add(event.message);
-    pi.appendEntry<Marker>(ENTRY_TYPE, { role: "user" });
-   }
   } else if (event.message.role === "assistant") {
    pendingAssistant = eligible(ctx);
   }

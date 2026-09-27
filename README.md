@@ -8,7 +8,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 | Area | What ships |
 | --- | --- |
-| Message cards | Pi-native colored user cards and plain assistant Markdown, identified by separate `👤` and `🦝` transcript rows. |
+| Message cards | Pi-native colored user cards without emojis and plain assistant Markdown preceded by a separate `🦝` transcript row. |
 | Header and mascot | A theme-aware `neon` header and selectable `bts` mascot, both responsive and persisted independently. |
 | Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
 | Quota | `/usage` and compact bars emphasize remaining Codex quota at warning (40% or less) and error (15% or less) thresholds. |
@@ -244,7 +244,7 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 | --- | --- |
 | Themes | 14 built-in themes, including Osdy, Kanagawa, Dracula, Catppuccin, Matrix, and Lucent Orange palettes |
 | Header and mascot | Independently selectable `osdy-theme`/`neon` headers and `current`/`bts` mascots |
-| Messages | Native colored user cards and plain assistant Markdown with separate role-emoji rows |
+| Messages | Native colored user cards without emojis and plain assistant Markdown with a separate assistant `🦝` row |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
 | Status | Theme-aware Braille spinner and animated working label, responsive footer metrics, dynamic extension statuses, and Codex subscription quota with low-capacity emphasis |
 | Git | Working-tree summary and a centered, filterable diff panel |
@@ -355,7 +355,7 @@ Usage loads once when the session starts and refreshes when the modal opens or `
 
 ## Native message cards
 
-Pi renders the colored user card and assistant Markdown natively. Osdy Pi places `👤` before each user message and `🦝` before each assistant response with visible text as separate transcript entries, not inside message content. Selecting only the native message keeps its body clean; a wide selection that includes the emoji row copies the emoji too. Markers persist with the session but do not enter model context. The installed Pi 0.87.1 does not use `assistantMessage*` theme palette keys, so these keys do not create a native assistant card. Osdy does not install a Markdown transformer or change streaming. The current user card colors remain unchanged. Try both roles in your selected theme with `npm run pi:dev`; terminal rendering and selection still need a live visual check. When disabled, Osdy does not add new markers.
+Pi renders the colored user card and assistant Markdown natively. User messages have no emoji; Osdy Pi places a separate `🦝` transcript entry before each assistant response with visible text, not inside message content. Previously saved user `👤` entries remain in session history but render no row on replay. Selecting only the native message keeps its body clean; a wide selection that includes the emoji row copies the emoji too. Assistant markers persist with the session but do not enter model context. The installed Pi 0.87.1 does not use `assistantMessage*` theme palette keys, so these keys do not create a native assistant card. Osdy does not install a Markdown transformer or change streaming. The current user card colors remain unchanged. Try both roles in your selected theme with `npm run pi:dev`; terminal rendering and selection still need a live visual check. When disabled, Osdy does not add new markers.
 
 ## Editor and working indicator
 

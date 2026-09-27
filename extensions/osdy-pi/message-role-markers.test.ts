@@ -41,15 +41,16 @@ function harness(mode = "tui", enabled = true) {
 }
 const message = (role: string, timestamp: number, content: unknown[] = []) => ({ role, timestamp, content });
 
-void test("user marker precedes native card and does not modify its message", () => {
+void test("user starts preserve the native card without appending an emoji or changing content", () => {
  const h = harness();
  const user = message("user", 1, [{ type: "text", text: "original" }]);
  const original = structuredClone(user);
  h.emit("message_start", user);
+ h.emit("message_start", user);
  h.emit("message_end", user);
- assert.deepEqual(h.timeline, ["marker:user", "native:user"]);
+ assert.deepEqual(h.timeline, ["native:user", "native:user"]);
  assert.deepEqual(user, original);
- assert.equal(h.entries.length, 1);
+ assert.deepEqual(h.entries, []);
 });
 
 void test("assistant waits for visible text, then marks once across updates and end", () => {
@@ -92,7 +93,7 @@ void test("disabled and noninteractive modes do not persist markers", () => {
  assert.equal(json.entries.length, 0);
 });
 
-void test("same-timestamp messages each get their own marker without duplicate lifecycle events", () => {
+void test("same-timestamp assistant answers each get one marker without user markers", () => {
  const h = harness();
  const firstUser = message("user", 1);
  const secondUser = message("user", 1);
@@ -104,21 +105,22 @@ void test("same-timestamp messages each get their own marker without duplicate l
   h.emit("message_update", message("assistant", 2, [{ type: "text", text: `answer ${i}` }]));
   h.emit("message_end", message("assistant", 2, [{ type: "text", text: `answer ${i}` }]));
  }
- assert.deepEqual(h.entries.map(({ data }) => data), [{ role: "user" }, { role: "user" }, { role: "assistant" }, { role: "assistant" }]);
+ assert.deepEqual(h.entries.map(({ data }) => data), [{ role: "assistant" }, { role: "assistant" }]);
 });
 
-void test("session change clears active assistant and user identity state", () => {
+void test("user start and session change clear pending assistant state", () => {
  const h = harness();
- const user = message("user", 1);
- h.emit("message_start", user);
- h.emit("message_start", message("assistant", 2));
+ h.emit("message_start", message("assistant", 1));
+ h.emit("message_start", message("user", 2));
+ h.emit("message_end", message("assistant", 1, [{ type: "text", text: "orphan" }]));
+ assert.equal(h.entries.length, 0);
+ h.emit("message_start", message("assistant", 3));
  h.emit("session_start");
- h.emit("message_end", message("assistant", 2, [{ type: "text", text: "orphan" }]));
- assert.equal(h.entries.length, 1);
- h.emit("message_start", user);
- h.emit("message_start", message("assistant", 2));
- h.emit("message_end", message("assistant", 2, [{ type: "text", text: "new" }]));
- assert.deepEqual(h.entries.map(({ data }) => data.role), ["user", "user", "assistant"]);
+ h.emit("message_end", message("assistant", 3, [{ type: "text", text: "orphan" }]));
+ assert.equal(h.entries.length, 0);
+ h.emit("message_start", message("assistant", 4));
+ h.emit("message_end", message("assistant", 4, [{ type: "text", text: "new" }]));
+ assert.deepEqual(h.entries.map(({ data }) => data.role), ["assistant"]);
 });
 
 void test("malformed assistant content fails closed without throwing", () => {
@@ -131,15 +133,16 @@ void test("malformed assistant content fails closed without throwing", () => {
  assert.deepEqual(h.entries.map(({ data }) => data), [{ role: "assistant" }]);
 });
 
-void test("registered renderer selects role glyph without including message text", () => {
+void test("legacy user entries render no row, while assistant glyph stays copy-isolated", () => {
  const h = harness();
- h.emit("message_start", message("user", 1));
  h.emit("message_start", message("assistant", 2));
  h.emit("message_update", message("assistant", 2, [{ type: "text", text: "secret body" }]));
  const theme = { fg: (_color: string, text: string) => text };
- const userLines = h.renderer?.(h.entries[0]!, { expanded: false }, theme)?.render(40) ?? [];
- const assistantLines = h.renderer?.(h.entries[1]!, { expanded: false }, theme)?.render(40) ?? [];
- assert.match(userLines.join(""), /👤/);
+ const legacy = { type: "custom", customType: h.customType, data: { role: "user" } };
+ // Pi's addCustomEntryToChat skips the whole row when this renderer returns undefined.
+ assert.equal(legacy.customType, h.entries[0]?.customType);
+ assert.equal(h.renderer?.(legacy, { expanded: false }, theme), undefined);
+ const assistantLines = h.renderer?.(h.entries[0]!, { expanded: false }, theme)?.render(40) ?? [];
  assert.match(assistantLines.join(""), /🦝/);
  assert.doesNotMatch(assistantLines.join(""), /secret body/);
  assert.equal(h.entries[0]?.customType, h.customType);
@@ -150,9 +153,9 @@ void test("registered renderer selects role glyph without including message text
 
 void test("renderer returns an empty line for invalid or narrow widths", () => {
  const h = harness();
- const renderer = h.renderer?.({ data: { role: "user" } }, { expanded: false }, { fg: (_color: string, text: string) => text });
+ const renderer = h.renderer?.({ data: { role: "assistant" } }, { expanded: false }, { fg: (_color: string, text: string) => text });
  assert.ok(renderer);
  for (const width of [0, 1, -1, NaN, Infinity, -Infinity, 2.5])
   assert.deepEqual(renderer.render(width), [""], `width ${width}`);
- assert.match(renderer.render(2).join(""), /👤/);
+ assert.match(renderer.render(2).join(""), /🦝/);
 });
