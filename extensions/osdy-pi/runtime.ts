@@ -59,6 +59,7 @@ import {
 import { registerTodoTool } from "./todo-tool.js";
 import { registerTodosCommand } from "./todo-command.js";
 import { createTodoSessionStore } from "./todo-session.js";
+import { registerMessageRoleMarkers } from "./message-role-markers.js";
 import { registerTodoWidget } from "./todo-widget.js";
 
 function scheduleOsdyRefresh(
@@ -903,6 +904,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	const settingsStore = createAudioSoundSettingsStore();
 	const editorSettingsStore = createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
+	registerMessageRoleMarkers(pi, () => state.enabled);
 	const todoStore = createTodoSessionStore();
 	registerTodoTool(pi, todoStore);
 	registerTodosCommand(pi, todoStore);

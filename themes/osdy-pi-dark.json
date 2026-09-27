@@ -32,7 +32,7 @@
     "selectedBg": "surface2",
     "customMessageBg": "#1C1230",
     "customMessageText": "textSoft",
-    "assistantMessageBg": "#694278",
+    "assistantMessageBg": "#1C1230",
     "assistantMessageAccentBg": "pink",
     "assistantMessageText": "textSoft",
     "userMessageAccentBg": "#FFFFFF",

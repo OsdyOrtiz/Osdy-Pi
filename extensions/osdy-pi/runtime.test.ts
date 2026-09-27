@@ -81,6 +81,12 @@ class TestSessionContextProvider {
 	}
 }
 
+void test("runtime wires standalone role markers to the existing enabled state", () => {
+ const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+ assert.match(source, /registerMessageRoleMarkers\(pi, \(\) => state\.enabled\)/);
+ assert.equal(source.match(/registerMessageRoleMarkers\(pi, /g)?.length, 1);
+});
+
 void test("runtime passes one session store to exactly one todo tool and command", () => {
  const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
  assert.equal(source.match(/createTodoSessionStore\(\)/g)?.length, 1);
@@ -371,7 +377,7 @@ void test("does not import or register the response-card Markdown transformer", 
 	assert.doesNotMatch(source, /pi\.registerMarkdownTransformer\(/);
 });
 
-void test("every registered theme defines non-empty assistant message tokens", () => {
+void test("every registered theme defines native user message colors", () => {
 	const manifest = JSON.parse(
 		readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
 	) as { pi: { themes: string[] } };
@@ -384,11 +390,7 @@ void test("every registered theme defines non-empty assistant message tokens", (
 				"utf8",
 			),
 		) as { colors: Record<string, unknown> };
-		for (const token of [
-			"assistantMessageBg",
-			"assistantMessageAccentBg",
-			"assistantMessageText",
-		]) {
+		for (const token of ["userMessageBg", "userMessageText"]) {
 			const value = theme.colors[token];
 			assert.equal(
 				typeof value === "string" && value.trim() !== "",
@@ -396,20 +398,10 @@ void test("every registered theme defines non-empty assistant message tokens", (
 				`${themePath} must define a non-empty ${token}`,
 			);
 		}
-		assert.equal(
-			theme.colors.assistantMessageAccentBg,
-			theme.colors.accent,
-			`${themePath} assistant stripe must match its accent`,
-		);
-		assert.equal(
-			theme.colors.userMessageAccentBg,
-			"#FFFFFF",
-			`${themePath} user stripe must be white`,
-		);
 	}
 });
 
-void test("Tokyo Night uses original palette tokens for message stripes", () => {
+void test("Tokyo Night retains its approved native user card colors", () => {
 	const theme = JSON.parse(
 		readFileSync(
 			new URL("../../themes/osdy-pi-tokyo-night.json", import.meta.url),
@@ -419,18 +411,10 @@ void test("Tokyo Night uses original palette tokens for message stripes", () => 
 
 	assert.deepEqual(
 		{
-			assistantMessageBg: theme.colors.assistantMessageBg,
-			assistantMessageAccentBg: theme.colors.assistantMessageAccentBg,
-			assistantMessageText: theme.colors.assistantMessageText,
-			userMessageAccentBg: theme.colors.userMessageAccentBg,
 			userMessageBg: theme.colors.userMessageBg,
 			userMessageText: theme.colors.userMessageText,
 		},
 		{
-			assistantMessageBg: "#685d7d",
-			assistantMessageAccentBg: "blue",
-			assistantMessageText: "#f0e9ff",
-			userMessageAccentBg: "#FFFFFF",
 			userMessageBg: "#283b59",
 			userMessageText: "text",
 		},

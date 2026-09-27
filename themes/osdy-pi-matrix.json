@@ -36,7 +36,7 @@
     "searchMatchText": "matrixInk0",
     "customMessageBg": "matrixInk2",
     "customMessageText": "rainGreenHi",
-    "assistantMessageBg": "#416c42",
+    "assistantMessageBg": "matrixInk2",
     "assistantMessageAccentBg": "rainGreen",
     "assistantMessageText": "rainGreenHi",
     "userMessageAccentBg": "#FFFFFF",

@@ -33,7 +33,7 @@
     "searchMatchText": "accent",
     "customMessageBg": "",
     "customMessageText": "text",
-    "assistantMessageBg": "#79523c",
+    "assistantMessageBg": "subtle",
     "assistantMessageAccentBg": "orange",
     "assistantMessageText": "text",
     "userMessageAccentBg": "#FFFFFF",

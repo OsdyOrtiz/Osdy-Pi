@@ -44,7 +44,7 @@
     "searchMatchText": "pureWhite",
     "customMessageBg": "plasmaSurface",
     "customMessageText": "violetText",
-    "assistantMessageBg": "#695386",
+    "assistantMessageBg": "plasmaSurface",
     "assistantMessageAccentBg": "cyan",
     "assistantMessageText": "violetText",
     "userMessageAccentBg": "#FFFFFF",
