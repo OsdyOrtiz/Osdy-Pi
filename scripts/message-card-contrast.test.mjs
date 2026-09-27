@@ -33,7 +33,30 @@ test("every bundled Osdy Pi theme has distinct, legible native role cards", () =
     const theme = JSON.parse(readFileSync(join(themesDir, file), "utf8"));
     const user = resolveColor(theme, "userMessageBg");
     const assistant = resolveColor(theme, "assistantMessageBg");
-    assert.ok(contrast(user, assistant) >= 1.2, `${theme.name}: role backgrounds should be visibly separated`);
+    const lightTheme = ["osdy-pi-catppuccin-latte", "osdy-pi-kanagawa-lotus"].includes(theme.name);
+    // Light cards must keep the shared dark Markdown palette readable. At >=4.5:1
+    // dark body text, their white user stripe limits feasible role separation;
+    // test the meaningful 1.4:1 floor instead of forcing dark assistant cards.
+    assert.ok(contrast(user, assistant) >= (lightTheme ? 1.4 : 1.8), `${theme.name}: role backgrounds need separation`);
+    if (theme.export?.pageBg) {
+      const page = theme.vars[theme.export.pageBg] ?? theme.export.pageBg;
+      const roles = lightTheme ? [["user", user]] : [["user", user], ["assistant", assistant]];
+      // A pale assistant card on a light page may blend into the page; its
+      // distinguishability comes from the darker user card and blue stripe.
+      for (const [role, bg] of roles) {
+        assert.ok(contrast(bg, page) >= 1.2, `${theme.name}: ${role} card must stand off the known page background`);
+      }
+    }
+    if (lightTheme) {
+      assert.ok(contrast(user, resolveColor(theme, "userMessageAccentBg")) >= 1.6, `${theme.name}: white user stripe should remain visible`);
+      assert.ok(contrast(assistant, resolveColor(theme, "assistantMessageAccentBg")) >= 3.5, `${theme.name}: blue assistant stripe should remain visible`);
+      for (const role of ["mdHeading", "mdLink", "mdLinkUrl", "mdCode", "mdCodeBlock", "mdQuote", "mdListBullet"]) {
+        // These are shared Markdown colors, not assistant-only overrides. The
+        // weakest light-palette accents (Latte peach/sapphire) need >=2.4:1.
+        assert.ok(contrast(assistant, resolveColor(theme, role)) >= 2.4, `${theme.name}: ${role} must be visible on assistant cards`);
+        assert.ok(contrast(user, resolveColor(theme, role)) >= 1.8, `${theme.name}: ${role} must remain visible on user cards`);
+      }
+    }
     for (const role of ["user", "assistant"]) {
       assert.ok(
         contrast(resolveColor(theme, `${role}MessageBg`), resolveColor(theme, `${role}MessageText`)) >= 4.5,
