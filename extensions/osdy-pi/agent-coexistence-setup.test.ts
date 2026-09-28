@@ -11,7 +11,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 		return { shortCircuit: true, url: new URL("./agent-coexistence-setup.ts", context.parentURL).href };
 	return nextResolve(specifier, context);
 } });
-const { setupJokerAgents } = await import("./agent-coexistence-setup.js");
+const { setupJokerAgents, switchAgentMode, inspectJokerAgents } = await import("./agent-coexistence-setup.js");
 
 async function fixture() {
 	const root = await mkdtemp(join(tmpdir(), "osdy-joker-"));
@@ -28,6 +28,167 @@ async function fixture() {
 
 const base = (f: Awaited<ReturnType<typeof fixture>>) => ({
 	agentDir: f.agentDir, home: f.root, cwd: f.root, env: {},
+});
+
+void test("off filters only Joker's extension and enables Gentle; on reverses, both idempotently", async () => {
+	const f = await fixture();
+	await writeFile(f.settingsPath, JSON.stringify({ packages: [...f.packages, { source: "npm:pi-subagents-j0k3r", skills: ["skills/*"], extensions: ["-other.ts"] }] }));
+	await switchAgentMode({ ...base(f), mode: "off" });
+	const off = JSON.parse(await readFile(f.settingsPath, "utf8")) as { packages: Array<unknown>; osdyPiJokerExclusionOwned: boolean };
+	assert.equal(off.osdyPiJokerExclusionOwned, true);
+	assert.deepEqual(off.packages.at(-1), { source: "npm:pi-subagents-j0k3r", skills: ["skills/*"], extensions: ["-other.ts", "-./index.ts"] });
+	assert.deepEqual(off.packages.slice(1, 4), [
+		{ source: f.gentle, extensions: ["-extensions/gentle-todo.ts"], themes: [], skills: ["skills/*"] },
+		"npm:gentle-pi@1.2.0", "npm:gentle-pi",
+	]);
+	assert.equal((await inspectJokerAgents(base(f))).mode, "gentle");
+	assert.equal((await switchAgentMode({ ...base(f), mode: "off" })).changed, false);
+	await switchAgentMode({ ...base(f), mode: "on", install: () => Promise.reject(new Error("should not install")) });
+	assert.equal((await inspectJokerAgents(base(f))).mode, "joker");
+	assert.equal((await switchAgentMode({ ...base(f), mode: "on" })).changed, false);
+	const on = JSON.parse(await readFile(f.settingsPath, "utf8")) as { packages: Array<unknown>; osdyPiJokerExclusionOwned?: boolean };
+	assert.equal(on.osdyPiJokerExclusionOwned, undefined);
+	assert.deepEqual(on.packages.at(-1), { source: "npm:pi-subagents-j0k3r", skills: ["skills/*"], extensions: ["-other.ts"] });
+});
+
+void test("off refuses without Gentle and unowned Joker filters without writes", async () => {
+	const f = await fixture();
+	await writeFile(f.settingsPath, '{"packages":["npm:pi-subagents-j0k3r"]}');
+	const original = await readFile(f.settingsPath, "utf8");
+	await assert.rejects(switchAgentMode({ ...base(f), mode: "off" }), /Gentle/i);
+	assert.equal(await readFile(f.settingsPath, "utf8"), original);
+	await writeFile(f.settingsPath, '{"packages":["npm:gentle-pi",{"source":"npm:pi-subagents-j0k3r","extensions":["-./index.ts"]}]}');
+	const existing = await readFile(f.settingsPath, "utf8");
+	await assert.rejects(switchAgentMode({ ...base(f), mode: "on" }), /unowned|ownership/i);
+	await assert.rejects(switchAgentMode({ ...base(f), mode: "off" }), /unowned|ownership/i);
+	assert.equal(await readFile(f.settingsPath, "utf8"), existing);
+});
+
+void test("off enables Gentle without installing an absent Joker", async () => {
+	const f = await fixture();
+	const result = await switchAgentMode({ ...base(f), mode: "off", install: () => Promise.reject(new Error("must not install")) });
+	assert.equal(result.installed, false);
+	assert.equal((await inspectJokerAgents(base(f))).mode, "gentle");
+	const settings = JSON.parse(await readFile(f.settingsPath, "utf8")) as { packages: unknown[]; osdyPiJokerExclusionOwned?: boolean };
+	assert.equal(settings.osdyPiJokerExclusionOwned, undefined);
+	assert.equal(settings.packages.at(-1), "npm:gentle-pi");
+});
+
+void test("off restores string and object Gentle registrations without leaving empty filters", async () => {
+	const f = await fixture();
+	await writeFile(f.settingsPath, JSON.stringify({ theme: "dark", packages: [
+		{ source: "npm:gentle-pi@1.2.0", extensions: ["-extensions/gentle-agents.ts"] },
+		{ source: "npm:gentle-pi", skills: ["skills/*"], extensions: ["-extensions/gentle-agents.ts"] },
+		"npm:pi-subagents-j0k3r",
+	] }));
+	await switchAgentMode({ ...base(f), mode: "off" });
+	const settings = JSON.parse(await readFile(f.settingsPath, "utf8")) as { theme: string; packages: unknown[] };
+	assert.equal(settings.theme, "dark");
+	assert.deepEqual(settings.packages.slice(0, 2), [
+		"npm:gentle-pi@1.2.0",
+		{ source: "npm:gentle-pi", skills: ["skills/*"] },
+	]);
+	assert.equal((await inspectJokerAgents(base(f))).mode, "gentle");
+});
+
+void test("empty extension arrays disable selected agents, including Joker, without writes", async () => {
+	const f = await fixture();
+	for (const [mode, packages] of [
+		["off", [{ source: "npm:gentle-pi", extensions: [] }, "npm:pi-subagents-j0k3r"]],
+		["on", ["npm:gentle-pi", { source: "npm:pi-subagents-j0k3r", extensions: [] }]],
+	] as const) {
+		await writeFile(f.settingsPath, JSON.stringify({ packages }));
+		const before = await readFile(f.settingsPath, "utf8");
+		assert.notEqual((await inspectJokerAgents(base(f))).mode, mode === "off" ? "gentle" : "joker");
+		await assert.rejects(switchAgentMode({ ...base(f), mode }), /allowlist/i);
+		assert.equal(await readFile(f.settingsPath, "utf8"), before);
+	}
+});
+
+void test("mode switches do not turn disabled extension arrays into all-but-agent filters", async () => {
+	const f = await fixture();
+	for (const [mode, packages] of [
+		["on", [{ source: "npm:gentle-pi", extensions: [] }, "npm:pi-subagents-j0k3r", "npm:other"]],
+		["off", ["npm:gentle-pi", { source: "npm:pi-subagents-j0k3r", extensions: [] }, "npm:other"]],
+	] as const) {
+		await writeFile(f.settingsPath, JSON.stringify({ theme: "dark", packages }));
+		const before = await readFile(f.settingsPath, "utf8");
+		let installs = 0;
+		await assert.rejects(switchAgentMode({ ...base(f), mode, install: () => { installs++; return Promise.resolve(); } }), /disabled|empty|extensions/i);
+		assert.equal(installs, 0);
+		assert.equal(await readFile(f.settingsPath, "utf8"), before);
+	}
+});
+
+void test("autoload disabled and Pi exclusion patterns cannot select an agent", async () => {
+	const f = await fixture();
+	for (const [mode, packages] of [
+		["off", [{ source: "npm:gentle-pi", autoload: false }, "npm:pi-subagents-j0k3r"]],
+		["on", ["npm:gentle-pi", { source: "npm:pi-subagents-j0k3r", autoload: false }]],
+		["off", [{ source: "npm:gentle-pi", extensions: ["extensions/gentle-agents.ts", "!extensions/gentle-agents.ts"] }, "npm:pi-subagents-j0k3r"]],
+		["on", ["npm:gentle-pi", { source: "npm:pi-subagents-j0k3r", extensions: ["./index.ts", "!./index.ts"] }]],
+		["on", ["npm:gentle-pi", { source: "npm:pi-subagents-j0k3r", extensions: ["./index.ts", "!*.ts"] }]],
+	] as const) {
+		await writeFile(f.settingsPath, JSON.stringify({ packages }));
+		const before = await readFile(f.settingsPath, "utf8");
+		assert.notEqual((await inspectJokerAgents(base(f))).mode, mode === "off" ? "gentle" : "joker");
+		await assert.rejects(switchAgentMode({ ...base(f), mode }), /autoload|allowlist/i);
+		assert.equal(await readFile(f.settingsPath, "utf8"), before);
+	}
+});
+
+void test("prevalidates known failures before install and reports partial installation on later failure", async () => {
+	const f = await fixture();
+	let calls = 0;
+	const install = async () => { calls++; await writeFile(f.settingsPath, '{"packages":["npm:pi-subagents-j0k3r"]}'); };
+	await writeFile(f.settingsPath, '{"packages":["npm:gentle-pi"],"osdyPiJokerExclusionOwned":false}');
+	await assert.rejects(switchAgentMode({ ...base(f), mode: "on", install }), /ownership|marker/i);
+	assert.equal(calls, 0);
+	await writeFile(f.settingsPath, '{"packages":["npm:gentle-pi"]}');
+	await assert.rejects(switchAgentMode({ ...base(f), mode: "on", install: async () => {
+		await install();
+		await writeFile(f.settingsPath, "{bad");
+	} }), /Joker may have been installed.*agents status/is);
+	assert.equal(calls, 1);
+});
+
+void test("off retains remaining positive and negative Gentle filters", async () => {
+	const f = await fixture();
+	await writeFile(f.settingsPath, JSON.stringify({ packages: [
+		{ source: "npm:gentle-pi", skills: ["skills/*"], extensions: ["extensions/gentle-agents.ts", "-extensions/gentle-todo.ts", "-extensions/gentle-agents.ts"] },
+		"npm:pi-subagents-j0k3r",
+	] }));
+	await switchAgentMode({ ...base(f), mode: "off" });
+	const settings = JSON.parse(await readFile(f.settingsPath, "utf8")) as { packages: unknown[] };
+	assert.deepEqual(settings.packages[0], {
+		source: "npm:gentle-pi", skills: ["skills/*"], extensions: ["extensions/gentle-agents.ts", "-extensions/gentle-todo.ts"],
+	});
+	assert.equal((await inspectJokerAgents(base(f))).mode, "gentle");
+});
+
+void test("off validates project override and malformed filters before touching settings", async () => {
+	const f = await fixture();
+	const project = join(f.root, "project");
+	await mkdir(join(project, ".pi"), { recursive: true });
+	await writeFile(join(project, ".pi", "settings.json"), '{"packages":["npm:gentle-pi"]}');
+	await assert.rejects(switchAgentMode({ ...base(f), cwd: project, mode: "off" }), /project-local Gentle/i);
+	await writeFile(f.settingsPath, '{"packages":["npm:gentle-pi",{"source":"npm:pi-subagents-j0k3r","extensions":false}]}');
+	const previous = await readFile(f.settingsPath, "utf8");
+	await assert.rejects(switchAgentMode({ ...base(f), mode: "off" }), /extensions filter/i);
+	assert.equal(await readFile(f.settingsPath, "utf8"), previous);
+});
+
+void test("positive extension allowlists that omit selected agents fail closed", async () => {
+	const f = await fixture();
+	for (const [mode, packages] of [
+		["on", ["npm:gentle-pi", { source: "npm:pi-subagents-j0k3r", extensions: ["./other.ts"] }]],
+		["off", [{ source: "npm:gentle-pi", extensions: ["extensions/gentle-todo.ts"] }, "npm:pi-subagents-j0k3r"]],
+	] as const) {
+		await writeFile(f.settingsPath, JSON.stringify({ packages }));
+		const previous = await readFile(f.settingsPath, "utf8");
+		await assert.rejects(switchAgentMode({ ...base(f), mode }), /allowlist/i);
+		assert.equal(await readFile(f.settingsPath, "utf8"), previous);
+	}
 });
 
 void test("installs Joker then narrowly reconciles every Gentle entry using latest settings", async () => {

@@ -6,7 +6,7 @@ import type {
 import { homedir } from "node:os";
 import { identifyLocalPackage, runOsdyUninstall } from "./uninstall.js";
 import { join } from "node:path";
-import { inspectJokerAgents, setupJokerAgents } from "./agent-coexistence-setup.js";
+import { inspectJokerAgents, setupJokerAgents, switchAgentMode } from "./agent-coexistence-setup.js";
 import { createAudioEventRouter } from "./audio-event-router.js";
 import { registerAudioNotificationFlags } from "./audio-notification-config.js";
 import { createAudioNotificationService } from "./audio-notification-service.js";
@@ -271,7 +271,7 @@ export function getOsdyCommandCompletions(prefix: string) {
 		].map((value) => ({ value, label: value }));
 	}
 	if (trimmed === "agents") {
-		return ["agents setup", "agents status"].map((value) => ({ value, label: value }));
+		return ["agents setup", "agents on", "agents off", "agents status"].map((value) => ({ value, label: value }));
 	}
 	if (trimmed === "sound") {
 		return [{ value: "sound setup", label: "sound setup" }];
@@ -720,9 +720,10 @@ export async function handleAgentsSetupCommand(
 	ctx: ExtensionCommandContext,
 	setup: typeof setupJokerAgents = setupJokerAgents,
 	inspect: typeof inspectJokerAgents = inspectJokerAgents,
+	switchMode: typeof switchAgentMode = switchAgentMode,
 ): Promise<void> {
-	if (action !== "setup" && action !== "status") {
-		ctx.ui.notify("Usage: /osdy-pi agents setup|status", "warning");
+	if (action !== "setup" && action !== "on" && action !== "off" && action !== "status") {
+		ctx.ui.notify("Usage: /osdy-pi agents setup|on|off|status", "warning");
 		return;
 	}
 	if (!ctx.hasUI) {
@@ -733,20 +734,21 @@ export async function handleAgentsSetupCommand(
 	if (action === "status") {
 		try {
 			const status = await inspect({ agentDir: target, cwd: ctx.cwd, env: process.env });
-			ctx.ui.notify(`Joker ${status.jokerInstalled ? "installed" : "not installed"}; ${status.gentleCount} Gentle entries; agent exclusion ${status.filtered ? "complete" : "incomplete"}.`, "info");
+			ctx.ui.notify(`Agent mode: ${status.mode}; Joker ${status.jokerInstalled ? "installed" : "not installed"}; ${status.gentleCount} Gentle entries; agent exclusion ${status.filtered ? "complete" : "incomplete"}.`, "info");
 		} catch (error) {
 			ctx.ui.notify(`Agents status unavailable: ${error instanceof Error ? error.message : "unknown error"}`, "warning");
 		}
 		return;
 	}
 	const confirmed = await ctx.ui.confirm(
-		"Set up Joker agents in normal Pi?",
-		`Target: ${join(target, "settings.json")}\nInstall npm:pi-subagents-j0k3r with Pi and exclude only -extensions/gentle-agents.ts from eligible Gentle packages. No isolated profile or credentials are changed.`,
+		`Switch agents to ${action === "off" ? "Gentle" : "Joker"} in normal Pi?`,
+		`Target: ${join(target, "settings.json")}\n${action === "off" ? "Disable Joker's ./index.ts extension and enable Gentle agents (requires eligible Gentle)." : "Install npm:pi-subagents-j0k3r if absent, enable Joker's ./index.ts extension and exclude only -extensions/gentle-agents.ts from eligible Gentle packages."} Packages and unrelated resources remain installed. No isolated profile or credentials are changed.`,
 	);
 	if (!confirmed) return;
 	try {
-		const result = await setup({ agentDir: target, cwd: ctx.cwd, env: process.env });
-		ctx.ui.notify(`Joker agents ready (${result.gentleCount} Gentle entries checked). Reloading resources.`, "info");
+		const result = action === "setup" ? await setup({ agentDir: target, cwd: ctx.cwd, env: process.env }) :
+			await switchMode({ agentDir: target, cwd: ctx.cwd, env: process.env, mode: action });
+		ctx.ui.notify(`${action === "off" ? "Gentle" : "Joker"} agents ready (${result.gentleCount} Gentle entries checked). ${result.changed || result.installed ? "Reloading resources." : "Settings already in this mode; reloading resources."}`, "info");
 	} catch (error) {
 		ctx.ui.notify(`Agents setup failed: ${error instanceof Error ? error.message : "unknown error"}. Check settings and retry after resolving the error.`, "error");
 		return;
@@ -754,7 +756,7 @@ export async function handleAgentsSetupCommand(
 	try {
 		await ctx.reload();
 	} catch {
-		ctx.ui.notify("Agents setup saved, but reload failed; restart Pi to apply the changes.", "warning");
+		ctx.ui.notify("Agent settings saved, but reload failed; restart Pi to apply the changes.", "warning");
 	}
 }
 
@@ -888,7 +890,7 @@ function registerCommand(
 				return;
 			}
 			ctx.ui.notify(
-				`Usage: /osdy-pi agents setup|status | enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff | uninstall`,
+				`Usage: /osdy-pi agents setup|on|off|status | enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff | uninstall`,
 				"warning",
 			);
 		},

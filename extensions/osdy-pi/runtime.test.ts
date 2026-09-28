@@ -117,15 +117,30 @@ void test("agents setup requires interactive confirmation and reloads only after
 	await handleAgentsSetupCommand("setup", ctx, setup);
 	assert.equal(installs, 1);
 	assert.equal(reloads, 1);
-	await handleAgentsSetupCommand("status", ctx, setup, () => Promise.resolve({ jokerInstalled: true, gentleCount: 1, filtered: true }));
+	await handleAgentsSetupCommand("status", ctx, setup, () => Promise.resolve({ jokerInstalled: true, gentleCount: 1, filtered: true, mode: "joker" as const }));
 	assert.ok(notices.some((notice) => notice.includes("agent exclusion complete")));
 	await handleAgentsSetupCommand("invalid", ctx, setup);
 	assert.equal(installs, 1);
 	assert.ok(notices.some((notice) => notice.includes("Usage:")));
-	assert.deepEqual(getOsdyCommandCompletions("agents"), [
-		{ value: "agents setup", label: "agents setup" },
-		{ value: "agents status", label: "agents status" },
-	]);
+	assert.deepEqual(getOsdyCommandCompletions("agents"), ["setup", "on", "off", "status"].map((action) => ({ value: `agents ${action}`, label: `agents ${action}` })));
+});
+
+void test("agents off confirms and switches, reports actual mode, and guides restart on failed reload", async () => {
+	const notices: string[] = [];
+	const confirmations: string[] = [];
+	const modes: string[] = [];
+	const ctx = { hasUI: true, cwd: "/tmp", ui: {
+		confirm: (_title: string, message: string) => { confirmations.push(message); return Promise.resolve(true); },
+		notify: (message: string) => { notices.push(message); },
+	}, reload: () => Promise.reject(new Error("reload failed")) } as unknown as ExtensionCommandContext;
+	await handleAgentsSetupCommand("off", ctx, undefined, () => Promise.resolve({ jokerInstalled: true, gentleCount: 1, filtered: false, mode: "gentle" }),
+		(options) => { modes.push(options.mode); return Promise.resolve({ installed: false, changed: true, gentleCount: 1 }); });
+	assert.deepEqual(modes, ["off"]);
+	assert.match(confirmations[0] ?? "", /Joker.*Gentle|Gentle.*Joker/i);
+	assert.ok(notices.some((notice) => /restart Pi/i.test(notice)));
+	await handleAgentsSetupCommand("status", ctx, undefined, () => Promise.resolve({ jokerInstalled: true, gentleCount: 1, filtered: false, mode: "gentle" }));
+	assert.ok(notices.some((notice) => /Gentle/.test(notice)));
+	assert.deepEqual(getOsdyCommandCompletions("agents"), ["setup", "on", "off", "status"].map((action) => ({ value: `agents ${action}`, label: `agents ${action}` })));
 });
 
 void test("header command completes only catalog choices and is persisted through session wiring", () => {

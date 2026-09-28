@@ -34,7 +34,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
-   Already using a pinned npm version? `pi update` does not move a pinned version. First-party TODO is included starting in 1.5.0; until that version is published, npm `latest` may still resolve to an earlier release. Check the resolved version or use a checkout to evaluate 1.5.0 before publication. Installing Osdy does not automatically install Joker; see [explicit agents setup](#explicit-joker-agents-setup-in-normal-pi).
+   Already using a pinned npm version? `pi update` does not move a pinned version. First-party TODO is included starting in 1.5.0; until that version is published, npm `latest` may still resolve to an earlier release. Check the resolved version or use a checkout to evaluate 1.5.0 before publication. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
 
 2. Start Pi:
 
@@ -100,7 +100,7 @@ git clone https://github.com/Gentleman-Programming/gentle-pi.git
 osdy-pi gentle setup "$(pwd)/gentle-pi"
 ```
 
-## Explicit Joker agents setup in normal Pi
+## Explicit agent provider modes in normal Pi
 
 After `pi install npm:osdy-pi`, open **normal personal Pi** (not `osdy`'s isolated profile) and run:
 
@@ -108,9 +108,11 @@ After `pi install npm:osdy-pi`, open **normal personal Pi** (not `osdy`'s isolat
 /osdy-pi agents setup
 ```
 
-Review the confirmation: it names `~/.pi/agent/settings.json`, installs `npm:pi-subagents-j0k3r` using Pi's package command, and adds only `-extensions/gentle-agents.ts` to each eligible Gentle package entry. It preserves unrelated settings and Gentle resources; if no Gentle package is present, it only installs Joker. After success, Pi reloads resources (restart Pi if reload fails). `/osdy-pi agents status` checks the personal Joker/Gentle setup without writing. Cancel changes nothing; rerunning is safe. This command is available inside Pi after the Pi package install—no global npm CLI or package postinstall hook is required.
+`/osdy-pi agents setup` and `/osdy-pi agents on` ensure **Joker mode**: install Joker with Pi if absent, enable its package extension (`./index.ts`), and exclude only `-extensions/gentle-agents.ts` from eligible Gentle entries. `/osdy-pi agents off` selects **Gentle mode**: require an eligible Gentle package first, exclude only Joker's `./index.ts` using `-./index.ts` in its package entry (if installed), and remove Gentle's agents exclusion. Both packages and all unrelated resources stay installed. `/osdy-pi agents status` reports the settings-derived mode (`joker`, `gentle`, `mixed`, or `unavailable`) without writing. Confirm the named `~/.pi/agent/settings.json` change; after success Pi reloads resources, or prompts a restart if reload fails. Cancel changes nothing; repeating either mode is safe. No runtime task-failure fallback is provided.
 
-Gentle package detection supports `npm:gentle-pi` and validated local checkouts (absolute, settings-relative, `~/`, and `file:` paths). Remote Git/HTTPS Gentle sources are not reconciled: when recognized, setup stops before installing Joker rather than reporting a false success. Register a local Gentle checkout or npm Gentle source in personal Pi first; the existing `osdy-pi gentle setup /absolute/path/to/gentle-pi` command can configure local coexistence if you have that CLI. Setup refuses an isolated/custom `$PI_CODING_AGENT_DIR` or a project-local Gentle override because a personal filter cannot reliably control those contexts. Run it in normal Pi without a conflicting project package; an invalid settings file or failed install produces an error rather than silently applying only part of the filter. It does not edit credentials.
+A pre-existing Joker `-./index.ts` filter without Osdy's ownership marker is ambiguous and blocks switching rather than being removed. Osdy records ownership in the personal settings field `osdyPiJokerExclusionOwned` while it owns that filter and removes the field on return to Joker mode. Existing Gentle agents exclusions are removed by `off`, including exclusions configured before this feature; review that change before confirming. Other package fields and extension filters remain intact. An extension allowlist that omits the agent extension needed for the selected mode blocks switching rather than silently reporting success.
+
+Gentle package detection supports `npm:gentle-pi` and validated local checkouts (absolute, settings-relative, `~/`, and `file:` paths). Remote Git/HTTPS Gentle sources are not reconciled: when recognized, setup stops before installing Joker rather than reporting a false success. Register a local Gentle checkout or npm Gentle source in personal Pi first; the existing `osdy-pi gentle setup /absolute/path/to/gentle-pi` command can configure local coexistence if you have that CLI. Mode switching refuses an isolated/custom `$PI_CODING_AGENT_DIR` or a project-local Gentle override because a personal filter cannot reliably control those contexts. Run it in normal Pi without a conflicting project package; an invalid settings file or failed install produces an error rather than silently applying only part of the filter. It does not edit credentials.
 
 ## Gentle coexistence setup
 
@@ -124,7 +126,7 @@ The command validates that the absolute source is a readable `gentle-pi` package
 
 Gentle Shell intentionally remains fully active underneath Osdy, including its footer and widgets. While Osdy is enabled, Osdy claims the footer and editor; disabling Osdy restores the editor Gentle Shell provided at session startup. Gentle's changes widget may coexist with Osdy's visual widgets.
 
-The exclusions prevent Gentle's todo, questionnaire, and agents extensions from competing with the suite. Osdy's session-branch snapshots are authoritative for its `todo` tool and read-only `/todos` command; `pi-subagents-j0k3r` remains the subagent system and `@juicesharp/rpiv-ask-user-question` remains the structured-question plugin. This setup does **not** remove an independently installed `@juicesharp/rpiv-todo` package or edit its package entry. Remove that package yourself as described below to avoid duplicate `todo` and `/todos` registrations.
+The exclusions prevent Gentle's todo, questionnaire, and agents extensions from competing with the suite. Osdy's session-branch snapshots are authoritative for its `todo` tool and read-only `/todos` command; `pi-subagents-j0k3r` is the subagent system in Joker mode (Gentle agents in Gentle mode) and `@juicesharp/rpiv-ask-user-question` remains the structured-question plugin. This setup does **not** remove an independently installed `@juicesharp/rpiv-todo` package or edit its package entry. Remove that package yourself as described below to avoid duplicate `todo` and `/todos` registrations.
 
 ## First-party TODO included starting in 1.5.0
 
