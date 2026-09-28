@@ -34,7 +34,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
-   Already using a pinned npm version? `pi update` does not move a pinned version. First-party TODO is included starting in 1.5.0; until that version is published, npm `latest` may still resolve to an earlier release. Check the resolved version or use a checkout to evaluate 1.5.0 before publication. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
+   Already using a pinned npm version? `pi update` does not move a pinned version. First-party TODO is included starting in 1.5.0. Starting in 1.6.0, `/osdy-pi uninstall` and explicit agent provider modes are available. Check the resolved version when installing from npm or use a 1.6.0-or-later checkout to try these changes. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
 
 2. Start Pi:
 
@@ -136,7 +136,7 @@ In interactive Pi, the persistent widget appears above the editor while visible 
 
 ### Try session TODO
 
-Use a 1.5.0 checkout (or an installed 1.5.0 package once published), ask the agent to track a task with `todo`, then run `/todos`. The widget shows up to five tasks by default; the modal shows the entire grouped list with arrow/Page Up/Down scrolling. If your `maxWidgetLines` configuration overrides the default, set it to `7` to show five task rows.
+Use an installed 1.5.0-or-later package (or a checkout), ask the agent to track a task with `todo`, then run `/todos`. The widget shows up to five tasks by default; the modal shows the entire grouped list with arrow/Page Up/Down scrolling. If your `maxWidgetLines` configuration overrides the default, set it to `7` to show five task rows.
 
 **Verification to date (not complete):** Prior feature checks passed 187 extension tests, 60 script tests, typecheck, and lint. A disposable Pi TUI with seeded tasks showed the modal's progress meter, grouped rows, scroll footer, and close behavior. Authenticated RPC turns exercised all six `todo` actions, and an authenticated TUI smoke observed widget and `/todos` updates. An RPC lifecycle check observed an empty new session and the completed task on switching back. Compaction replay remains unverified because Pi returned “Nothing to compact (session too small).” Language switching in the authenticated TODO flow remains unverified (an isolated TUI with both extensions did switch English to Spanish). Visual strikethrough of completed rows in the authenticated TUI remains unverified. Launch under an installed Osdy account profile remains unverified. These checks do not establish full feature parity or validate a published npm artifact.
 
