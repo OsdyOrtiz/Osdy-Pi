@@ -4,6 +4,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
+import { identifyLocalPackage, runOsdyUninstall } from "./uninstall.js";
 import { join } from "node:path";
 import { inspectJokerAgents, setupJokerAgents } from "./agent-coexistence-setup.js";
 import { createAudioEventRouter } from "./audio-event-router.js";
@@ -266,6 +267,7 @@ export function getOsdyCommandCompletions(prefix: string) {
 			"mascot",
 			"header",
 			"diff",
+			"uninstall",
 		].map((value) => ({ value, label: value }));
 	}
 	if (trimmed === "agents") {
@@ -322,6 +324,7 @@ export function getOsdyCommandCompletions(prefix: string) {
 			"mascot",
 			"header",
 			"diff",
+			"uninstall",
 		]
 			.filter((value) => value.startsWith(valuePrefix))
 			.map((value) => ({ value, label: value }));
@@ -772,6 +775,27 @@ function registerCommand(
 		getArgumentCompletions: getOsdyCommandCompletions,
 		handler: async (args, ctx) => {
 			const [action = "status", ...rest] = parseCommandArgs(args);
+			if (action === "uninstall") {
+				if (rest.length || !ctx.hasUI || !ctx.isProjectTrusted()) {
+					ctx.ui.notify("Uninstall requires an interactive, trusted project and no extra arguments; nothing was removed.", "warning");
+					return;
+				}
+				await runOsdyUninstall({
+					list: async () => {
+						const result = await pi.exec("pi", ["list", "--approve"], { cwd: ctx.cwd });
+						if (result.code !== 0 || result.stderr.trim()) throw new Error("pi list failed");
+						return result.stdout;
+					},
+					remove: async (source, local) => {
+						const result = await pi.exec("pi", ["remove", source, ...(local ? ["--local", "--approve"] : [])], { cwd: ctx.cwd });
+						if (result.code !== 0) throw new Error("pi remove failed");
+					},
+					identifyLocal: (path) => identifyLocalPackage(path, import.meta.url),
+					confirm: (source, scope) => ctx.ui.confirm("Uninstall Osdy Pi?", `Remove only the Pi package registration:\nSource: ${source}\nScope: ${scope}\nProfiles, accounts and global CLI stay intact. Continue?`),
+					notify: (message, level = "info") => ctx.ui.notify(message, level),
+				});
+				return;
+			}
 			if (action === "agents") {
 				await handleAgentsSetupCommand(rest.length === 1 ? rest[0] : undefined, ctx);
 				return;
@@ -864,7 +888,7 @@ function registerCommand(
 				return;
 			}
 			ctx.ui.notify(
-				`Usage: /osdy-pi agents setup|status | enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff`,
+				`Usage: /osdy-pi agents setup|status | enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff | uninstall`,
 				"warning",
 			);
 		},

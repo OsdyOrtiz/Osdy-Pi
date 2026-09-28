@@ -151,6 +151,17 @@ void test("header command completes only catalog choices and is persisted throug
 	assert.doesNotMatch(source, /if \(isHeaderVariant\(action\)\)/);
 });
 
+void test("uninstall command is offered and wired through guarded Pi CLI removal", () => {
+ assert.deepEqual(getOsdyCommandCompletions("uninstall"), [
+  { value: "uninstall", label: "uninstall" },
+ ]);
+ const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+ assert.match(source, /action === "uninstall"/);
+ assert.match(source, /!ctx\.hasUI \|\| !ctx\.isProjectTrusted\(\)/);
+ assert.match(source, /runOsdyUninstall\(/);
+ assert.match(source, /pi\.exec\("pi", \["remove", source/);
+});
+
 void test("mascot command completes current, Bts, and status while persisting with immediate refresh", () => {
 	assert.deepEqual(getOsdyCommandCompletions("mascot"), [
 		{ value: "mascot current", label: "mascot current" },

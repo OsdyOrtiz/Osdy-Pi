@@ -337,7 +337,10 @@ The enabled state, editor mode, working-tree visibility preference, header, and 
 | Working tree | `/osdy-pi working-tree position top\|bottom\|status` |
 | Audio | `/osdy-pi sound setup` |
 | Diff | `/osdy-pi diff` |
+| Package | `/osdy-pi uninstall` |
 | Codex subscription | `/usage` |
+
+`/osdy-pi uninstall` finds a unique Osdy Pi package in Pi's configured package list and asks you to confirm its exact source and user/project scope before calling Pi's `remove` command. Run it from a trusted project with interactive UI. Git registrations are checked against Pi's host/path identity; a local registration must point to this running extension's package root and have a matching manifest. Ambiguous or changed registrations, unrecognized sources, and cancelled confirmation remove nothing. It removes only the Pi package registration, not Osdy profiles, accounts, the globally installed CLI, or other packages. Restart Pi afterward to unload the extension. If no unique source is found, inspect `pi list` and use `pi remove <source> [-l]` manually.
 
 `/osdy-pi` reports status. `enable` (or `on`) applies the Osdy Pi UI without changing the selected Pi theme; `disable` (or `off`) restores the Gentle Shell or Pi UI captured at session startup while preserving that theme. The enabled state, editor mode, working-tree visibility, and sound configuration persist globally.
 
