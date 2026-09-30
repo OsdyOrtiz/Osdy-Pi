@@ -1,6 +1,6 @@
 // Widget behavior adapted independently from @juicesharp/rpiv-todo@2.11.0 (MIT); see root LICENSE.
 import type { ExtensionAPI, ExtensionContext, ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, type TUI } from "@earendil-works/pi-tui";
+import { truncateToWidth, type TUI, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
 import { COLLAPSE_KEY_OFF, getMaxWidgetLines, loadTodoConfig, resolveCollapseKey, type TodoConfig } from "./todo-config.js";
 import type { TodoTask } from "./todo-domain.js";
 import { todoI18n, type TodoI18n } from "./todo-i18n.js";
@@ -42,6 +42,9 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
  let mounted = false;
  let tui: TUI | undefined;
  let collapsed = false;
+ let expanded = false;
+ let offset = 0;
+ const clampOffset = (length: number) => { offset = Math.max(0, Math.min(offset, length - 1)); };
  const visible = () => store.get(foreground ?? "").tasks.filter((task) => task.status !== "deleted");
  const render = (theme: Theme, width: number): string[] => {
   const tasks = visible();
@@ -55,8 +58,14 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
    const hint = key === COLLAPSE_KEY_OFF ? i18n.t("overlay.collapsed", "collapsed") : i18n.t("overlay.expandHint", "{key} to expand").replace("{key}", key);
    return [heading, trunc(`${theme.fg("dim", "└─")} ${theme.fg("dim", hint)}`), ""];
   }
-  const expanded = ui?.getToolsExpanded?.() === true;
-  const { rows, completed, pending } = layout(tasks, expanded ? tasks.length + 1 : getMaxWidgetLines(config()) - 1);
+  clampOffset(tasks.length);
+  const slots = Math.max(1, Math.floor(getMaxWidgetLines(config()) - 2));
+  const viewport = expanded && tui?.mode === "fullscreen";
+  const rows = viewport ? tasks.slice(offset, offset + slots) : layout(tasks, Math.min(3, slots) + 1).rows;
+  const kept = new Set(rows);
+  const omitted = tasks.filter((task) => !kept.has(task));
+  const completed = omitted.filter((task) => task.status === "completed").length;
+  const pending = omitted.length - completed;
   const ids = tasks.some((task) => (task.blockedBy?.length ?? 0) > 0);
   const lines = [heading];
   for (const task of rows) {
@@ -72,14 +81,29 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
   lines.push("");
   return lines;
  };
+ const handleMouse = (event: TuiMouseEvent): TuiMouseEventResult | undefined => {
+  if (tui?.mode !== "fullscreen" || !visible().length) return undefined;
+  if (event.type === "click" && event.button === "left" && event.y === 0) {
+   collapsed = false; expanded = !expanded; offset = 0;
+  } else if (event.type === "wheel" && expanded && !collapsed) {
+   // Container supplies intrinsic height, not the clipped dock height. Move one
+   // task per event, allowing the final task to reach the first row below heading.
+   const delta = event.wheelDelta ?? 0;
+   if (Number.isFinite(delta)) offset += Math.sign(delta);
+   clampOffset(visible().length);
+  } else return undefined;
+  tui.requestRender();
+  return { handled: true };
+ };
  const refresh = () => {
+  clampOffset(visible().length);
   if (!ui) return;
   if (!visible().length) {
    if (mounted) { ui.setWidget(KEY, undefined); mounted = false; tui = undefined; }
   } else if (!mounted) {
    ui.setWidget(KEY, (host, theme) => {
     tui = host;
-    return { render: (width: number) => render(ui?.theme ?? theme, width), invalidate() {} };
+    return { render: (width: number) => render(ui?.theme ?? theme, width), handleMouse, invalidate() {} };
    }, { placement: "aboveEditor" });
    mounted = true;
   } else tui?.requestRender();
@@ -89,7 +113,10 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
  pi.on("session_start", (_event, ctx) => {
   if (!ctx.hasUI) return;
   const session = id(ctx);
-  if (foreground !== undefined && foreground !== session) return;
+  // A different session on another UI is a background child. The foreground
+  // UI reused for a new session is replacement; tree/compact keep preference.
+  if (foreground !== undefined && foreground !== session && ctx.ui !== ui) return;
+  if (foreground !== session) { collapsed = false; expanded = false; offset = 0; }
   if (ui && ui !== ctx.ui && mounted) ui.setWidget(KEY, undefined);
   if (ui !== ctx.ui) { mounted = false; tui = undefined; }
   foreground = session; ui = ctx.ui; refresh();
@@ -99,7 +126,7 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
  pi.on("session_shutdown", (_event, ctx) => {
   if (!foregroundEvent(ctx)) return;
   if (mounted) ui?.setWidget(KEY, undefined);
-  mounted = false; tui = undefined; ui = undefined; foreground = undefined; collapsed = false;
+  mounted = false; tui = undefined; ui = undefined; foreground = undefined; collapsed = false; expanded = false; offset = 0;
  });
  pi.on("tool_execution_end", (event, ctx) => {
   if (event.toolName === "todo" && event.isError !== true && foregroundEvent(ctx)) refresh();
