@@ -1,36 +1,31 @@
 # Release TypeBox host-peer fix 1.6.1
 
-## Objective
-Deliver the TypeBox host-peer correction on main and publish osdy-pi 1.6.1 to the public npm registry, preserving unrelated historical work.
+## Objective and authorization
+Deliver the TypeBox host-peer correction on main and publish osdy-pi 1.6.1. User authorized direct-main integration and publication, in the existing checkout without worktrees. Preserve the historical ODD stash and installed home package.
 
-## Scope and authorization
-- User authorized main integration and publication; work in the existing checkout, no worktrees.
-- Branch: `fix/typebox-peer-dependency`; base and live remote main: `3eab4b906ba3df6910c76cb775d20d8b31faa1e4`.
-- Preserve the named historical ODD stash; do not update the installed home package.
-- TypeBox is a wildcard host peer and development dependency, not a runtime dependency; retain locked version and integrity.
-- Patch metadata in package.json/package-lock.json and the existing exact-version packaging assertion. Historical README feature versions stay unchanged.
-- Registry: https://registry.npmjs.org/; tag: latest; public maintainer: osdy. Preflight latest 1.6.0; 1.6.1 absent (E404).
-- npm identity/access checks currently return E401. Publishing requires human login and a fresh verified identity/artifact; never request credentials/OTP in chat or retry an ambiguous publication.
-
-## Work routing and delivery
-- REL161-001: delegated writer (multiple metadata/test surfaces); observed test-first metadata RED/GREEN, then full verification. One cohesive release-fix commit with tests.
-- REL161-002: parent coordinates fast-forward integration and explicit push; delegate exact-commit archive verification/pack and registry readback. Direct-main route requested by user; no PR creation.
-- Forecast: approximately 100-150 authored changed lines, generated lockfile excluded; strategy: ask-on-risk. One release slice, below 400 lines.
-- Native review of original fix approved and acknowledged as review-ad962db2d590e076; changed release candidate requires fresh review. Review grants no delivery authority.
+## Scope and routing
+- Branch: fix/typebox-peer-dependency; base/live remote main at preflight: `3eab4b906ba3df6910c76cb775d20d8b31faa1e4`.
+- TypeBox wildcard host peer and development dependency; retain locked version/integrity, remove runtime dependency.
+- Patch package.json, both root lock versions and exact-version packaging assertion. Preserve historical README versions.
+- REL161-001 delegated writer: multiple metadata/test surfaces, meaningful RED/GREEN and full checks. REL161-002 parent Git coordination plus independent exact-commit archive verification and registry readback.
+- Delivery: direct main as requested, no PR; ask-on-risk, forecast 100-150 authored changed lines. Release commit totals 101 diff lines including generated lock metadata; one slice below 400.
+- Registry https://registry.npmjs.org/, tag latest, public maintainer osdy. Preflight latest 1.6.0, 1.6.1 absent (E404). npm identity/access returned E401; publish requires human login and fresh actor/artifact confirmation. No credentials or OTP in chat, no ambiguous retries.
 
 ## Tasks
-- [ ] REL161-001 Prepare verified release candidate (in progress). Acceptance: manifest and lock root 1.6.1; packaging assertion updated; host peers regression and packaging tests observe RED/GREEN; full tests/typecheck/lint/pack checks pass; final review outcome and work-unit commit recorded.
-- [ ] REL161-002 Integrate and publish exact artifact (pending). Acceptance: fast-forward main and remote readback match intended commit; artifact from exact committed source verified; npm actor/access/version rechecked; one authorized publication attempt or explicit blocker recorded; registry integrity confirms exact artifact if published.
+- [x] REL161-001 Prepare verified release candidate. Complete: `e2f4b48d9fec5a149fad4d2604459028ac730708` (`fix(package): release TypeBox host-peer correction in 1.6.1`); tests, package checks and final native review passed.
+- [ ] REL161-002 Integrate and publish exact artifact (in progress). Acceptance: main and remote SHA match intended commit; verified exact-source artifact; fresh npm actor/access/version checks; one authorized publication attempt or explicit blocker; registry integrity matches artifact before claiming publication.
 
-## Evidence
-- Original fix RED: five failures/one pass; GREEN: six host-peer tests passed.
-- Original fix verification: 224 extension + 67 script tests, typecheck, lint, diff check, npm pack dry-run (101 entries), LSP clean for three paths.
-- Initial packaging check failed ENOTDIR due to /dev/null cache; isolated writable temporary cache resolved it without home changes.
-- Release preflight: local/remote main equal base above; npm latest 1.6.0, 1.6.1 E404; actor and collaborator lookup E401. No publication attempted.
-- Release candidate RED: packaging expectation 1.6.1 failed against 1.6.0 (3 passed, 1 failed); GREEN packaging 4/4 and host peers 6/6.
-- Release candidate writer checks: 224 extension + 67 script tests, typecheck, lint, diff check and pack dry-run passed (osdy-pi 1.6.1, 101 entries), with a writable temporary cache.
-- Runtime harness: manifest/lock regression and exact packed manifest readback are applicable boundaries; interactive Pi update/runtime smoke pending and outside this release's automated checks.
-- Rollback: revert this release's package metadata and peer regression test; do not remove unrelated stash or other behavior. Published npm versions cannot be overwritten.
+## Verification and review evidence
+- Original peer regression RED five failures/one pass, GREEN six passes. Release packaging RED 1.6.0 vs 1.6.1 (3 passed/1 failed), GREEN packaging 4/4 and peers 6/6.
+- Writer and independent verifier: full 224 extension + 67 script tests, typecheck, lint and diff check passed. Isolated npm cache resolves the earlier /dev/null ENOTDIR environment error.
+- Independent `git archive` verification of e2f4b48: npm ci --ignore-scripts, focused/full checks and actual npm pack passed; all 133 archived source files unchanged. No repo/home mutation.
+- Tarball: `/tmp/osdy-pi-1.6.1-artifacts.65R12X/osdy-pi-1.6.1.tgz`, 1,581,800 bytes, 101 entries; manifest 1.6.1 with TypeBox peer `*`, dev `^1.3.7`, no runtime dependencies; both CLI bins present, no node_modules/lock/Git files.
+- SHA256: `9f0a8b2f59767e97a802b2206bf7c0b2dcdf02c5b311c0ff5cb372bd4c87a17d`.
+- Integrity: `sha512-zi5uIb5C9HoQSMn794FB+bArIuFdP1OHw0IuCNlQRrvRYfX0AY9fftCbqL5V2TYCTQR56zoeIHIIDHpAhGUNcg==`.
+- Native assessment unassessable/schema-incompatible; high-risk fallback independent verification completed. Actual native release review medium/reliability `review-f432ec7dbaf126bd` approved and exact acknowledgement burned authority; original fix review `review-ad962db2d590e076` also closed. Neither outcome authorizes delivery by itself.
+- npm ci reported four untriaged dependency vulnerabilities (1 moderate, 3 high); no dependency upgrades attempted.
+- Interactive Pi update/runtime smoke and installed-bin execution not performed. Packed manifest readback is the automated boundary checked here.
+- Rollback: revert only release metadata/peer declarations and regression test; preserve unrelated behavior/stash. Published versions cannot be overwritten.
 
 ## Next step
-Commit the verified release candidate on the feature branch and run native review of that committed slice. Integrate approved source, verify its exact tarball, then wait for npm authentication before attempting publication.
+Record candidate evidence, fast-forward and push verified main, then wait for npm login and fresh account verification before publication. Artifact is ready; no npm publication attempted.
