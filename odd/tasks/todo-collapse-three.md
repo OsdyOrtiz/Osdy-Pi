@@ -6,8 +6,8 @@ Three-row default preview; fullscreen primary header click expands/collapses, wh
 ## Tasks
 - [x] TODO3-001 Implement and verify preview/fullscreen scrolling. Complete in `2ea80517fca4d3f916c92edf1a9dceee54a5d2a5`; automated checks, native review and user visual acceptance passed. Test-fixture exit is not relabeled a pass.
 - [ ] TODO3-EXIT Verify isolated harness graceful exit/final task snapshot (deferred tooling follow-up, no demonstrated product defect or release blocker). No further fixture launches/fixes performed.
-- [ ] TODO3-REL Publish exact 1.7.0 (in progress, human authorization blocked). Verified source integrated/pushed to main at `d560435404eb1a3a8c6188abe7e42ccc437ff767`; one exact-tarball publication returned EOTP. Public availability/integrity pending.
-- [ ] TODO3-AUTH Complete interactive npm publish-time authorization (pending human action). Owner runs retained tarball publish and reports final success/error. No OTP/token in chat; no blind agent retries.
+- [x] TODO3-REL Publish exact 1.7.0. Verified source integrated/pushed to main at `d560435404eb1a3a8c6188abe7e42ccc437ff767`; blocker record committed at `c061fdf10486d3dbb4eb5163f606a99455fbab65`. Owner completed publication; independent public version/latest and downloaded artifact hashes match 1.7.0 and the reviewed tarball.
+- [x] TODO3-AUTH Complete interactive npm publish-time authorization. Owner reported `+ osdy-pi@1.7.0`; registry readback confirmed publication. Subsequent zsh command-not-found errors do not negate it. No OTP/token in chat or blind agent retry.
 
 ## Design and checks
 - Public normalized mouse handler, local consumed wheel, fixed heading, bounded offset/slice. Container forwards intrinsic rather than clipped height; permit last task at first row. Heading-only/hidden dock uses `/todos` fallback. Preserve order/status/deleted filtering, task persistence, legacy collapse shortcut and modal; reset view on foreground replacement/shutdown and clamp on refresh.
@@ -21,12 +21,14 @@ Three-row default preview; fullscreen primary header click expands/collapses, wh
 - SHA256 `2506f1753ba14513427d76cdc8c01f28b07249006e2b75b105289849a8b9e080`.
 - Integrity `sha512-4WKSGA58F7g4XJTcVZ3ELmbd1RSsUTXkru2jyNlPLfXcLShm6O6hgZt2Mg7gPAu9UyldoSAVpcMWCBp1Exm9uw==`.
 - Direct main fast-forward/push readback matched `d560435404eb1a3a8c6188abe7e42ccc437ff767`, checkout clean. Only ledger differs from source commit. Main unprotected/no rulesets at preflight; no PR requested. Historical stashes preserved.
-- Fresh prepublication npm actor osdy, read-write collaborator, registry https://registry.npmjs.org/, latest 1.6.1, target 1.7.0 E404. One authorized `npm publish` of exact tarball with latest/public/ignore-scripts returned exit 1 EOTP. No agent retry. Independent post-attempt public registry GET still latest 1.6.1, 1.7.0 absent; not proof no staged publication. Artifact integrity remains intact; no confirmed public release yet.
+- Fresh prepublication npm actor osdy, read-write collaborator, registry https://registry.npmjs.org/, latest 1.6.1, target 1.7.0 E404. One authorized `npm publish` of exact tarball with latest/public/ignore-scripts returned exit 1 EOTP. No agent retry. Independent post-attempt public registry GET still latest 1.6.1, 1.7.0 absent; not proof no staged publication. Artifact integrity remained intact. Owner subsequently completed interactive publication and reported `+ osdy-pi@1.7.0`.
 - One cohesive slice, ask-on-risk: 229 authored lines including original ledger plus generated lock 1,421 (total 1,650); generated churn disclosed/reviewed, no artificial split/code-golf. Rollback only widget/SDK/tests/docs/release metadata; preserve persistence/modal/stashes. Published versions cannot be overwritten.
 
+## Public release closure
+- Independent unauthenticated no-cache GETs at 2026-09-30 16:04:40–41 UTC returned HTTP 200 for package metadata, exact version and public tarball. Version/latest both 1.7.0; publication timestamp `2026-09-30T16:01:47.987Z`.
+- Registry integrity and independently computed public tarball SHA512 match the retained artifact. SHA256 and 1,583,719-byte size also match exactly. No install, source changes, re-publication or credentials inspection.
+- Before passive closure, main was clean at `c061fdf10486d3dbb4eb5163f606a99455fbab65`, with both historical stashes intact. Prior 294 tests/typecheck/lint/native-review evidence remains unchanged; no rerun claimed.
+- Owner's subsequent zsh errors for `--access=public9` and `9u` came from separate shell commands; exact cause is unverified. They do not invalidate the confirmed public release.
+
 ## Next step
-Owner completes exact-tarball interactive publication:
-```bash
-npm publish /tmp/osdy-pi-artifacts-1.7.0.ZnX2Ry/osdy-pi-1.7.0.tgz --registry=https://registry.npmjs.org/ --tag=latest --access=public
-```
-Wait for final `+ osdy-pi@1.7.0` or error; authentication alone is not publication. Do not retry E409/processing output. On new human result, read back public version/latest and exact integrity before marking release complete. No home installation or automatic retry.
+Release complete; do not repeat publication. Home installation remains a separate user decision. TODO3-EXIT, physical single-row dock and executable theme runtime checks remain deferred and unverified; no new harness attempts are authorized by publication success.
