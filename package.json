@@ -1,6 +1,6 @@
 {
 	"name": "osdy-pi",
-	"version": "1.7.0",
+	"version": "1.8.0",
 	"description": "Osdy Pi package: themes, header, and custom editor for Pi.",
 	"license": "MIT",
 	"type": "module",
@@ -41,6 +41,10 @@
 			"./themes/osdy-pi-kanagawa-dragon.json",
 			"./themes/osdy-pi-kanagawa-lotus.json",
 			"./themes/osdy-pi-dracula.json",
+			"./themes/osdy-pi-gruvbox-dark.json",
+			"./themes/osdy-pi-nord.json",
+			"./themes/osdy-pi-rose-pine.json",
+			"./themes/osdy-pi-daniela-cute.json",
 			"./themes/osdy-pi-catppuccin-latte.json",
 			"./themes/osdy-pi-catppuccin-frappe.json",
 			"./themes/osdy-pi-catppuccin-macchiato.json",

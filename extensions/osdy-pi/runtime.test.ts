@@ -408,7 +408,8 @@ void test("every registered theme defines native user message colors", () => {
 		readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
 	) as { pi: { themes: string[] } };
 
-	assert.equal(manifest.pi.themes.length, 14);
+	assert.equal(manifest.pi.themes.length, 18);
+	assert.equal(new Set(manifest.pi.themes).size, 18, "theme registrations must be unique");
 	for (const themePath of manifest.pi.themes) {
 		const theme = JSON.parse(
 			readFileSync(
@@ -425,6 +426,29 @@ void test("every registered theme defines native user message colors", () => {
 			);
 		}
 	}
+});
+
+void test("new dark themes are explicitly registered with unique matching names", () => {
+	const manifest = JSON.parse(
+		readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
+	) as { pi: { themes: string[] } };
+	const names = manifest.pi.themes.map((path) => {
+		const theme = JSON.parse(readFileSync(new URL(`../../${path}`, import.meta.url), "utf8")) as { name: string };
+		assert.equal(path, `./themes/${theme.name}.json`);
+		return theme.name;
+	});
+	assert.equal(new Set(names).size, names.length, "theme names must be unique");
+	for (const name of ["osdy-pi-gruvbox-dark", "osdy-pi-nord", "osdy-pi-rose-pine", "osdy-pi-daniela-cute"]) {
+		assert.equal(manifest.pi.themes.filter((path) => path === `./themes/${name}.json`).length, 1);
+		assert.equal(names.filter((registered) => registered === name).length, 1);
+	}
+});
+
+void test("README documents all 18 themes including Daniela Cute", () => {
+	const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
+	assert.match(readme, /\*\*18 themes\*\*/);
+	assert.match(readme, /18 built-in themes/);
+	assert.match(readme, /\| `osdy-pi-daniela-cute` \| Daniela Cute/);
 });
 
 void test("Tokyo Night retains its approved native user card colors", () => {
