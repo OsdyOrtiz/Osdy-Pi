@@ -6,11 +6,12 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 ## Release highlights
 
-The **1.8.0 release candidate** includes the changes below; npm publication is not yet confirmed.
+**1.9.0 adds Halloween and Halloween Killer**, bringing the bundle to **20 themes**. The table below summarizes these additions and existing features.
 
 | Area | What ships |
 | --- | --- |
-| New themes (included starting in 1.8.0) | Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute bring the bundle to 18 themes. |
+| New themes (1.9.0) | Halloween and Halloween Killer add two dark palettes, bringing the bundle to 20 themes. |
+| Themes introduced in 1.8.0 | Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute. |
 | Message cards | Pi-native colored user cards without emojis and plain assistant Markdown preceded by a separate `🦝` transcript row. |
 | Header and mascot | A theme-aware `neon` header and selectable `bts` mascot, both responsive and persisted independently. |
 | Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
@@ -45,7 +46,7 @@ The **1.8.0 release candidate** includes the changes below; npm publication is n
    pi
    ```
 
-Osdy Pi's own extension and themes are bundled—do not install them separately. The **1.8.0 release candidate** bundles **18 themes**, including Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute starting in 1.8.0. Check your installed npm version; publication of 1.8.0 is not yet confirmed. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
+Osdy Pi's own extension and themes are bundled—do not install them separately. Version **1.9.0** bundles **20 themes**: Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in 1.8.0; Halloween and Halloween Killer are added in 1.9.0. Check your installed npm version to see which themes are available. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
 
 ### Optional: isolated `osdy` command
 
@@ -249,7 +250,7 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 
 | Area | Included behavior |
 | --- | --- |
-| Themes | 18 built-in themes, including Osdy, Kanagawa, Dracula, Gruvbox, Nord, Rosé Pine, Daniela Cute, Catppuccin, Matrix, and Lucent Orange palettes |
+| Themes | 20 built-in themes, including Osdy, Kanagawa, Dracula, Gruvbox, Nord, Rosé Pine, Daniela Cute, Halloween, Halloween Killer, Catppuccin, Matrix, and Lucent Orange palettes |
 | Header and mascot | Independently selectable `osdy-theme`/`neon` headers and `current`/`bts` mascots |
 | Messages | Native colored user cards without emojis and plain assistant Markdown with a separate assistant `🦝` row |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
@@ -263,10 +264,10 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 
 ### Themes
 
-The bundle contains **18 themes**; Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute are included starting in **1.8.0**. To try the **1.8.0 release candidate** before npm publication is confirmed:
+Version **1.9.0** contains **20 themes**. Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in **1.8.0**; **1.9.0** adds Halloween and Halloween Killer. To try the themes from a checkout:
 
-1. Run `npm run pi:dev` from the 1.8.0 checkout, or `/reload` if that checkout is already loaded in Pi.
-2. Open `/settings` → **Theme** and select `osdy-pi-gruvbox-dark`, `osdy-pi-nord`, `osdy-pi-rose-pine`, `osdy-pi-daniela-cute`, or another name below.
+1. Run `npm run pi:dev` from the 1.9.0 checkout, or `/reload` if that checkout is already loaded in Pi.
+2. Open `/settings` → **Theme** and select `osdy-pi-gruvbox-dark`, `osdy-pi-nord`, `osdy-pi-rose-pine`, `osdy-pi-daniela-cute`, `osdy-pi-halloween`, `osdy-pi-halloween-killer`, or another name below.
 
 | Theme | Use |
 | --- | --- |
@@ -282,6 +283,8 @@ The bundle contains **18 themes**; Gruvbox Dark, Nord, Rosé Pine base dark, and
 | `osdy-pi-nord` | [Nord](https://www.nordtheme.com/docs/colors-and-palettes) dark palette: cool, restrained Polar Night, Snow Storm, Frost, and Aurora colors. |
 | `osdy-pi-rose-pine` | [Rosé Pine](https://rosepinetheme.com/palette/ingredients/) base dark palette: soft colors, not Moon or Dawn. |
 | `osdy-pi-daniela-cute` | Daniela Cute: navy panels/export page (`#0B1220`), blue cards (`#111F33`), borders (`#253A55`), blue accents (`#3584E4`), main text (`#D8E2EF`), secondary text (`#93A6BE`), and selection (`#193655`). Distinct status and syntax colors remain; the terminal background remains unchanged. |
+| `osdy-pi-halloween` | Pumpkin orange, spectral violet, and lime accents on dark plum panels, with warm text and distinct success/error colors. |
+| `osdy-pi-halloween-killer` | Gothic/slasher dark palette: near-black panels, blood-red and violet accents, bone-colored text, and sage success indicators distinct from red errors. |
 | `osdy-pi-catppuccin-latte` | Catppuccin Latte light palette. |
 | `osdy-pi-catppuccin-frappe` | Catppuccin Frappé dark palette. |
 | `osdy-pi-catppuccin-macchiato` | Catppuccin Macchiato dark palette. |

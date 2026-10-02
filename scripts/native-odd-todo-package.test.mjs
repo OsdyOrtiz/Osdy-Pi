@@ -18,7 +18,7 @@ test("npm package includes the single native extension entry and session TODO mo
 	const names = packageInfo.files.map((file) => file.path);
 	const manifest = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 	const lock = JSON.parse(readFileSync(resolve(root, "package-lock.json"), "utf8"));
-	assert.equal(manifest.version, "1.8.0");
+	assert.equal(manifest.version, "1.9.0");
 	assert.equal(lock.version, manifest.version);
 	assert.equal(lock.packages[""].version, manifest.version);
 	assert.equal(packageInfo.version, manifest.version);
