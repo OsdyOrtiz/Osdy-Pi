@@ -19,15 +19,15 @@ Delivery strategy: `exception-ok`, direct coherent feature/release work unit wit
 
 | ID | Task | Route | Status | Commit |
 | --- | --- | --- | --- | --- |
-| R110-1 | Finalize README/version assertions, verify and freeze source | delegated writer; multi-file writes | in_progress | Pending |
-| R110-2 | Review frozen candidate, integrate/push Git, verify immutable artifact | delegated verifier; commands/archive inspection; parent Git/review | pending | Pending |
+| R110-1 | Finalize README/version assertions, verify and freeze source | delegated writer; multi-file writes | completed | dea780026cd17adcbf1e70136ef9324f09811569 |
+| R110-2 | Review frozen candidate, integrate/push Git, verify immutable artifact | delegated verifier; commands/archive inspection; parent Git/review | in_progress | Pending |
 | R110-3 | Authenticate, publish/reconcile npm, create GitHub Release and close evidence | human authentication; parent delivery; delegated verification | pending | Pending |
 
 ### R110-1 acceptance
-- [ ] Manifest and both lock roots use 1.10.0; only current-version assertion updated; no dependency churn.
-- [ ] README reviewed against source/manifest and finalized before commit/pack: 1.10.0 feature highlights, no checkout-only analytics labels or premature publication claim, preserve honest coverage/live-test limits and 20-theme catalog.
-- [ ] Deterministic version assertion RED/GREEN; package and analytics tests, full tests, typecheck/lint/diff checks pass.
-- [ ] Explicitly stage only authorized files; freeze source in a Conventional Commit on the feature branch, record full identity. No unrelated work included.
+- [x] Manifest and both lock roots use 1.10.0; only current-version assertion updated; no dependency churn.
+- [x] README reviewed against source/manifest and finalized before commit/pack: 1.10.0 feature highlights, no checkout-only analytics labels or premature publication claim, preserve honest coverage/live-test limits and 20-theme catalog.
+- [x] Deterministic version assertion RED/GREEN; package and analytics tests, full tests, typecheck/lint/diff checks pass.
+- [x] Explicitly stage only authorized files; freeze source in a Conventional Commit on the feature branch, record full identity. No unrelated work included.
 
 ### R110-2 acceptance
 - [ ] Fresh native review under enabled user switch reaches exact recorded outcome; previous feature approval is not reused for changed release bytes.
@@ -49,4 +49,10 @@ Focused package and three analytics test files; `npm test`; `npm run typecheck`;
 
 ## Evidence and next step
 
-Preparation pending. No commit/push/tag/pack/publication in this release yet. First run one bounded writer over manifest, lock roots, package-version assertion and README; retain all analytics behavior. npm authentication remains a separate human blocker, not permission to delay safe authorized source preparation.
+Source preparation complete. Writer changed only manifest, two lock-root versions, current package-version assertion and README. RED 3 pass/1 fail, GREEN 4 package tests; 56 analytics and 356 full tests (285 extension + 71 script) passed, typecheck/lint/diff checks passed. Independent verifier repeated package 4/4, analytics 56/56 and diff check, reviewed README/source/theme registrations with no defect. Active LSP package test: no diagnostics. README fully reviewed against analytics modules and all 20 registered theme resources; exact source is frozen below.
+
+Source commit `dea780026cd17adcbf1e70136ef9324f09811569` on `feat/usage-analytics`: 14 intended files, 2,163 additions/11 deletions including excluded task evidence; clean immediately after commit. Message: `feat(analytics): add paged usage history and prepare 1.10.0`. No dependency or unrelated source edits. No push/tag/pack/publication yet.
+
+Public registry reads succeeded: `latest=1.9.0`; target `1.10.0` returned actual E404; maintainer name `osdy`. This does not establish current authenticated identity. E401/human-login blocker remains.
+
+Next: review the exact committed range from `73871e4e52d34a5fda3b16ef6afaa8391bdc6a31`, then safe Git integration/tag/push and independent immutable artifact preparation. Only excluded ODD bookkeeping may change after the frozen commit; package bytes must remain tied to it.
