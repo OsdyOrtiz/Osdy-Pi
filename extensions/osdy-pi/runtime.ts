@@ -62,6 +62,7 @@ import { registerTodosCommand } from "./todo-command.js";
 import { createTodoSessionStore } from "./todo-session.js";
 import { registerMessageRoleMarkers } from "./message-role-markers.js";
 import { registerTodoWidget } from "./todo-widget.js";
+import { registerUsageAnalytics } from "./usage-analytics.js";
 
 function scheduleOsdyRefresh(
 	delayMs: number,
@@ -946,6 +947,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		| ReturnType<typeof createResponsiveCoordinator>
 		| undefined;
 	let sessionContext: ExtensionContext | undefined;
+	let usageSettingsReady = false;
 	let codexUsageAbort: AbortController | undefined;
 	const refreshCurrentCodexUsage = async (
 		ctx: ExtensionContext,
@@ -1026,6 +1028,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		}
 	});
 	pi.on("session_shutdown", () => {
+		usageSettingsReady = false;
 		codexUsageAbort?.abort();
 		codexUsageAbort = undefined;
 		state.codexUsage = { kind: "idle" };
@@ -1036,6 +1039,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		sessionContext = undefined;
 	});
 	pi.on("session_start", async (_event, ctx) => {
+		usageSettingsReady = false;
 		cancelOsdyRefreshes();
 		stopResponsive();
 		sessionContext = ctx;
@@ -1043,6 +1047,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		if (sessionContext !== ctx) return;
 		state.fallbackEditorFactory = ctx.ui.getEditorComponent();
 		state.enabled = editorSettings.enabled;
+		usageSettingsReady = true;
 		state.editorMode = editorSettings.editorMode;
 		state.workingTreeEnabled = editorSettings.workingTreeEnabled;
 		state.headerVariant = editorSettings.headerVariant;
@@ -1065,6 +1070,7 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		void refreshCurrentCodexUsage(ctx);
 	});
 
+	registerUsageAnalytics(pi, { isEnabled: () => usageSettingsReady && state.enabled });
 	registerUsageCommand(
 		pi,
 		state,

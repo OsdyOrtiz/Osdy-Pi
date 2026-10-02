@@ -6,11 +6,12 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 ## Release highlights
 
-**1.9.0 adds Halloween and Halloween Killer**, bringing the bundle to **20 themes**. The table below summarizes these additions and existing features.
+**1.10.0 adds four-page local usage analytics** with shared period and profile/provider/model filters, keyboard navigation, and metadata-only history. The bundle retains **20 themes**. These highlights describe the 1.10.0 release source; verify npm availability and the resolved version before installing.
 
 | Area | What ships |
 | --- | --- |
-| New themes (1.9.0) | Halloween and Halloween Killer add two dark palettes, bringing the bundle to 20 themes. |
+| Local analytics (1.10.0) | `/osdy-usage` opens Summary, Profiles, Models, and History pages for recorded tokens and estimated cost—not billing or subscription quota. |
+| Themes introduced in 1.9.0 | Halloween and Halloween Killer add two dark palettes, bringing the bundle to 20 themes. |
 | Themes introduced in 1.8.0 | Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute. |
 | Message cards | Pi-native colored user cards without emojis and plain assistant Markdown preceded by a separate `🦝` transcript row. |
 | Header and mascot | A theme-aware `neon` header and selectable `bts` mascot, both responsive and persisted independently. |
@@ -38,7 +39,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
-   Already using a pinned npm version? `pi update` does not move a pinned version. First-party TODO is included starting in 1.5.0. Starting in 1.6.0, `/osdy-pi uninstall` and explicit agent provider modes are available. Check the resolved version when installing from npm or use a 1.6.0-or-later checkout to try these changes. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
+   Check the resolved npm version: local analytics requires 1.10.0 or later. Once 1.10.0 is available on npm, `pi install npm:osdy-pi@1.10.0` selects it explicitly. For an unpinned installation, use `pi update`; it does not move a pinned version, so replace an older pin explicitly. First-party TODO is included starting in 1.5.0; `/osdy-pi uninstall` and explicit agent provider modes start in 1.6.0. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
 
 2. Start Pi:
 
@@ -46,7 +47,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi
    ```
 
-Osdy Pi's own extension and themes are bundled—do not install them separately. Version **1.9.0** bundles **20 themes**: Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in 1.8.0; Halloween and Halloween Killer are added in 1.9.0. Check your installed npm version to see which themes are available. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
+Osdy Pi's own extension and themes are bundled—do not install them separately. Version **1.10.0** bundles **20 themes**: Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in 1.8.0; Halloween and Halloween Killer are added in 1.9.0. Check your installed npm version to see which themes are available. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
 
 ### Optional: isolated `osdy` command
 
@@ -255,6 +256,7 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 | Messages | Native colored user cards without emojis and plain assistant Markdown with a separate assistant `🦝` row |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
 | Status | Theme-aware Braille spinner and animated working label, responsive footer metrics, dynamic extension statuses, and Codex subscription quota with low-capacity emphasis |
+| Local analytics | Four keyboard-selectable pages with shared filters, token charts, estimated cost, and private metadata-only history from new assistant turns |
 | Git | Working-tree summary and a centered, filterable diff panel |
 | Audio | Optional event sounds on macOS and Windows |
 
@@ -264,9 +266,9 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 
 ### Themes
 
-Version **1.9.0** contains **20 themes**. Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in **1.8.0**; **1.9.0** adds Halloween and Halloween Killer. To try the themes from a checkout:
+Version **1.10.0** contains **20 themes**. Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in **1.8.0**; Halloween and Halloween Killer were added in **1.9.0**. To try the themes from a checkout:
 
-1. Run `npm run pi:dev` from the 1.9.0 checkout, or `/reload` if that checkout is already loaded in Pi.
+1. Run `npm run pi:dev` from the 1.10.0 checkout, or `/reload` if that checkout is already loaded in Pi.
 2. Open `/settings` → **Theme** and select `osdy-pi-gruvbox-dark`, `osdy-pi-nord`, `osdy-pi-rose-pine`, `osdy-pi-daniela-cute`, `osdy-pi-halloween`, `osdy-pi-halloween-killer`, or another name below.
 
 | Theme | Use |
@@ -358,6 +360,7 @@ The enabled state, editor mode, working-tree visibility preference, header, and 
 | Diff | `/osdy-pi diff` |
 | Package | `/osdy-pi uninstall` |
 | Codex subscription | `/usage` |
+| Local usage analytics (starting in 1.10.0) | `/osdy-usage` |
 
 `/osdy-pi uninstall` finds a unique Osdy Pi package in Pi's configured package list and asks you to confirm its exact source and user/project scope before calling Pi's `remove` command. Run it from a trusted project with interactive UI. Git registrations are checked against Pi's host/path identity; a local registration must point to this running extension's package root and have a matching manifest. Ambiguous or changed registrations, unrecognized sources, and cancelled confirmation remove nothing. It removes only the Pi package registration, not Osdy profiles, accounts, the globally installed CLI, or other packages. Restart Pi afterward to unload the extension. If no unique source is found, inspect `pi list` and use `pi remove <source> [-l]` manually.
 
@@ -375,9 +378,41 @@ Usage loads once when the session starts and refreshes when the modal opens or `
 
 > **Privacy:** OAuth is resolved only through Pi's `modelRegistry`. Osdy Pi does not read `auth.json`, persist or log credentials, or display account IDs, tokens, response bodies, or endpoint internals in the UI. Requests use a fixed HTTPS endpoint with bounded timeout, response size, and redirects.
 
+### Local usage analytics (starting in 1.10.0)
+
+Run `/osdy-usage` in interactive terminal Pi. **Summary** opens by default; use Tab / Shift+Tab or `1`–`4` to choose a focused page. Period, filters and the loaded snapshot are shared; switching pages resets scroll without reading history or making network requests.
+
+| Page | Content |
+| --- | --- |
+| `1` Summary | Total tokens, recorded turns, estimated USD and compact timeline |
+| `2` Profiles | Every profile's consumption ranking |
+| `3` Models | Every provider/model ranking and exact input/output/cache composition of the selection; use `f` to inspect one model |
+| `4` History | Timeline and exact local bucket values, timezone and repeated DST hours with UTC offsets |
+
+Narrow terminals stack metrics and wrap names; every group remains reachable by scrolling. Shares use the selected total tokens; bars scale to each ranking's maximum. Loading, stale, scan-limit/warning and unpriced/partial-cost states remain on every page and in help. Sticky status lines wrap instead of concealing cost status behind scan warnings, including at End. When height is scarce, statuses take priority over optional headings, charts and footer controls; the active page remains visible when space permits. Press `?` for methodology and full controls, then `?` again to return. Choosing a page also leaves help without discarding filters.
+
+This is separate from the unchanged `/usage` subscription quota panel. RPC, JSON and print modes receive a short notification instead of charts. The four-page UI passed independent scripted synthetic PTY checks for navigation, shared selection and responsive statuses at 12/32/100 columns, including a five-row terminal. Human visual confirmation and provider-backed capture remain unverified.
+
+| Control | Action |
+| --- | --- |
+| Tab / Shift+Tab, `1` / `2` / `3` / `4` | Cycle pages with wrap; jump to Summary / Profiles / Models / History |
+| `?` | Toggle methodology/control help; `?` returns to the selected page |
+| `d` / `w` / `m`, left / right | Local calendar day, Monday-based week or month; previous / next range (not pages) |
+| `p` / `v` / `f`, `x` | Cycle profile / provider / model filters; reset filters |
+| `r`, arrows / Page Up / Page Down / Home / End | Refresh history; scroll |
+| Esc / `q` / Ctrl+C | Close, including from help |
+
+**Collection starts with new assistant turns begun while Osdy is enabled**, after session settings finish loading. `/osdy-pi off` stops collection; `/osdy-pi on` enables it for subsequent turns. Existing history remains viewable while disabled. No old-session import or replay/compaction backfill occurs. Processes without this extension and non-message/background usage (including summaries and cache warming) are not recorded.
+
+**Storage and privacy:** metadata-only private JSONL shards live at `<active agent dir>/extensions/osdy-pi/usage-analytics/`: an absolute `PI_CODING_AGENT_DIR`, otherwise `~/.pi/agent/extensions/osdy-pi/usage-analytics/`. No files are created until an actual append. Same-agent profiles share history; isolated agent directories keep separate histories. Records contain timestamps, session/entry IDs, the selected Codex profile label, actual provider/model, token counts and nullable estimated cost—no prompts, responses, credentials, account IDs or session paths. Analytics never reads auth files. No automatic deletion or retention engine is provided.
+
+Codex labels are snapshotted at turn start, not verified account identities; later switches cannot reattribute that turn. Other providers or missing labels are **unmanaged**. Rename/delete does not rewrite old labels; case-only differences share profile identity. Calendar ranges use the machine's local timezone (shown in the panel), including daylight-saving boundaries.
+
+Costs are Pi's per-message estimates, **not quota, a provider bill, or confirmed spending**. No matching records, entirely unavailable costs and reported zero are distinct states. Partial estimates show the unpriced turn count. Zero-priced models remain zero; absent prices remain unknown. History scans are bounded and prefer recent data, so limited/corrupt coverage warnings mean totals may omit records. Write failures produce generic warnings; subsequent reads report unavailable/incomplete coverage rather than presenting those totals as complete.
+
 ## Native message cards
 
-Pi renders the colored user card and assistant Markdown natively. User messages have no emoji; Osdy Pi places a separate `🦝` transcript entry before each assistant response with visible text, not inside message content. Previously saved user `👤` entries remain in session history but render no row on replay. Selecting only the native message keeps its body clean; a wide selection that includes the emoji row copies the emoji too. Assistant markers persist with the session but do not enter model context. The installed Pi 0.87.1 does not use `assistantMessage*` theme palette keys, so these keys do not create a native assistant card. Osdy does not install a Markdown transformer or change streaming. The current user card colors remain unchanged. Try both roles in your selected theme with `npm run pi:dev`; terminal rendering and selection still need a live visual check. When disabled, Osdy does not add new markers.
+Pi renders the colored user card and assistant Markdown natively. User messages have no emoji; Osdy Pi places a separate `🦝` transcript entry before each assistant response with visible text, not inside message content. Previously saved user `👤` entries remain in session history but render no row on replay. Selecting only the native message keeps its body clean; a wide selection that includes the emoji row copies the emoji too. Assistant markers persist with the session but do not enter model context. Earlier checks on Pi 0.87.1 found that it did not use `assistantMessage*` theme palette keys; these keys alone should not be assumed to create a native assistant card. Osdy does not install a Markdown transformer or change streaming. The current user card colors remain unchanged. Try both roles in your selected theme with `npm run pi:dev`; terminal rendering and selection still need a live visual check. When disabled, Osdy does not add new markers.
 
 ## Editor and working indicator
 
