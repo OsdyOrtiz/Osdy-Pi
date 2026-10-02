@@ -1,7 +1,15 @@
 # Local Pi/runtime state
 .atl/
 .codegraph/
-.pi/
+.pi/*
+!.pi/skills/
+.pi/skills/*
+!.pi/skills/osdy-pi-npm-release/
+.pi/skills/osdy-pi-npm-release/*
+!.pi/skills/osdy-pi-npm-release/SKILL.md
+!.pi/skills/osdy-pi-npm-release/references/
+.pi/skills/osdy-pi-npm-release/references/*
+!.pi/skills/osdy-pi-npm-release/references/release-runbook.md
 .pi-dev/
 .pi-lens/
 openspec/

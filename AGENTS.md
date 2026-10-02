@@ -45,6 +45,10 @@ Guidance for AI agents working in this repository.
 - Run typecheck/lint/tests when available before declaring work done.
 - Do not silence errors with casts unless the boundary is documented and justified.
 
+## Project-local skills
+
+- `osdy-pi-npm-release` — For osdy-pi npm release, publish, or version bump requests, load `.pi/skills/osdy-pi-npm-release/SKILL.md` and its linked release runbook. README review/update before packing is mandatory. Activation grants no commit, push, or publication authority; this local skill is not an npm package resource.
+
 ## Review rule
 
 If a solution requires complex generics, nested conditional types, or unreadable type tricks, stop and simplify. This project values maintainable strict typing over impressive-looking types.
