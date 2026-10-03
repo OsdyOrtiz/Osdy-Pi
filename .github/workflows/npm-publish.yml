@@ -1,0 +1,70 @@
+name: Publish npm from main
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Queue up to 100 waiting runs; waiting order is not guaranteed dispatch order.
+concurrency:
+  group: npm-publish-main
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    if: >-
+      github.repository == 'OsdyOrtiz/Osdy-Pi' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --registry=https://registry.npmjs.org/
+      - run: node --test scripts/npm-release.test.mjs
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: git diff --check
+
+  publish:
+    needs: checks
+    if: >-
+      github.repository == 'OsdyOrtiz/Osdy-Pi' &&
+      github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_NAME: npm-release-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Allocate patch and validate retained archive
+        run: >-
+          node scripts/npm-release.mjs prepare "$RUNNER_TEMP/$RELEASE_NAME"
+      - name: Publish exact archive and reconcile official registry
+        run: >-
+          node scripts/npm-release.mjs publish "$RUNNER_TEMP/$RELEASE_NAME"
+      - name: Retain archive and release evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/${{ env.RELEASE_NAME }}
+          if-no-files-found: ignore
+          retention-days: 30

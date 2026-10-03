@@ -6,7 +6,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 ## Release highlights
 
-**1.11.0 adds three Spider-Man-inspired dark palettes**, bringing the bundle to **23 themes**. It retains the four-page local usage analytics introduced in 1.10.0, with shared period and profile/provider/model filters, keyboard navigation, and metadata-only history. These highlights describe the 1.11.0 release source; verify npm availability and the resolved version before installing.
+**1.11.0 adds three Spider-Man-inspired dark palettes**, bringing the bundle to **23 themes**. It retains the four-page local usage analytics introduced in 1.10.0, with shared period and profile/provider/model filters, keyboard navigation, and metadata-only history. These version introductions are historical, not a fixed latest-version claim. Every successful main push (including direct pushes) publishes an automatic patch to npm; failed checks publish nothing. Verify the resolved npm version before installing. Maintainers: [automatic npm publishing setup](https://github.com/OsdyOrtiz/Osdy-Pi/blob/main/docs/npm-publishing.md).
 
 | Area | What ships |
 | --- | --- |
@@ -40,7 +40,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
-   Check the resolved npm version: the Spider-Man-inspired themes require 1.11.0 or later; local analytics requires 1.10.0 or later. To select this release explicitly, use `pi install npm:osdy-pi@1.11.0` once it is available on npm. For an unpinned installation, use `pi update`; it does not move a pinned version, so replace an older pin explicitly. First-party TODO is included starting in 1.5.0; `/osdy-pi uninstall` and explicit agent provider modes start in 1.6.0. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
+   Check the resolved npm version: the Spider-Man-inspired themes require 1.11.0 or later; local analytics requires 1.10.0 or later. To pin the historical feature release explicitly, use `pi install npm:osdy-pi@1.11.0` if that version is available on npm; automatic patches may already be newer. For an unpinned installation, use `pi update`; it does not move a pinned version, so replace an older pin explicitly. First-party TODO is included starting in 1.5.0; `/osdy-pi uninstall` and explicit agent provider modes start in 1.6.0. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
 
 2. Start Pi:
 
@@ -50,7 +50,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 **Osdy TODO is off by default**, so installing Osdy alongside Gentle Shell does not register a competing `todo`, `/todos`, or TODO widget. To select Osdy explicitly, run `/osdy-pi todo on`, confirm the active profile target, then check `/osdy-pi todo status`. See [TODO selection](#explicit-todo-selection).
 
-Osdy Pi's own extension and themes are bundled—do not install them separately. Version **1.11.0** bundles **23 themes**, including Spider-Man Classic, Miles Morales, and Spider-Verse: Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in 1.8.0; Halloween and Halloween Killer were added in 1.9.0. Check your installed npm version to see which themes are available. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
+Osdy Pi's own extension and themes are bundled—do not install them separately. Starting with **1.11.0**, the package bundles **23 themes**, including Spider-Man Classic, Miles Morales, and Spider-Verse: Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in 1.8.0; Halloween and Halloween Killer were added in 1.9.0. Check your installed npm version to see which themes are available. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
 
 ### Optional: isolated `osdy` command
 
@@ -285,9 +285,9 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 
 ### Themes
 
-Version **1.11.0** contains **23 themes**, including the new Spider-Man Classic, Miles Morales, and Spider-Verse palettes. Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in **1.8.0**; Halloween and Halloween Killer were added in **1.9.0**. To try the themes from a checkout:
+The **1.11.0** release introduced a **23-theme** bundle, including Spider-Man Classic, Miles Morales, and Spider-Verse. Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in **1.8.0**; Halloween and Halloween Killer were added in **1.9.0**. To try the themes from a checkout:
 
-1. Run `npm run pi:dev` from the 1.11.0 checkout, or `/reload` if that checkout is already loaded in Pi.
+1. Run `npm run pi:dev` from a checkout containing these themes, or `/reload` if that checkout is already loaded in Pi.
 2. Open `/settings` → **Theme** and select `osdy-pi-spider-man-classic`, `osdy-pi-miles-morales`, `osdy-pi-spider-verse`, or another name below.
 
 | Theme | Use |
