@@ -550,6 +550,26 @@ npm run pi:dev -- account remove private --confirm private
 PI_CODING_AGENT_DIR="$PWD/.pi-dev" OSDY_PI_DEV_EXTENSION_ROOT="$PWD" pi -e "$PWD"
 ```
 
+### Control Center manual smoke
+
+From this checkout with dependencies and Pi already available:
+
+```bash
+npm run pi:dev -- --no-session
+```
+
+This launches `pi` from `PATH`, loads this checkout with `-e`, and uses `.pi-dev` as the Pi agent directory.
+The explicit argument bypasses the launcher's default-account activation; Pi's `--no-session` disables session persistence, **not settings writes or provider access**.
+An isolated agent directory does **not** make custom audio paths or real provider accounts harmless. Use intentional disposable test profiles/files for profile writes, switches, default confirmations, and audio tests; do not assume an isolated account store makes real credentials safe.
+
+- Open `/osdy` in regular and fullscreen Pi. Check arrows/Home/End/Page Up/Down, Tab or left/right, Enter, and Esc; shrink and restore the terminal, checking both panes remain reachable.
+- In disposable settings, change a visual preference, wait for **Saved globally**, close and reopen, then reload/restart to check persistence. Esc does not undo changes; distinguish save/application errors from success.
+- Account (manual): with disposable profiles only, check Cancel-first switch/set-default/clear-default confirmations, Esc cancellation, idle switching, and current/default labels. V1 is switch/default only; create/rename/remove stay in `/osdy-account`, login in `/login`.
+- Usage (manual): check day/week/month and all/current filters, empty/unavailable/limited states, and explicit refresh. Authenticated quota and post-switch account correctness need an intentionally authorized live provider check; local estimates are not billing.
+- Sounds (manual): use disposable readable `.mp3`/`.wav` files to check configure, cancel, clear, and startup-flag precedence. Only choose **Test effective** when playback is intended; actual macOS/Windows playback still needs a live check.
+
+Live TUI appearance, real account switching/authenticated quota, and actual audio playback remain unverified; this checklist is not a recorded pass.
+
 Install a local checkout into Pi with:
 
 ```bash
