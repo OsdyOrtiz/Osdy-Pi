@@ -853,7 +853,7 @@ function registerCommand(
  readUsageHistory: () => Promise<UsageSnapshot>,
  refreshUsage: () => Promise<void>,
 ): void {
-	pi.registerCommand("osdy", {
+	pi.registerCommand("osdyConfig", {
 		description: "Open Osdy Control Center (preferences, Git, Sounds, Account and Usage).",
 		handler: async (_args, ctx) => showControlCenter(ctx, {
 			snapshot: () => state,

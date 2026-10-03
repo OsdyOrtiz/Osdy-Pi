@@ -135,7 +135,7 @@ void test("shared visual actions apply immediately, save the complete settings, 
 	}
 });
 
-void test("registered legacy commands and the modal share live values and existing persistence/notifications", async () => {
+void test("registered legacy commands and osdyConfig share live values and existing persistence/notifications", async () => {
 	const previousDir = process.env.PI_CODING_AGENT_DIR;
 	process.env.PI_CODING_AGENT_DIR = fileURLToPath(new URL("./.startup-test-missing", import.meta.url));
 	const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
@@ -187,8 +187,9 @@ void test("registered legacy commands and the modal share live values and existi
 	try {
 		await registerOsdyPi(pi, { editorSettingsStore: { path: "/unused", load: () => Promise.reject(new Error("must not load")),
 			save: (settings) => { writes.push(settings); return failure ? Promise.reject(new Error("disk full")) : Promise.resolve(); } } });
-		const legacy = commands.get("osdy-pi"); const modal = commands.get("osdy");
+		const legacy = commands.get("osdy-pi"); const modal = commands.get("osdyConfig");
 		assert.ok(legacy); assert.ok(modal);
+		assert.equal(commands.has("osdy"), false, "the Control Center command is renamed, not aliased");
 		for (const [args, expected, field, value] of [
 			["header neon", "osdy-pi header: neon", "headerVariant", "neon"],
 			["mascot bts", "osdy-pi mascot: Bts", "mascot", "bts"],
@@ -268,7 +269,8 @@ void test("actual factory registers no TODO surfaces by default, and all three o
     }, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {}, on: () => {}, events: { on: () => () => {} } } as unknown as ExtensionAPI;
    await registerOsdyPi(pi);
    assert.ok(commands.includes("osdy-pi"));
-   assert.ok(commands.includes("osdy"));
+   assert.ok(commands.includes("osdyConfig"));
+   assert.equal(commands.includes("osdy"), false);
    assert.equal(commands.includes("todos"), enabled); assert.equal(tools.includes("todo"), enabled);
    assert.equal(shortcuts.length > 0, enabled);
    assert.equal(execCalls, probes);
@@ -300,7 +302,8 @@ void test("official SDK factory uses SDK cwd, not the safe process cwd, before T
    try {
     const extension = await loadExtensionFromFactory(factory, cwd, eventBus, runtime);
     assert.ok(extension.commands.has("osdy-pi"));
-    assert.ok(extension.commands.has("osdy"));
+    assert.ok(extension.commands.has("osdyConfig"));
+    assert.equal(extension.commands.has("osdy"), false);
     assert.equal(extension.tools.has("todo"), active, cwd);
     assert.equal(extension.commands.has("todos"), active, cwd);
     assert.equal(extension.shortcuts.size > 0, active, cwd);

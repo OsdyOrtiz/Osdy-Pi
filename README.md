@@ -54,7 +54,7 @@ Osdy Pi's own extension and themes are bundled—do not install them separately.
 
 ### Control Center in Pi
 
-Run **`/osdy`** in interactive Pi to open the Osdy Control Center. **Theme, Header, Mascot, Editor, Git, Sounds, Account, and Usage** provide inline controls or data in the same modal. Existing commands remain available.
+Run **`/osdyConfig`** in interactive Pi to open the Osdy Control Center. **Theme, Header, Mascot, Editor, Git, Sounds, Account, and Usage** provide inline controls or data in the same modal. Existing commands remain available.
 
 - Use **↑/↓**, **Home/End**, or **Page Up/Down** to navigate; **Tab** or **←/→** switches between categories and details. **Enter** selects.
 - Theme lists Pi's available themes and marks the current theme. A successful selection applies live and saves globally in the active Pi agent directory; project settings can override it at startup. Failures appear in the modal.
@@ -562,7 +562,7 @@ This launches `pi` from `PATH`, loads this checkout with `-e`, and uses `.pi-dev
 The explicit argument bypasses the launcher's default-account activation; Pi's `--no-session` disables session persistence, **not settings writes or provider access**.
 An isolated agent directory does **not** make custom audio paths or real provider accounts harmless. Use intentional disposable test profiles/files for profile writes, switches, default confirmations, and audio tests; do not assume an isolated account store makes real credentials safe.
 
-- Open `/osdy` in regular and fullscreen Pi. Check arrows/Home/End/Page Up/Down, Tab or left/right, Enter, and Esc; shrink and restore the terminal, checking both panes remain reachable.
+- Open `/osdyConfig` in regular and fullscreen Pi. Check arrows/Home/End/Page Up/Down, Tab or left/right, Enter, and Esc; shrink and restore the terminal, checking both panes remain reachable.
 - In disposable settings, change a visual preference, wait for **Saved globally**, close and reopen, then reload/restart to check persistence. Esc does not undo changes; distinguish save/application errors from success.
 - Account (manual): with disposable profiles only, check Cancel-first switch/set-default/clear-default confirmations, Esc cancellation, idle switching, and current/default labels. V1 is switch/default only; create/rename/remove stay in `/osdy-account`, login in `/login`.
 - Usage (manual): check day/week/month and all/current filters, empty/unavailable/limited states, and explicit refresh. Authenticated quota and post-switch account correctness need an intentionally authorized live provider check; local estimates are not billing.
