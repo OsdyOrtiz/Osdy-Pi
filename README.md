@@ -1,17 +1,18 @@
 # Osdy Pi — a themed, responsive Pi workspace
 
-Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive terminal presentation with a header, editor, working indicator, and Git view. Visit the [Osdy landing page](https://landing-osdy.vercel.app/).
+Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive terminal presentation with a header, editor, working indicator, and Git view. Visit the [Osdy landing page](https://osdy-pi.vercel.app/).
 
 <img width="1857" height="847" alt="Osdy Pi interface" src="https://github.com/user-attachments/assets/028eeb14-3f43-4f1c-9603-0c55a8d2856d" />
 
 ## Release highlights
 
-**1.10.0 adds four-page local usage analytics** with shared period and profile/provider/model filters, keyboard navigation, and metadata-only history. The bundle retains **20 themes**. These highlights describe the 1.10.0 release source; verify npm availability and the resolved version before installing.
+**1.11.0 adds three Spider-Man-inspired dark palettes**, bringing the bundle to **23 themes**. It retains the four-page local usage analytics introduced in 1.10.0, with shared period and profile/provider/model filters, keyboard navigation, and metadata-only history. These highlights describe the 1.11.0 release source; verify npm availability and the resolved version before installing.
 
 | Area | What ships |
 | --- | --- |
 | Local analytics (1.10.0) | `/osdy-usage` opens Summary, Profiles, Models, and History pages for recorded tokens and estimated cost—not billing or subscription quota. |
-| Themes introduced in 1.9.0 | Halloween and Halloween Killer add two dark palettes, bringing the bundle to 20 themes. |
+| Themes introduced in 1.11.0 | Spider-Man Classic, Miles Morales, and Spider-Verse add three distinct dark palettes. |
+| Themes introduced in 1.9.0 | Halloween and Halloween Killer add two dark palettes. |
 | Themes introduced in 1.8.0 | Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute. |
 | Message cards | Pi-native colored user cards without emojis and plain assistant Markdown preceded by a separate `🦝` transcript row. |
 | Header and mascot | A theme-aware `neon` header and selectable `bts` mascot, both responsive and persisted independently. |
@@ -39,7 +40,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
-   Check the resolved npm version: local analytics requires 1.10.0 or later. Once 1.10.0 is available on npm, `pi install npm:osdy-pi@1.10.0` selects it explicitly. For an unpinned installation, use `pi update`; it does not move a pinned version, so replace an older pin explicitly. First-party TODO is included starting in 1.5.0; `/osdy-pi uninstall` and explicit agent provider modes start in 1.6.0. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
+   Check the resolved npm version: the Spider-Man-inspired themes require 1.11.0 or later; local analytics requires 1.10.0 or later. To select this release explicitly, use `pi install npm:osdy-pi@1.11.0` once it is available on npm. For an unpinned installation, use `pi update`; it does not move a pinned version, so replace an older pin explicitly. First-party TODO is included starting in 1.5.0; `/osdy-pi uninstall` and explicit agent provider modes start in 1.6.0. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
 
 2. Start Pi:
 
@@ -47,7 +48,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi
    ```
 
-Osdy Pi's own extension and themes are bundled—do not install them separately. Version **1.10.0** bundles **20 themes**: Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in 1.8.0; Halloween and Halloween Killer are added in 1.9.0. Check your installed npm version to see which themes are available. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
+Osdy Pi's own extension and themes are bundled—do not install them separately. Version **1.11.0** bundles **23 themes**, including Spider-Man Classic, Miles Morales, and Spider-Verse: Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in 1.8.0; Halloween and Halloween Killer were added in 1.9.0. Check your installed npm version to see which themes are available. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
 
 ### Optional: isolated `osdy` command
 
@@ -251,7 +252,7 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 
 | Area | Included behavior |
 | --- | --- |
-| Themes | 20 built-in themes, including Osdy, Kanagawa, Dracula, Gruvbox, Nord, Rosé Pine, Daniela Cute, Halloween, Halloween Killer, Catppuccin, Matrix, and Lucent Orange palettes |
+| Themes | 23 built-in themes, including Osdy, Kanagawa, Dracula, Gruvbox, Nord, Rosé Pine, Daniela Cute, Halloween, Halloween Killer, Catppuccin, Matrix, Lucent Orange, and three Spider-Man-inspired palettes |
 | Header and mascot | Independently selectable `osdy-theme`/`neon` headers and `current`/`bts` mascots |
 | Messages | Native colored user cards without emojis and plain assistant Markdown with a separate assistant `🦝` row |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
@@ -266,10 +267,10 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 
 ### Themes
 
-Version **1.10.0** contains **20 themes**. Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in **1.8.0**; Halloween and Halloween Killer were added in **1.9.0**. To try the themes from a checkout:
+Version **1.11.0** contains **23 themes**, including the new Spider-Man Classic, Miles Morales, and Spider-Verse palettes. Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in **1.8.0**; Halloween and Halloween Killer were added in **1.9.0**. To try the themes from a checkout:
 
-1. Run `npm run pi:dev` from the 1.10.0 checkout, or `/reload` if that checkout is already loaded in Pi.
-2. Open `/settings` → **Theme** and select `osdy-pi-gruvbox-dark`, `osdy-pi-nord`, `osdy-pi-rose-pine`, `osdy-pi-daniela-cute`, `osdy-pi-halloween`, `osdy-pi-halloween-killer`, or another name below.
+1. Run `npm run pi:dev` from the 1.11.0 checkout, or `/reload` if that checkout is already loaded in Pi.
+2. Open `/settings` → **Theme** and select `osdy-pi-spider-man-classic`, `osdy-pi-miles-morales`, `osdy-pi-spider-verse`, or another name below.
 
 | Theme | Use |
 | --- | --- |
@@ -293,6 +294,9 @@ Version **1.10.0** contains **20 themes**. Gruvbox Dark, Nord, Rosé Pine base d
 | `osdy-pi-catppuccin-mocha` | Catppuccin Mocha dark palette. |
 | `osdy-pi-matrix` | OpenCode Matrix dark palette. |
 | `osdy-pi-lucent-orange` | Lucent Orange dark palette with terminal-background passthrough. |
+| `osdy-pi-spider-man-classic` | Classic Peter Parker: night-blue panels, red accents, and web-white text, with blue links and distinct green success/yellow warning indicators. |
+| `osdy-pi-miles-morales` | Miles Morales: black and charcoal panels with intense red accents, pale text, and distinct green success/yellow warning indicators. |
+| `osdy-pi-spider-verse` | Spider-Verse: dark violet panels, red, electric-blue, and magenta highlights, with readable syntax and distinct green success/yellow warning indicators. |
 
 Osdy Pi preserves your selected Pi theme when it enables, reapplies, or disables its UI. Choose any theme in Pi:
 

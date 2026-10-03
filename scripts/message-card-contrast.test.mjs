@@ -8,10 +8,11 @@ import { colorToHex } from "@earendil-works/pi-tui";
 const themesDir = join(dirname(fileURLToPath(import.meta.url)), "..", "themes");
 const themeFiles = readdirSync(themesDir).filter((file) => /^osdy-pi-.*\.json$/.test(file));
 
-const newDarkNames = ["osdy-pi-gruvbox-dark", "osdy-pi-nord", "osdy-pi-rose-pine", "osdy-pi-daniela-cute", "osdy-pi-halloween", "osdy-pi-halloween-killer"];
+const spiderNames = ["osdy-pi-spider-man-classic", "osdy-pi-miles-morales", "osdy-pi-spider-verse"];
+const newDarkNames = [...spiderNames, "osdy-pi-gruvbox-dark", "osdy-pi-nord", "osdy-pi-rose-pine", "osdy-pi-daniela-cute", "osdy-pi-halloween", "osdy-pi-halloween-killer"];
 
 test("new dark themes cover every installed Pi role and load without fallbacks", async () => {
-  assert.equal(newDarkNames.length, 6, "cover all newly bundled dark themes");
+  assert.equal(newDarkNames.length, 9, "cover all newly bundled dark themes");
   const schema = JSON.parse(readFileSync(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-schema.json", import.meta.url), "utf8"));
   const { loadThemeFromPath } = await import("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js");
   for (const name of newDarkNames) {
@@ -95,6 +96,30 @@ test("Halloween palettes are distinct and preserve readable text and semantic st
   }
 });
 
+test("Spider-Man palettes preserve readable syntax, thinking levels and semantic statuses", () => {
+  const themes = spiderNames.map((name) => JSON.parse(readFileSync(join(themesDir, `${name}.json`), "utf8")));
+  for (const role of ["accent", "userMessageBg", "mdHeading"]) {
+    assert.equal(new Set(themes.map((theme) => resolveColor(theme, role))).size, 3, `${role}: distinct palettes`);
+  }
+  for (const theme of themes) {
+    for (const value of Object.values(theme.vars)) assert.match(value, /^#[0-9a-f]{6}$/i);
+    const statuses = ["success", "error", "warning"].map((role) => resolveColor(theme, role));
+    assert.equal(new Set(statuses).size, 3, `${theme.name}: distinct semantic statuses`);
+    assert.equal(resolveColor(theme, "toolDiffAdded"), statuses[0]);
+    assert.equal(resolveColor(theme, "toolDiffRemoved"), statuses[1]);
+    assert.notEqual(resolveColor(theme, "toolSuccessBg"), resolveColor(theme, "toolErrorBg"));
+    const foregrounds = ["text", "muted", "thinkingText", "success", "error", "warning", "toolTitle", "customMessageLabel",
+      ...Object.keys(theme.colors).filter((role) => role.startsWith("syntax") || /^thinking(?:Off|Minimal|Low|Medium|High|Xhigh|Max)$/.test(role))];
+    for (const background of ["userMessageBg", "customMessageBg", "selectedBg", "toolPendingBg", "toolSuccessBg", "toolErrorBg"]) {
+      for (const foreground of foregrounds) {
+        assert.ok(contrast(resolveColor(theme, foreground), resolveColor(theme, background)) >= 4.5,
+          `${theme.name}: ${foreground} readable on ${background}`);
+      }
+    }
+    assert.ok(contrast(resolveColor(theme, "searchMatchText"), resolveColor(theme, "searchMatchBg")) >= 4.5);
+  }
+});
+
 test("Daniela Cute primary and secondary text remain readable on panels, cards and selection", () => {
   const theme = JSON.parse(readFileSync(join(themesDir, "osdy-pi-daniela-cute.json"), "utf8"));
   for (const background of ["toolPendingBg", "userMessageBg", "selectedBg"]) {
@@ -126,7 +151,7 @@ function contrast(first, second) {
 }
 
 test("every bundled Osdy Pi theme has a legible native user card", () => {
-  assert.equal(themeFiles.length, 20, "cover all bundled Osdy Pi themes");
+  assert.equal(themeFiles.length, 23, "cover all bundled Osdy Pi themes");
   for (const file of themeFiles) {
     const theme = JSON.parse(readFileSync(join(themesDir, file), "utf8"));
     assert.equal(typeof theme.colors.userMessageBg, "string", `${theme.name}: userMessageBg must be a string`);

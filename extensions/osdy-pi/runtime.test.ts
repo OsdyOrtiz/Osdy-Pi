@@ -408,8 +408,8 @@ void test("every registered theme defines native user message colors", () => {
 		readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
 	) as { pi: { themes: string[] } };
 
-	assert.equal(manifest.pi.themes.length, 20);
-	assert.equal(new Set(manifest.pi.themes).size, 20, "theme registrations must be unique");
+	assert.equal(manifest.pi.themes.length, 23);
+	assert.equal(new Set(manifest.pi.themes).size, 23, "theme registrations must be unique");
 	for (const themePath of manifest.pi.themes) {
 		const theme = JSON.parse(
 			readFileSync(
@@ -438,18 +438,21 @@ void test("new dark themes are explicitly registered with unique matching names"
 		return theme.name;
 	});
 	assert.equal(new Set(names).size, names.length, "theme names must be unique");
-	for (const name of ["osdy-pi-gruvbox-dark", "osdy-pi-nord", "osdy-pi-rose-pine", "osdy-pi-daniela-cute", "osdy-pi-halloween", "osdy-pi-halloween-killer"]) {
+	for (const name of ["osdy-pi-gruvbox-dark", "osdy-pi-nord", "osdy-pi-rose-pine", "osdy-pi-daniela-cute", "osdy-pi-halloween", "osdy-pi-halloween-killer", "osdy-pi-spider-man-classic", "osdy-pi-miles-morales", "osdy-pi-spider-verse"]) {
 		assert.equal(manifest.pi.themes.filter((path) => path === `./themes/${name}.json`).length, 1);
 		assert.equal(names.filter((registered) => registered === name).length, 1);
 	}
 });
 
-void test("README documents all 20 themes including both Halloween palettes", () => {
+void test("README documents all 23 themes including three Spider-Man-inspired palettes", () => {
 	const readme = readFileSync(new URL("../../README.md", import.meta.url), "utf8");
-	assert.match(readme, /\*\*20 themes\*\*/);
-	assert.match(readme, /20 built-in themes/);
-	assert.doesNotMatch(readme, /\b18 (?:built-in )?themes\b/);
-	assert.equal(readme.match(/^\| `osdy-pi-[^`]+` \|/gm)?.length, 20);
+	assert.match(readme, /\*\*23 themes\*\*/);
+	assert.match(readme, /23 built-in themes/);
+	assert.doesNotMatch(readme, /\b(?:18|20) (?:built-in )?themes\b/);
+	assert.equal(readme.match(/^\| `osdy-pi-[^`]+` \|/gm)?.length, 23);
+	for (const name of ["osdy-pi-spider-man-classic", "osdy-pi-miles-morales", "osdy-pi-spider-verse"]) {
+		assert.ok(readme.includes(`| \`${name}\` |`), `${name}: documented theme row`);
+	}
 	assert.match(readme, /\| `osdy-pi-daniela-cute` \| Daniela Cute/);
 	assert.match(readme, /\| `osdy-pi-halloween` \|.*[Pp]umpkin.*violet.*lime/);
 	assert.match(readme, /\| `osdy-pi-halloween-killer` \|.*[Gg]othic.*blood.red.*violet/);

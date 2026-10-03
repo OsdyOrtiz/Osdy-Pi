@@ -1,6 +1,6 @@
 {
 	"name": "osdy-pi",
-	"version": "1.10.0",
+	"version": "1.11.0",
 	"description": "Osdy Pi package: themes, header, and custom editor for Pi.",
 	"license": "MIT",
 	"type": "module",
@@ -52,7 +52,10 @@
 			"./themes/osdy-pi-catppuccin-macchiato.json",
 			"./themes/osdy-pi-catppuccin-mocha.json",
 			"./themes/osdy-pi-matrix.json",
-			"./themes/osdy-pi-lucent-orange.json"
+			"./themes/osdy-pi-lucent-orange.json",
+			"./themes/osdy-pi-spider-man-classic.json",
+			"./themes/osdy-pi-miles-morales.json",
+			"./themes/osdy-pi-spider-verse.json"
 		],
 		"extensions": [
 			"./extensions/osdy-pi.ts"
