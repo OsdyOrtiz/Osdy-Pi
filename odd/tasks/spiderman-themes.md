@@ -17,4 +17,4 @@ Native review review-061bda05d121bf36: medium reliability lens, approved and ack
 Source released through commit ddce7d7b3dcc37f6e63f64b663c1b1412af40be9, combining approved theme behavior and 1.11.0 alignment/landing update; main and origin/main reached that commit. Prior release ledger remained untouched. No Git tag/GitHub Release.
 
 ## Rollback and next step
-Ordinary revert of the theme slice removes the three new JSON files and corresponding registration/docs/tests, not unrelated changes. Release evidence continues in odd/tasks/release-1-11-0.md; npm publication currently awaits human EOTP authentication.
+Ordinary revert of the theme slice removes the three new JSON files and corresponding registration/docs/tests, not unrelated changes. Release evidence continues in odd/tasks/release-1-11-0.md; owner completed interactive authentication/publication and official npm version/latest/integrity are verified at 1.11.0.

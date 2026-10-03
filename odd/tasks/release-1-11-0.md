@@ -11,7 +11,7 @@ Mapper gentle-ai-explore; writer gentle-ai-worker (multi-file trigger, gpt-6.1-s
 ## Tasks
 - [x] R1 Prepare README/version and verify source. Complete; source commit ddce7d7b3dcc37f6e63f64b663c1b1412af40be9.
 - [x] R2 Integrate/push main and verify immutable artifact. Complete; remote main exact source commit verified with ls-remote.
-- [ ] R3 Publish and verify official version/tag/integrity. In progress, blocked by EOTP; no publication confirmed.
+- [x] R3 Publish and verify official version/tag/integrity. Complete: user published interactively; official registry version/latest/SHA-1/SHA-512 match the verified artifact.
 
 ## Source evidence
 README reviewed completely: new landing, 1.11.0 highlights/instructions, all 23 themes, historical analytics attribution preserved. Manifest, both lock roots and current assertion align at 1.11.0; no dependency churn.
@@ -29,7 +29,9 @@ Both independently computed and match npm pack. Evidence retained under /Users/o
 ## Publication and reconciliation
 Preflight: account/owner osdy; version 1.11.0 absent (exact E404); latest 1.10.0.
 Exactly one authorized npm publish of the above tgz with --access public --tag latest --registry=https://registry.npmjs.org/ returned exit 1 EOTP, requiring human authentication. No success/accepted-processing claim. No retry/login/OTP/credential handling performed.
-Bounded post-attempt queries once each reconfirmed 1.11.0 ABSENT and latest 1.10.0. Independent artifact rehash unchanged; tracked package source unchanged from frozen commit. Registry integrity verification remains pending because version is absent.
+Bounded post-attempt queries once each reconfirmed 1.11.0 ABSENT and latest 1.10.0. Independent artifact rehash unchanged; tracked package source unchanged from frozen commit.
+User then reported interactive accepted-processing output and + osdy-pi@1.11.0. Independent official registry reconciliation initially observed E404/latest lag; one requery after 15 seconds returned version 1.11.0 and latest 1.11.0, with exact SHA-1 and SHA-512 matching the retained artifact above. Artifact rehash also matched. No publish retry or credential handling by agent. Registry-verified completion; no blockers.
+Verifier observed main/cached origin/main at evidence commit 7372bcf9c46c9ac110bf77a4a2a3e08c621cba82; only two excluded tracking documents differ from frozen source. Unrelated previous ledger hash unchanged.
 
 ## Next step and rollback
-Owner publishes the exact retained tgz interactively, completes OTP/browser authentication privately, and reports the result. Reconcile official version/latest/SHA-1/SHA-512 before marking R3 complete; never blindly retry uncertain output. Source rollback requires ordinary authorized revert; published versions are immutable. Keep prior dirty ledger untouched.
+Release is registry-verified. For unpinned npm installations use pi update, then /reload; explicit pin is npm:osdy-pi@1.11.0. No GitHub Release/tag requested. Source rollback requires ordinary authorized revert; published versions are immutable. Keep prior dirty ledger untouched.
