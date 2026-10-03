@@ -54,11 +54,14 @@ Osdy Pi's own extension and themes are bundled—do not install them separately.
 
 ### Control Center in Pi
 
-Run **`/osdy`** in interactive Pi to open the Osdy Control Center. This first increment supports **Theme** inline; Header, Mascot, Editor, Git, Sounds, Account, and Usage explicitly show **not yet available**. Their existing commands remain available.
+Run **`/osdy`** in interactive Pi to open the Osdy Control Center. **Theme, Header, Mascot, and Editor** have inline controls in the same modal. Git, Sounds, Account, and Usage explicitly show **not yet available**. Existing commands remain available.
 
 - Use **↑/↓**, **Home/End**, or **Page Up/Down** to navigate; **Tab** or **←/→** switches between categories and details. **Enter** selects.
 - Theme lists Pi's available themes and marks the current theme. A successful selection applies live and saves globally in the active Pi agent directory; project settings can override it at startup. Failures appear in the modal.
-- **Esc** closes without undoing saved changes. On narrow terminals, categories and details share the viewport; use Tab to switch.
+- Header offers **osdy-theme / neon**; Mascot offers **current / Bts**; Editor offers **auto / extended / simple**, with the current preference marked. Editor also shows the effective mode: small terminals stay simple/native even with extended selected.
+- These preferences apply immediately through the same runtime and global Osdy settings store as `/osdy-pi` commands (`<agent-dir>/extensions/osdy-pi/settings.json`). Opening a category only reads current values. While Osdy is disabled, selections are saved for when it is enabled; opening the modal does not enable it.
+- A selection shows **Saving** until persistence finishes and **Saved globally** only on success. Failed saves retain the live preference but report **could not be saved**; select again to retry. Application errors report **Not saved**, without claiming the runtime change succeeded. Duplicate selections are ignored while saving.
+- **Esc** closes without undoing live or saved changes; an in-flight save still finishes, without late modal feedback. On narrow terminals, categories and details share the viewport; use Tab to switch.
 
 This modal requires Pi's terminal UI, not RPC, JSON, or print mode. `/osdy-pi` remains the legacy extension command; the external shell command `osdy` (`bin/osdy.mjs`) remains the isolated launcher described below.
 

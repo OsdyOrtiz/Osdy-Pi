@@ -4,6 +4,7 @@ import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { visibleWidth } from "@earendil-works/pi-tui";
+import type { ControlCenterPreferences, VisualPreferenceAction } from "./control-center-preferences.js";
 
 registerHooks({
 	resolve(specifier, context, nextResolve) {
@@ -16,7 +17,7 @@ registerHooks({
 });
 const { ControlCenter } = await import("./control-center.js");
 
-function fixture(names = ["dark", "light"]) {
+function fixture(names = ["dark", "light"], preferences?: ControlCenterPreferences) {
 	let current = "dark";
 	let appearance: "dark" | "light" = "dark";
 	let failure: string | undefined;
@@ -30,6 +31,7 @@ function fixture(names = ["dark", "light"]) {
 		theme: () => ({ name: current, appearance,
 			fg: (_color, text) => `\x1b[${appearance === "dark" ? 31 : 32}m${text}\x1b[0m`,
 		}),
+		preferences,
 		readThemes: () => names.map((name) => ({ name, path: undefined })),
 		applyTheme: (name) => {
 			assert.equal(disposed, false);
@@ -68,6 +70,130 @@ void test("categories and detail have separate keyboard focus and honest placeho
 	assert.deepEqual(f.applied, []);
 	f.panel.handleInput(up);
 	assert.match(f.panel.render(80).join("\n"), /Account: not yet available/);
+});
+
+function preferenceFixture() {
+	const snapshot = { enabled: true, headerVariant: "osdy-theme" as const,
+		mascot: "current" as const, editorMode: "auto" as const, editorEffective: false, smallMode: true };
+	const applied: VisualPreferenceAction[] = [];
+	let complete: (saved: boolean) => void = () => {};
+	const preferences: ControlCenterPreferences = {
+		snapshot: () => snapshot,
+		apply: (action) => {
+			applied.push(action);
+			return new Promise<boolean>((resolve) => { complete = resolve; });
+		},
+	};
+	return { ...fixture(["dark", "light", "third", "fourth"], preferences), applied,
+		complete: (saved: boolean) => complete(saved) };
+}
+
+void test("inline preferences show all supported values and live current/effective indicators without saving", () => {
+	const f = preferenceFixture();
+	for (const [category, choices, current] of [
+		["Header", ["osdy-theme", "neon"], "osdy-theme"],
+		["Mascot", ["current", "Bts"], "current"],
+		["Editor", ["auto", "extended", "simple"], "auto"],
+	] as const) {
+		f.panel.handleInput(down);
+		const text = f.panel.render(100).join("\n");
+		assert.match(text, new RegExp(`Current: ${current}`));
+		for (const choice of choices) assert.ok(text.includes(choice), `${category}: ${choice}`);
+		assert.match(text, /\(current\)/);
+		assert.doesNotMatch(text, /not yet available/);
+		if (category === "Editor") assert.match(text, /effective: simple\/native.*small terminal/i);
+	}
+	assert.deepEqual(f.applied, []);
+});
+
+void test("changing categories resets selection to their current row, even after a longer theme list", () => {
+	const f = preferenceFixture();
+	f.panel.handleInput(right);
+	f.panel.handleInput("\x1b[F");
+	f.panel.handleInput(left);
+	f.panel.handleInput(down);
+	f.panel.handleInput(right);
+	assert.match(f.panel.render(100).join("\n"), /detail: 1\/2/);
+	f.panel.handleInput(down);
+	f.panel.handleInput("\r");
+	assert.deepEqual(f.applied, [{ kind: "header", value: "neon" }]);
+});
+
+void test("async preferences show saving, prevent duplicate actions, and distinguish save failure from success", async () => {
+	for (const saved of [false, true]) {
+		const f = preferenceFixture();
+		f.panel.handleInput(down);
+		f.panel.handleInput(right);
+		f.panel.handleInput(down);
+		f.panel.handleInput("\r");
+		assert.match(f.panel.render(100).join("\n"), /Saving.*neon/);
+		f.panel.handleInput("\r");
+		assert.equal(f.applied.length, 1);
+		f.complete(saved);
+		await Promise.resolve();
+		const text = f.panel.render(100).join("\n");
+		assert.match(text, saved ? /Saved globally: neon/ : /Applied live.*could not be saved/);
+		if (!saved) assert.doesNotMatch(text, /Saved globally/);
+	}
+});
+
+void test("closing during persistence ignores late success and failure without rolling back", async () => {
+	for (const saved of [false, true]) {
+		const f = preferenceFixture();
+		f.panel.handleInput(down);
+		f.panel.handleInput(right);
+		f.panel.handleInput("\r");
+		f.panel.handleInput("\x1b");
+		f.dispose();
+		const renders = f.renders();
+		f.complete(saved);
+		await Promise.resolve();
+		assert.equal(f.renders(), renders);
+		assert.equal(f.closes(), 1);
+		assert.equal(f.applied.length, 1);
+		assert.deepEqual(f.panel.render(80), []);
+	}
+});
+
+void test("preference application errors never claim persistence, including rejection after disposal", async () => {
+	for (const synchronous of [true, false]) {
+		const f = fixture(undefined, { snapshot: () => ({ enabled: true, headerVariant: "neon", mascot: "bts",
+			editorMode: "simple", editorEffective: false, smallMode: false }), apply: () => {
+			if (synchronous) throw new Error("UI apply failed");
+			return Promise.reject(new Error("UI apply failed"));
+		} });
+		f.panel.handleInput(down); f.panel.handleInput(right); f.panel.handleInput("\r");
+		await Promise.resolve();
+		assert.match(f.panel.render(100).join("\n"), /Preference failed: UI apply failed.*Not saved/);
+		assert.doesNotMatch(f.panel.render(100).join("\n"), /Saved globally/);
+	}
+	let reject: (error: Error) => void = () => {};
+	const f = fixture(undefined, { snapshot: () => ({ enabled: true, headerVariant: "neon", mascot: "bts",
+		editorMode: "simple", editorEffective: false, smallMode: false }),
+		apply: () => new Promise<boolean>((_resolve, fail) => { reject = fail; }) });
+	f.panel.handleInput(down); f.panel.handleInput(right); f.panel.handleInput("\r");
+	f.dispose(); const renders = f.renders();
+	reject(new Error("late error")); await Promise.resolve();
+	assert.equal(f.renders(), renders);
+});
+
+void test("inline preference rendering stays bounded at narrow widths and differing heights", () => {
+	const f = preferenceFixture();
+	for (let category = 0; category < 3; category++) {
+		f.panel.handleInput(down);
+		f.panel.handleInput(right);
+		f.panel.handleInput("\x1b[F");
+		assert.match(f.panel.render(48).join("\n"), new RegExp(`> ${["neon", "Bts", "simple"][category]}`));
+		for (const height of [1, 4, 7, 9, 18]) {
+			f.resize(height);
+			for (const width of [1, 8, 24, 48, 80]) {
+				const lines = f.panel.render(width);
+				assert.ok(lines.length <= height);
+				assert.ok(lines.every((line) => visibleWidth(line) <= width));
+			}
+		}
+		f.panel.handleInput(left);
+	}
 });
 
 void test("empty feedback preserves the current theme summary on short terminals with ANSI colors", () => {

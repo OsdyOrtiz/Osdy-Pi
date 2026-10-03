@@ -8,6 +8,9 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import ts from "typescript";
+import type { OsdyState, WorkingTreeState, WorkingWidgetState, GlobalEditorSettings } from "./types.js";
+import type { VisualPreferenceAction } from "./control-center-preferences.js";
+import type { TUI } from "@earendil-works/pi-tui";
 
 registerHooks({
 	resolve(specifier, context, nextResolve) {
@@ -84,7 +87,123 @@ const {
 	refreshCodexUsage,
  registerOsdyPi,
  handleTodoProviderCommand,
+ applyVisualPreference,
 } = await import("./runtime.js");
+
+void test("shared visual actions apply immediately, save the complete settings, and keep live state on save failure", async () => {
+	for (const enabled of [true, false]) {
+		for (const action of [
+			{ kind: "header", value: "neon" }, { kind: "mascot", value: "bts" },
+			{ kind: "editor", value: "simple" }, { kind: "editor", value: "extended" },
+			{ kind: "editor", value: "auto" },
+		] as const satisfies readonly VisualPreferenceAction[]) {
+			const state: OsdyState = { enabled, headerVariant: "osdy-theme", mascot: "current", editorMode: "auto",
+				editorEffective: true, smallMode: false, workingTreeEnabled: false, workingTreePlacement: "aboveEditor",
+				codexUsage: { kind: "idle" }, fallbackEditorFactory: undefined, tui: undefined };
+			const tree: WorkingTreeState = { enabled: false, visible: false, loading: false, snapshot: null, error: undefined, tui: undefined };
+			const working: WorkingWidgetState = { active: false, label: "Working", frame: 0, timer: undefined, tui: undefined };
+			let mounts = 0;
+			let editor: unknown = "unchanged";
+			const ctx = { hasUI: true, ui: { setHeader: () => { mounts++; }, setFooter: () => {}, setWidget: () => {},
+				setWorkingVisible: () => {}, setEditorComponent: (factory: unknown) => { editor = factory; } } } as unknown as ExtensionContext;
+			const writes: GlobalEditorSettings[] = [];
+			let finish: () => void = () => {};
+			const pending = applyVisualPreference(action, {} as ExtensionAPI, ctx, state, working, tree,
+				{ path: "/unused", load: () => Promise.reject(new Error("must not load")), save: (settings) => {
+					writes.push(settings);
+					return new Promise<void>((resolve) => { finish = resolve; });
+				} });
+			assert.equal(action.kind === "header" ? state.headerVariant : action.kind === "mascot" ? state.mascot : state.editorMode, action.value);
+			assert.equal(mounts, enabled && action.kind !== "editor" ? 1 : 0);
+			if (action.kind === "editor" && action.value === "simple" && enabled) assert.equal(editor, undefined, "simple uses Pi's native editor");
+			assert.deepEqual(writes, [{ version: 1, enabled, headerVariant: state.headerVariant, mascot: state.mascot,
+				editorMode: state.editorMode, workingTreeEnabled: false }]);
+			finish();
+			assert.equal(await pending, true);
+			assert.equal(await applyVisualPreference(action, {} as ExtensionAPI, ctx, state, working, tree,
+				{ path: "/unused", load: () => Promise.reject(new Error("must not load")), save: () => Promise.reject(new Error("disk full")) }), false);
+			assert.equal(action.kind === "header" ? state.headerVariant : action.kind === "mascot" ? state.mascot : state.editorMode, action.value);
+			if (enabled) {
+				state.tui = { terminal: { columns: 20, rows: 6 }, requestRender: () => {} } as unknown as TUI;
+				await applyVisualPreference({ kind: "editor", value: "extended" }, {} as ExtensionAPI, ctx, state, working, tree,
+					{ path: "/unused", load: () => Promise.reject(new Error("must not load")), save: () => Promise.resolve() });
+				assert.equal(state.editorMode, "extended");
+				assert.equal(state.smallMode, true);
+				assert.equal(state.editorEffective, false, "small terminals retain the native editor even with extended selected");
+			}
+		}
+	}
+});
+
+void test("registered legacy commands and the modal share live values and existing persistence/notifications", async () => {
+	const previousDir = process.env.PI_CODING_AGENT_DIR;
+	process.env.PI_CODING_AGENT_DIR = fileURLToPath(new URL("./.startup-test-missing", import.meta.url));
+	const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
+	const writes: GlobalEditorSettings[] = [];
+	const notices: { message: string; level: string | undefined }[] = [];
+	let failure = false;
+	let mounts = 0;
+	let panels = 0;
+	const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
+		on: () => {}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
+		events: { on: () => () => {} } } as unknown as ExtensionAPI;
+	const ctx = { mode: "tui", hasUI: true, ui: {
+		notify: (message: string, level?: string) => { notices.push({ message, level }); },
+		setHeader: () => { mounts++; }, setFooter: () => {}, setWidget: () => {}, setWorkingVisible: () => {},
+		setEditorComponent: () => {},
+		theme: { name: "dark", appearance: "dark", fg: (_color: string, text: string) => text },
+		getAllThemes: () => [{ name: "dark", path: undefined }],
+		setTheme: () => { throw new Error("preferences must not set theme"); },
+		custom: async (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => { render(width: number): string[]; handleInput(data: string): void; dispose(): void }) => {
+			panels++;
+			const panel = factory({ terminal: { rows: 24 }, requestRender: () => {} }, undefined, undefined, () => {});
+			panel.handleInput("\x1b[B");
+			assert.match(panel.render(100).join("\n"), /Current: neon/);
+			panel.handleInput("\x1b[C");
+			panel.handleInput("\x1b[H");
+			panel.handleInput("\r");
+			assert.equal(writes.at(-1)?.headerVariant, "osdy-theme", "modal persists through the same store immediately");
+			assert.match(panel.render(100).join("\n"), /Current: osdy-theme/);
+			await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+			assert.match(panel.render(100).join("\n"), /Saved globally: osdy-theme/);
+			panel.handleInput("\x1b"); panel.dispose();
+		},
+	} } as unknown as ExtensionCommandContext;
+	try {
+		await registerOsdyPi(pi, { editorSettingsStore: { path: "/unused", load: () => Promise.reject(new Error("must not load")),
+			save: (settings) => { writes.push(settings); return failure ? Promise.reject(new Error("disk full")) : Promise.resolve(); } } });
+		const legacy = commands.get("osdy-pi"); const modal = commands.get("osdy");
+		assert.ok(legacy); assert.ok(modal);
+		for (const [args, expected, field, value] of [
+			["header neon", "osdy-pi header: neon", "headerVariant", "neon"],
+			["mascot bts", "osdy-pi mascot: Bts", "mascot", "bts"],
+			["editor off", "osdy-pi editor mode: simple", "editorMode", "simple"],
+			["editor on", "osdy-pi editor mode: extended", "editorMode", "extended"],
+			["editor toggle", "osdy-pi editor mode: simple", "editorMode", "simple"],
+			["editor auto", "osdy-pi editor mode: auto", "editorMode", "auto"],
+		] as const) {
+			await legacy.handler(args, ctx);
+			assert.deepEqual(notices.at(-1), { message: expected, level: "info" });
+			assert.equal(writes.at(-1)?.[field], value);
+		}
+		const before = writes.length;
+		for (const args of ["header status", "mascot status", "editor status", "header invalid", "mascot bts extra", "editor simple extra"]) await legacy.handler(args, ctx);
+		assert.equal(writes.length, before, "status and invalid inputs never save");
+		await modal.handler("", ctx);
+		assert.equal(panels, 1);
+		failure = true;
+		for (const args of ["header neon", "mascot current", "editor simple"]) {
+			await legacy.handler(args, ctx);
+			assert.match(notices.at(-1)?.message ?? "", /changed but could not be saved/);
+			assert.equal(notices.at(-1)?.level, "warning");
+		}
+		await legacy.handler("header status", ctx);
+		assert.equal(notices.at(-1)?.message, "osdy-pi header: neon", "failed saves retain live values");
+		assert.ok(mounts >= 5);
+	} finally {
+		if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
+	}
+});
 
 void test("actual factory registers no TODO surfaces by default, and all three only with opt-in", async () => {
  const root = mkdtempSync(join(tmpdir(), "osdy-runtime-todo-"));
@@ -466,7 +585,7 @@ void test("header command completes only catalog choices and is persisted throug
 	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
 	assert.match(
 		source,
-		/async function handleHeaderCommand[\s\S]*?state\.headerVariant = action;[\s\S]*?applyOsdyPi\([\s\S]*?saveVisualSettings\(state, settingsStore\)/,
+		/async function handleHeaderCommand[\s\S]*?applyVisualPreference\(\{ kind: "header", value: action \}/,
 	);
 	assert.match(source, /headerVariant: state\.headerVariant/);
 	assert.match(source, /state\.headerVariant = editorSettings\.headerVariant;/);
@@ -500,7 +619,7 @@ void test("mascot command completes current, Bts, and status while persisting wi
 	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
 	assert.match(
 		source,
-		/state\.mascot = action;[\s\S]*?applyOsdyPi\([\s\S]*?saveVisualSettings\(state, settingsStore\)/,
+		/applyVisualPreference\(\{ kind: "mascot", value: action \}/,
 	);
 	assert.match(source, /state\.mascot = editorSettings\.mascot;/);
 	assert.match(source, /function mascotLabel\(mascot: MascotChoice\): string/);

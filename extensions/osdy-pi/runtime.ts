@@ -5,6 +5,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
 import { showControlCenter } from "./control-center.js";
+import type { VisualPreferenceAction } from "./control-center-preferences.js";
 import { identifyLocalPackage, runOsdyUninstall } from "./uninstall.js";
 import { isAbsolute, join } from "node:path";
 import { inspectJokerAgents, setupJokerAgents, switchAgentMode } from "./agent-coexistence-setup.js";
@@ -144,6 +145,28 @@ async function saveVisualSettings(
 	}
 }
 
+/** Shared by inline controls and legacy commands; save failure never rolls back live state. */
+export async function applyVisualPreference(
+	action: VisualPreferenceAction,
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+	workingState: WorkingWidgetState,
+	workingTreeState: WorkingTreeState,
+	settingsStore: ReturnType<typeof createEditorSettingsStore>,
+): Promise<boolean> {
+	switch (action.kind) {
+		case "header": state.headerVariant = action.value; break;
+		case "mascot": state.mascot = action.value; break;
+		case "editor": state.editorMode = action.value; break;
+	}
+	if (state.enabled) {
+		if (action.kind === "editor") reconcileResponsiveUi(pi, ctx, state, workingTreeState);
+		else applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
+	}
+	return saveVisualSettings(state, settingsStore);
+}
+
 async function enableOsdyPi(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
@@ -209,9 +232,7 @@ async function handleMascotCommand(
 		ctx.ui.notify(mascotUsage, "warning");
 		return;
 	}
-	state.mascot = action;
-	if (state.enabled) applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
-	const saved = await saveVisualSettings(state, settingsStore);
+	const saved = await applyVisualPreference({ kind: "mascot", value: action }, pi, ctx, state, workingState, workingTreeState, settingsStore);
 	ctx.ui.notify(
 		saved
 			? `osdy-pi mascot: ${mascotLabel(action)}`
@@ -242,9 +263,7 @@ async function handleHeaderCommand(
 		ctx.ui.notify(`osdy-pi header: ${state.headerVariant}`, "info");
 		return;
 	}
-	state.headerVariant = action;
-	if (state.enabled) applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
-	const saved = await saveVisualSettings(state, settingsStore);
+	const saved = await applyVisualPreference({ kind: "header", value: action }, pi, ctx, state, workingState, workingTreeState, settingsStore);
 	ctx.ui.notify(
 		saved
 			? `osdy-pi header: ${action}`
@@ -449,12 +468,11 @@ async function setEditorMode(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	state: OsdyState,
+	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
 	settingsStore: ReturnType<typeof createEditorSettingsStore>,
 ): Promise<void> {
-	state.editorMode = mode;
-	if (state.enabled) reconcileResponsiveUi(pi, ctx, state, workingTreeState);
-	const saved = await saveVisualSettings(state, settingsStore);
+	const saved = await applyVisualPreference({ kind: "editor", value: mode }, pi, ctx, state, workingState, workingTreeState, settingsStore);
 	ctx.ui.notify(
 		saved
 			? `osdy-pi editor mode: ${mode}`
@@ -469,6 +487,7 @@ async function handleEditorCommand(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	state: OsdyState,
+	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
 	settingsStore: ReturnType<typeof createEditorSettingsStore>,
 ): Promise<void> {
@@ -488,7 +507,7 @@ async function handleEditorCommand(
 	};
 	const mode = action ? modeForAction[action] : undefined;
 	if (mode) {
-		await setEditorMode(mode, pi, ctx, state, workingTreeState, settingsStore);
+		await setEditorMode(mode, pi, ctx, state, workingState, workingTreeState, settingsStore);
 		return;
 	}
 	if (action === "toggle") {
@@ -499,6 +518,7 @@ async function handleEditorCommand(
 			pi,
 			ctx,
 			state,
+			workingState,
 			workingTreeState,
 			settingsStore,
 		);
@@ -816,8 +836,11 @@ function registerCommand(
  todoActive: boolean,
 ): void {
 	pi.registerCommand("osdy", {
-		description: "Open Osdy Control Center (inline Theme selection).",
-		handler: async (_args, ctx) => showControlCenter(ctx),
+		description: "Open Osdy Control Center (inline Theme, Header, Mascot and Editor controls).",
+		handler: async (_args, ctx) => showControlCenter(ctx, {
+			snapshot: () => state,
+			apply: (action) => applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
+		}),
 	});
 	pi.registerCommand("osdy-pi", {
 		description:
@@ -919,6 +942,7 @@ function registerCommand(
 					pi,
 					ctx,
 					state,
+					workingState,
 					workingTreeState,
 					editorSettingsStore,
 				);
@@ -968,7 +992,10 @@ async function sdkTodoActive(pi: ExtensionAPI): Promise<boolean> {
 
 export async function registerOsdyPi(
 	pi: ExtensionAPI,
-	dependencies: { readActiveProfile?: () => Promise<string | undefined> } = {},
+	dependencies: {
+		readActiveProfile?: () => Promise<string | undefined>;
+		editorSettingsStore?: ReturnType<typeof createEditorSettingsStore>;
+	} = {},
 ): Promise<void> {
 	const state: OsdyState = {
 		codexUsage: { kind: "idle" },
@@ -1000,7 +1027,7 @@ export async function registerOsdyPi(
 	};
 	const controller = createWorkingController(state, workingState);
 	const settingsStore = createAudioSoundSettingsStore();
-	const editorSettingsStore = createEditorSettingsStore();
+	const editorSettingsStore = dependencies.editorSettingsStore ?? createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
 	registerMessageRoleMarkers(pi, () => state.enabled);
  const todoActive = await sdkTodoActive(pi);

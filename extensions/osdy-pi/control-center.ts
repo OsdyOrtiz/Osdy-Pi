@@ -1,18 +1,21 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { doubleBorderBox, MODAL_OVERLAY_OPTIONS } from "./modal-frame.js";
+import { preferenceDetail, visualPreferenceLabel } from "./control-center-preferences.js";
+import type { ControlCenterPreferences, VisualPreferenceAction } from "./control-center-preferences.js";
 
 export const CONTROL_CENTER_CATEGORIES = [
 	"Theme", "Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage",
 ] as const;
 export type ControlCenterCategory = (typeof CONTROL_CENTER_CATEGORIES)[number];
-export type ControlCenterAction = { kind: "theme"; name: string };
+export type ControlCenterAction = { kind: "theme"; name: string } | VisualPreferenceAction;
 export interface ControlCenterRow {
 	label: string;
 	current: boolean;
 	action: ControlCenterAction;
 }
 export interface ControlCenterDependencies {
+	preferences?: ControlCenterPreferences | undefined;
 	theme: () => Pick<Theme, "name" | "appearance" | "fg">;
 	readThemes: () => { name: string; path: string | undefined }[];
 	applyTheme: (name: string) => { success: boolean; error?: string };
@@ -34,6 +37,7 @@ export class ControlCenter implements Component {
 	private names: string[] = [];
 	private feedback = "";
 	private failed = false;
+	private saving = false;
 	private disposed = false;
 	private pageSize = 1;
 
@@ -53,7 +57,7 @@ export class ControlCenter implements Component {
 	}
 
 	private rows(): ControlCenterRow[] {
-		if (this.category !== "Theme") return [];
+		if (this.category !== "Theme") return this.preferenceView()?.rows ?? [];
 		const current = this.dependencies.theme().name;
 		return this.names.map((name) => ({
 			label: name,
@@ -62,7 +66,41 @@ export class ControlCenter implements Component {
 		}));
 	}
 
+	private preferenceView() {
+		const preferences = this.dependencies.preferences;
+		return preferences ? preferenceDetail(this.category, preferences.snapshot()) : undefined;
+	}
+
+	private async activatePreference(action: VisualPreferenceAction): Promise<void> {
+		const preferences = this.dependencies.preferences;
+		if (!preferences) return;
+		this.saving = true;
+		this.failed = false;
+		const label = visualPreferenceLabel(action);
+		this.feedback = `Saving globally: ${label}...`;
+		try {
+			const saved = await preferences.apply(action);
+			if (this.disposed) return;
+			this.failed = !saved;
+			this.feedback = saved ? `Saved globally: ${label}` : `Applied live: ${label}, but could not be saved. Retry to persist.`;
+		} catch (error) {
+			if (this.disposed) return;
+			this.failed = true;
+			this.feedback = `Preference failed: ${errorMessage(error)}. Not saved.`;
+		} finally {
+			if (!this.disposed) {
+				this.saving = false;
+				this.dependencies.requestRender();
+			}
+		}
+	}
+
 	private activate(action: ControlCenterAction): void {
+		if (this.saving) return;
+		if (action.kind !== "theme") {
+			void this.activatePreference(action);
+			return;
+		}
 		try {
 			const result = this.dependencies.applyTheme(action.name);
 			this.failed = !result.success;
@@ -105,8 +143,13 @@ export class ControlCenter implements Component {
 			else if (matchesKey(data, Key.end)) index = count - 1;
 			else return;
 			index = Math.max(0, Math.min(Math.max(0, count - 1), index));
-			if (this.focus === "categories") this.categoryIndex = index;
-			else this.rowIndex = index;
+			if (this.focus === "categories") {
+				if (this.categoryIndex !== index) {
+					this.categoryIndex = index;
+					this.rowIndex = Math.max(0, this.rows().findIndex((row) => row.current));
+					if (!this.saving) this.feedback = "";
+				}
+			} else this.rowIndex = index;
 		}
 		this.dependencies.requestRender();
 	}
@@ -117,11 +160,12 @@ export class ControlCenter implements Component {
 		if (height === 0) return [];
 		const theme = this.dependencies.theme();
 		const rows = this.rows();
-		const available = this.category === "Theme";
-		const summary = available
+		const preference = this.preferenceView();
+		const available = this.category === "Theme" || preference !== undefined;
+		const summary = this.category === "Theme"
 			? `Current: ${theme.name ?? "unnamed"} | Appearance: ${theme.appearance}`
-			: `${this.category}: not yet available`;
-		const feedback = this.feedback ? theme.fg(this.failed ? "error" : "success", this.feedback) : "";
+			: preference?.summary ?? `${this.category}: not yet available`;
+		const feedback = this.feedback ? theme.fg(this.failed ? "error" : this.saving ? "muted" : "success", this.feedback) : "";
 		if (height < 7) {
 			return doubleBorderBox(theme, width, `Osdy / ${this.category}`, [feedback || summary, "Esc close | Tab focus"].slice(0, Math.max(0, height - 2)))
 				.slice(0, height).map((line) => truncateToWidth(line, width, "", true));
@@ -153,7 +197,7 @@ export class ControlCenter implements Component {
 		const focusedIndex = this.focus === "categories" ? this.categoryIndex : this.rowIndex;
 		const position = `${this.focus}: ${focusedCount ? focusedIndex + 1 : 0}/${focusedCount}`;
 		const lines = [summary, ...list,
-			available ? "Saves globally; project settings can override at startup." : "Inline controls arrive in a later unit.",
+			preference?.note ?? (available ? "Saves globally; project settings can override at startup." : "Inline controls arrive in a later unit."),
 			feedback || position,
 			"Esc close · Tab/←/→ focus · ↑/↓ Home/End PgUp/PgDn · Enter select",
 		];
@@ -166,7 +210,7 @@ export class ControlCenter implements Component {
 	dispose(): void { this.disposed = true; }
 }
 
-export async function showControlCenter(ctx: ControlCenterContext): Promise<void> {
+export async function showControlCenter(ctx: ControlCenterContext, preferences?: ControlCenterPreferences): Promise<void> {
 	if (!ctx.hasUI || ctx.mode !== "tui") {
 		ctx.ui.notify("Osdy Control Center requires the interactive terminal UI; RPC, JSON and print modes are unsupported.", "warning");
 		return;
@@ -175,6 +219,7 @@ export async function showControlCenter(ctx: ControlCenterContext): Promise<void
 	try {
 		await ctx.ui.custom<void>((tui, _theme, _keybindings, done) => {
 			panel = new ControlCenter({
+				preferences,
 				theme: () => ctx.ui.theme,
 				readThemes: () => ctx.ui.getAllThemes(),
 				applyTheme: (name) => ctx.ui.setTheme(name),
