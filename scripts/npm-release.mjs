@@ -133,7 +133,7 @@ export async function registryDocument(path, fetcher = globalThis.fetch) {
 	const body = await response.json();
 	const version = path.split("/")[1];
 	if (response.status === 404 && (body?.error === "Not found" ||
-		(version && body?.error === `version not found: ${version}`))) return null;
+		(version && (body?.error === `version not found: ${version}` || body === `version not found: ${version}`)))) return null;
 	if (!response.ok || !body || typeof body !== "object" || Array.isArray(body)) throw new Error(`Unknown registry state (${response.status})`);
 	if (version) validateVersionRecord(body, version);
 	else validatePackageDocument(body);

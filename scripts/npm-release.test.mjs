@@ -136,6 +136,31 @@ test("workflow gates automatic main publication, queues runs and limits OIDC to 
 	assert.match(publish, /actions\/upload-artifact@v4/);
 });
 
+test("official version-specific JSON-string 404 is absence", async () => {
+	const fetcher = async () => new globalThis.Response(JSON.stringify("version not found: 1.11.1"), { status: 404 });
+	assert.equal(await registryDocument("osdy-pi/1.11.1", fetcher), null);
+});
+
+test("unexpected registry strings and malformed JSON fail closed", async () => {
+	for (const [path, status, body] of [
+		["osdy-pi/1.11.1", 404, "version not found: 1.11.2"],
+		["osdy-pi/1.11.1", 404, "Not found"],
+		["osdy-pi/1.11.1", 404, "unknown error"],
+		["osdy-pi/1.11.1", 500, "version not found: 1.11.1"],
+		["osdy-pi/1.11.1", 500, "Not found"],
+		["osdy-pi/1.11.1", 200, "version not found: 1.11.1"],
+		["osdy-pi", 404, "version not found: 1.11.1"],
+		["osdy-pi", 404, "Not found"],
+	]) {
+		const fetcher = async () => new globalThis.Response(JSON.stringify(body), { status });
+		await assert.rejects(registryDocument(path, fetcher), /Unknown registry state/);
+	}
+	for (const status of [404, 200, 500]) {
+		const fetcher = async () => new globalThis.Response('"version not found: 1.11.1', { status });
+		await assert.rejects(registryDocument("osdy-pi/1.11.1", fetcher), SyntaxError);
+	}
+});
+
 test("only explicit official-registry not-found is absence; service errors are not permission", async () => {
 	const fetcher = (status, body) => async () => ({ status, ok: status === 200, json: async () => body });
 	assert.equal(await registryDocument("osdy-pi/1.11.1", fetcher(404, { error: "Not found" })), null);
