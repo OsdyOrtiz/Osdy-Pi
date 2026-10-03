@@ -41,6 +41,8 @@ registerHooks({
 	},
 });
 
+const profileLabels = await import("./profile-label.js");
+
 const { PLUGIN_EVENTS, subscribeQuestionPromptAudioNotification } =
 	await import("./plugin-events.js");
 const {
@@ -209,6 +211,115 @@ void test("TODO command persists on/off in a disposable custom profile before su
   if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
   else process.env.PI_CODING_AGENT_DIR = previous;
  }
+});
+
+void test("startup label reader validates the dynamic module and active metadata only", async () => {
+	const env = { OSDY_PI_SHARED_AGENT_DIR: "/unused/shared" };
+	let reads = 0;
+	for (const [record, expected] of [
+		[{ status: "valid", profile: "work" }, "work"],
+		[{ status: "unset" }, undefined],
+		[{ status: "invalid" }, undefined],
+		[{ status: "valid", profile: "default" }, undefined],
+		[{ status: "valid", profile: "../bad" }, undefined],
+		[null, undefined],
+	] as const) {
+		assert.equal(await profileLabels.readLastActiveProfileLabel(env, () => Promise.resolve({
+			getSharedAgentDir: (received: NodeJS.ProcessEnv) => {
+				assert.equal(received, env);
+				return "/unused/shared";
+			},
+			readActiveAccount: (directory: string) => {
+				assert.equal(directory, "/unused/shared");
+				reads++;
+				return Promise.resolve(record);
+			},
+		})), expected);
+	}
+	assert.equal(reads, 6);
+	for (const module of [null, {}, { getSharedAgentDir: "bad" }, {
+		getSharedAgentDir: () => 42, readActiveAccount: () => { throw new Error("unexpected read"); },
+	}, {
+		getSharedAgentDir: () => "/unused/shared", readActiveAccount: () => { throw new Error("read denied"); },
+	}]) assert.equal(await profileLabels.readLastActiveProfileLabel(env, () => Promise.resolve(module)), undefined);
+	assert.equal(await profileLabels.readLastActiveProfileLabel(env, () => Promise.reject(new Error("import failed"))), undefined);
+});
+
+void test("real session_start restores labels before editor mounting and rejects stale results", async () => {
+	const previousDir = process.env.PI_CODING_AGENT_DIR;
+	const previousName = process.env.OSDY_PI_PROFILE_NAME;
+	// This nonexistent package-local directory prevents reads of personal settings.
+	process.env.PI_CODING_AGENT_DIR = fileURLToPath(new URL("./.startup-test-missing", import.meta.url));
+	try {
+		for (const scenario of ["restore", "invalid-env", "explicit", "unset", "invalid", "deleted", "failure", "replace", "shutdown", "switch"] as const) {
+			delete process.env.OSDY_PI_PROFILE_NAME;
+			if (scenario === "explicit") process.env.OSDY_PI_PROFILE_NAME = "launcher";
+			if (scenario === "invalid-env") process.env.OSDY_PI_PROFILE_NAME = "../invalid";
+			const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>();
+			const mounted: string[] = [];
+			let reads = 0;
+			let complete: (value: string | undefined) => void = () => {};
+			let entered: () => void = () => {};
+			const started = new Promise<void>((resolve) => { entered = resolve; });
+			const pending = new Promise<string | undefined>((resolve) => { complete = resolve; });
+			const pi = {
+				on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => Promise<void> | void) => {
+					const registered = handlers.get(name) ?? [];
+					registered.push(handler);
+					handlers.set(name, registered);
+				},
+				registerCommand: () => {}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
+				events: { on: () => () => {} },
+				exec: () => Promise.resolve({ code: 1, stdout: "", stderr: "unavailable" }),
+			} as unknown as ExtensionAPI;
+			const ctx = {
+				hasUI: true, cwd: process.env.PI_CODING_AGENT_DIR,
+				modelRegistry: { getProviderAuth: () => Promise.resolve(undefined) },
+				ui: {
+					getEditorComponent: () => undefined,
+					setEditorComponent: () => {
+						const label = profileLabels.resolveActiveProfileLabel();
+						mounted.push(`${profileLabels.resolveEditorTitleLabel(label)}|${profileLabels.formatModelMetadata("test-model", "high", label)}`);
+					},
+					setHeader: () => {}, setFooter: () => {}, setWidget: () => {}, setWorkingVisible: () => {},
+				},
+			} as unknown as ExtensionContext;
+			await registerOsdyPi(pi, { readActiveProfile: () => {
+				reads++; entered();
+				return scenario === "failure" ? Promise.reject(new Error("read failed")) : pending;
+			} });
+			// Role-marker resets register first; the runtime lifecycle registers second.
+			const start = handlers.get("session_start")?.[1];
+			const shutdown = handlers.get("session_shutdown")?.[1];
+			assert.ok(start); assert.ok(shutdown);
+			try {
+				const startup = start({}, ctx);
+				if (scenario !== "explicit") {
+					await Promise.race([started, Promise.resolve(startup)]);
+					assert.equal(reads, 1, "session_start must read the last active identity");
+				}
+				if (scenario === "switch") process.env.OSDY_PI_PROFILE_NAME = "new-selection";
+				if (scenario === "shutdown") await shutdown({}, ctx);
+				let replacement: Promise<void> | void = undefined;
+				if (scenario === "replace") {
+					process.env.OSDY_PI_PROFILE_NAME = "new-session";
+					replacement = start({}, { ...ctx });
+				}
+				complete(["unset", "invalid", "deleted"].includes(scenario) ? undefined : "last-active");
+				await startup;
+				await replacement;
+				const expected = scenario === "explicit" ? "launcher" : scenario === "switch" ? "new-selection" : scenario === "replace" ? "new-session" :
+					["unset", "invalid", "deleted", "failure", "shutdown"].includes(scenario) ? undefined : "last-active";
+				assert.equal(process.env.OSDY_PI_PROFILE_NAME, expected, scenario);
+				assert.equal(reads, scenario === "explicit" ? 0 : 1, scenario);
+				assert.equal(mounted.length, scenario === "shutdown" ? 0 : 1, scenario);
+				if (mounted.length) assert.equal(mounted[0], `${expected ?? "Osdy-Pi"}|test-model · ${expected ? `${expected} · ` : ""}think high`, scenario);
+			} finally { await shutdown({}, ctx); }
+		}
+	} finally {
+		if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
+		if (previousName === undefined) delete process.env.OSDY_PI_PROFILE_NAME; else process.env.OSDY_PI_PROFILE_NAME = previousName;
+	}
 });
 
 class TestEventBus {

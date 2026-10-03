@@ -240,11 +240,13 @@ Profile names accept ASCII letters, numbers, and hyphens, up to 63 characters, p
 
 ### See and switch the active account
 
-When Pi was launched through a profile, Osdy Pi shows its profile name in the editor:
+Direct `pi` startup restores the last activated profile label from valid active-account metadata. A valid explicit launcher profile (`OSDY_PI_PROFILE_NAME`) takes precedence. Osdy Pi shows the profile name in the editor:
 
 - **Simple/native editor:** beside the model, for example `gpt-5.6-sol · personal · think high`.
 - **Extended/framed editor:** `personal` replaces the `Osdy-Pi` title.
 - **No managed profile:** the existing model line and `Osdy-Pi` title remain unchanged.
+
+Label recovery is visual only: it does not switch credentials or change the configured default. Missing, invalid, unreadable, or stale active-account metadata keeps the existing fallback.
 
 `account use <name>` activates the profile in Pi's shared agent directory, saves it as active/default, then starts Pi. Inside Pi, `/osdy-account` waits for active work to finish and swaps the canonical `auth.json` in place; the next request resolves the new account without a spawn, shutdown, session handoff, or restart.
 

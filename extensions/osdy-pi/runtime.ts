@@ -52,7 +52,7 @@ import {
 } from "./codex-usage.js";
 import { showCodexUsagePanel } from "./codex-usage-ui.js";
 import { modelLabel } from "./metrics.js";
-import { resolveActiveProfileLabel } from "./profile-label.js";
+import { readLastActiveProfileLabel, resolveActiveProfileLabel } from "./profile-label.js";
 import {
 	createWorkingController,
 	type WorkingController,
@@ -961,7 +961,10 @@ async function sdkTodoActive(pi: ExtensionAPI): Promise<boolean> {
  } catch { return false; }
 }
 
-export async function registerOsdyPi(pi: ExtensionAPI): Promise<void> {
+export async function registerOsdyPi(
+	pi: ExtensionAPI,
+	dependencies: { readActiveProfile?: () => Promise<string | undefined> } = {},
+): Promise<void> {
 	const state: OsdyState = {
 		codexUsage: { kind: "idle" },
 		enabled: true,
@@ -1109,6 +1112,20 @@ export async function registerOsdyPi(pi: ExtensionAPI): Promise<void> {
 		cancelOsdyRefreshes();
 		stopResponsive();
 		sessionContext = ctx;
+		const startupProfile = process.env.OSDY_PI_PROFILE_NAME;
+		if (resolveActiveProfileLabel() === undefined) {
+			try {
+				const profile = await (dependencies.readActiveProfile ?? readLastActiveProfileLabel)();
+				if (sessionContext !== ctx) return;
+				if (
+					process.env.OSDY_PI_PROFILE_NAME === startupProfile &&
+					resolveActiveProfileLabel({ OSDY_PI_PROFILE_NAME: profile }) !== undefined
+				) process.env.OSDY_PI_PROFILE_NAME = profile;
+			} catch {
+				// Visual metadata failures must not prevent session startup.
+			}
+		}
+		if (sessionContext !== ctx) return;
 		const editorSettings = await editorSettingsStore.load();
 		if (sessionContext !== ctx) return;
 		state.fallbackEditorFactory = ctx.ui.getEditorComponent();
