@@ -4,6 +4,7 @@ import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { Text, setCapabilities } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
 registerHooks({
@@ -23,23 +24,51 @@ const { registerMessageRoleMarkers } = await import("./message-role-markers.js")
 
 type Handler = (event: { message?: { role: string } }, ctx: ExtensionContext) => void;
 type TestRenderer = (entry: { data?: { role?: unknown } }, options: { expanded: boolean }, theme: { fg: (color: string, text: string) => string }) => { render(width: number): string[] } | undefined;
-function harness(mode = "tui", enabled = true) {
+function harness(mode = "tui", enabled = true, settingsAvailable = true) {
  const handlers = new Map<string, Handler>();
  const entries: Array<{ type: "custom"; customType: string; data: { role: string } }> = [];
  const timeline: string[] = [];
  let renderer: TestRenderer | undefined;
  let customType = "";
+ let showImages = true;
  const ctx = { mode, hasUI: true, sessionManager: { getBranch: () => entries } } as unknown as ExtensionContext;
  const pi = {
+  ...(settingsAvailable ? { getSettings: () => ({ terminal: { showImages } }) } : {}),
   on: (name: string, handler: Handler) => { handlers.set(name, handler); },
   appendEntry: (type: string, data: { role: string }) => { entries.push({ type: "custom", customType: type, data }); timeline.push(`marker:${data.role}`); },
   registerEntryRenderer: (type: string, render: unknown) => { customType = type; renderer = render as TestRenderer; },
  } as unknown as ExtensionAPI;
  registerMessageRoleMarkers(pi, () => enabled);
  const emit = (name: string, message?: { role: string }) => { handlers.get(name)?.(message ? { message } : {}, ctx); if (name === "message_start" && message) timeline.push(`native:${message.role}`); };
- return { emit, entries, timeline, ctx, get renderer() { return renderer; }, get customType() { return customType; }, setEnabled: (value: boolean) => { enabled = value; } };
+ return { setShowImages: (value: boolean) => { showImages = value; }, emit, entries, timeline, ctx, get renderer() { return renderer; }, get customType() { return customType; }, setEnabled: (value: boolean) => { enabled = value; } };
 }
 const message = (role: string, timestamp: number, content: unknown[] = []) => ({ role, timestamp, content });
+
+void test("supported images replace only the standalone marker and settings are read at render time", () => {
+ setCapabilities({ images: "kitty", trueColor: true, hyperlinks: false });
+ try {
+  const h = harness();
+  const marker = h.renderer?.({ data: { role: "assistant" } }, { expanded: false }, { fg: (_color: string, text: string) => text });
+  assert.ok(marker);
+  assert.ok(marker.render(40).join("").includes("\x1b_G"));
+  h.setShowImages(false);
+  assert.deepEqual(marker.render(40), new Text("🦝", 0, 0).render(40));
+  h.setShowImages(true);
+  setCapabilities({ images: null, trueColor: true, hyperlinks: false });
+  assert.deepEqual(marker.render(40), new Text("🦝", 0, 0).render(40));
+ } finally {
+  setCapabilities({ images: null, trueColor: true, hyperlinks: false });
+ }
+});
+
+void test("older hosts without getSettings remain compatible", () => {
+ setCapabilities({ images: "iterm2", trueColor: true, hyperlinks: false });
+ try {
+  const h = harness("tui", true, false);
+  const marker = h.renderer?.({ data: { role: "assistant" } }, { expanded: false }, { fg: (_color: string, text: string) => text });
+  assert.ok(marker?.render(40).join("").includes("\x1b]1337;File="));
+ } finally { setCapabilities({ images: null, trueColor: true, hyperlinks: false }); }
+});
 
 void test("user starts preserve the native card without appending an emoji or changing content", () => {
  const h = harness();

@@ -1,11 +1,11 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Text } from "@earendil-works/pi-tui";
+import { createAssistantMarker } from "./message-role-marker-image.js";
 
 const ENTRY_TYPE = "osdy-pi-role-marker";
 type Marker = { role: "assistant" };
 
 export function registerMessageRoleMarkers(
- pi: Pick<ExtensionAPI, "on" | "appendEntry" | "registerEntryRenderer">,
+ pi: Pick<ExtensionAPI, "on" | "appendEntry" | "registerEntryRenderer"> & Partial<Pick<ExtensionAPI, "getSettings">>,
  isEnabled: () => boolean,
 ): void {
  let pendingAssistant = false;
@@ -21,11 +21,7 @@ export function registerMessageRoleMarkers(
  pi.registerEntryRenderer<Marker>(ENTRY_TYPE, (entry, _options, theme) => {
   const role = entry.data?.role;
   if (role !== "assistant") return undefined;
-  const text = new Text(theme.fg("muted", "🦝"), 0, 0);
-  return {
-   render: (width: number) => !Number.isInteger(width) || width < 2 ? [""] : text.render(width),
-   invalidate: () => text.invalidate(),
-  };
+  return createAssistantMarker(theme, () => pi.getSettings?.().terminal?.showImages !== false);
  });
  pi.on("message_start", (event, ctx) => {
   if (event.message.role === "user") {
