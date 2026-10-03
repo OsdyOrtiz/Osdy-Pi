@@ -38,8 +38,14 @@ export interface AccountProfilesCommandDependencies {
 	requestRender?: (() => void) | undefined;
 }
 
-function isProfileName(value: string): boolean {
-	return PROFILE_NAME.test(value) && !RESERVED_PROFILE_NAMES.has(value.toLowerCase());
+export function isProfileName(value: unknown): boolean {
+	return typeof value === "string" && PROFILE_NAME.test(value) && !RESERVED_PROFILE_NAMES.has(value.toLowerCase());
+}
+
+/** Validate external active metadata before exposing it to typed consumers. */
+export function readActiveProfileName(env: NodeJS.ProcessEnv = process.env): string | undefined {
+	const profile = env.OSDY_PI_PROFILE_NAME;
+	return typeof profile === "string" && isProfileName(profile) ? profile : undefined;
 }
 
 export async function sharedAgentDir(env: NodeJS.ProcessEnv): Promise<string> {
@@ -70,13 +76,13 @@ export async function switchAccountInPlace(
 	activate: (profile: string) => Promise<void>,
 	refreshUsage?: () => Promise<void>,
 	requestRender?: () => void,
-): Promise<void> {
+): Promise<boolean> {
 	if (!isProfileName(profile)) {
 		ctx.ui.notify(
 			"Cannot switch accounts: the selected profile name is invalid.",
 			"warning",
 		);
-		return;
+		return false;
 	}
 	if (!ctx.isIdle()) await ctx.waitForIdle();
 	try {
@@ -86,7 +92,7 @@ export async function switchAccountInPlace(
 			"Cannot switch accounts: the account files could not be safely activated.",
 			"warning",
 		);
-		return;
+		return false;
 	}
 	process.env.OSDY_PI_PROFILE_NAME = profile;
 	requestRender?.();
@@ -99,6 +105,7 @@ export async function switchAccountInPlace(
 		`Switched to ${profile}. Your next request uses this account.`,
 		"info",
 	);
+	return true;
 }
 
 function bundledLauncherPath(): string {
@@ -459,6 +466,31 @@ function runBundledCommand(
 	});
 }
 
+function activationFunction(value: unknown): value is (baseDir: string, profile: string) => Promise<unknown> {
+	return typeof value === "function";
+}
+
+/** Shared backend only: authentication files and launcher output never enter a view. */
+export function createAccountManagementDependencies(
+	options: AccountProfilesCommandDependencies = {},
+): AccountManagementDependencies {
+	return {
+		profiles: async () => availableProfiles(await sharedAgentDir(process.env)),
+		run: runBundledCommand,
+		activeProfile: process.env.OSDY_PI_PROFILE_NAME,
+		refreshUsage: options.refreshUsage,
+		requestRender: options.requestRender,
+		activate: async (profile) => {
+			const moduleUrl = new URL("../../scripts/osdy-pi-account-profiles.mjs", import.meta.url).href;
+			const loaded: unknown = await import(moduleUrl);
+			if (typeof loaded !== "object" || loaded === null || !("switchAccountAuth" in loaded) || !activationFunction(loaded.switchAccountAuth)) {
+				throw new Error("Account activation unavailable");
+			}
+			await loaded.switchAccountAuth(await sharedAgentDir(process.env), profile);
+		},
+	};
+}
+
 export function registerAccountProfilesCommand(
 	pi: {
 		registerCommand(
@@ -479,23 +511,7 @@ export function registerAccountProfilesCommand(
 				ctx.ui.notify("Account manager requires an interactive Pi UI.", "warning");
 				return;
 			}
-			const dependencies: AccountManagementDependencies = {
-				profiles: async () => availableProfiles(await sharedAgentDir(process.env)),
-				run: runBundledCommand,
-				activeProfile: process.env.OSDY_PI_PROFILE_NAME,
-				refreshUsage: commandDependencies.refreshUsage,
-				requestRender: commandDependencies.requestRender,
-				activate: async (profile) => {
-					const moduleUrl = new URL(
-						"../../scripts/osdy-pi-account-profiles.mjs",
-						import.meta.url,
-					).href;
-					const profiles = (await import(moduleUrl)) as {
-						switchAccountAuth(baseDir: string, name: string): Promise<void>;
-					};
-					await profiles.switchAccountAuth(await sharedAgentDir(process.env), profile);
-				},
-			};
+			const dependencies = createAccountManagementDependencies(commandDependencies);
 			if (mode === "rename" || mode === "remove") {
 				await manageAccountProfile(ctx, mode, dependencies);
 				return;

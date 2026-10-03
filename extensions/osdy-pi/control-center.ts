@@ -1,5 +1,5 @@
 import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Input, Key, matchesKey, truncateToWidth, visibleWidth, type Component, type Focusable } from "@earendil-works/pi-tui";
+import { Input, Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component, type Focusable } from "@earendil-works/pi-tui";
 import { doubleBorderBox, MODAL_OVERLAY_OPTIONS } from "./modal-frame.js";
 import { preferenceDetail, visualPreferenceLabel } from "./control-center-preferences.js";
 import type { ControlCenterPreferences, VisualPreferenceAction } from "./control-center-preferences.js";
@@ -14,12 +14,22 @@ export type ControlCenterServiceAction =
 	| { kind: "sound-set"; event: AudioNotificationEvent; path: string }
 	| { kind: "sound-clear"; event: AudioNotificationEvent }
 	| { kind: "sound-test"; event: AudioNotificationEvent };
+export type ControlCenterAccountAction =
+	| { kind: "account-switch"; profile: string }
+	| { kind: "account-default"; profile: string | undefined };
+export type ControlCenterUsageAction =
+	| { kind: "usage-refresh" }
+	| { kind: "usage-range"; range: "day" | "week" | "month" }
+	| { kind: "usage-account"; current: boolean }
+	| { kind: "usage-detail" };
 export type ControlCenterAction = { kind: "theme"; name: string } | VisualPreferenceAction
-	| ControlCenterServiceAction | { kind: "sound-configure"; event: AudioNotificationEvent; path: string };
+	| ControlCenterServiceAction | ControlCenterAccountAction | ControlCenterUsageAction
+	| { kind: "sound-configure"; event: AudioNotificationEvent; path: string };
+type InlineServiceAction = ControlCenterServiceAction | ControlCenterAccountAction | ControlCenterUsageAction;
 export interface ControlCenterDetail { summary: string; note: string; rows: ControlCenterRow[] }
-export interface ControlCenterService {
+export interface ControlCenterService<Action = ControlCenterServiceAction> {
 	read(): Promise<ControlCenterDetail>;
-	apply(action: ControlCenterServiceAction): Promise<{ failed: boolean; message: string }>;
+	apply(action: Action): Promise<{ failed: boolean; message: string }>;
 }
 export interface ControlCenterRow {
 	label: string;
@@ -31,6 +41,8 @@ export interface ControlCenterDependencies {
 	preferences?: ControlCenterPreferences | undefined;
 	git?: ControlCenterService | undefined;
 	sounds?: ControlCenterService | undefined;
+	account?: ControlCenterService<ControlCenterAccountAction> | undefined;
+	usage?: ControlCenterService<ControlCenterUsageAction> | undefined;
 	theme: () => Pick<Theme, "name" | "appearance" | "fg">;
 	readThemes: () => { name: string; path: string | undefined }[];
 	applyTheme: (name: string) => { success: boolean; error?: string };
@@ -60,6 +72,8 @@ export class ControlCenter implements Component, Focusable {
 	private serviceView: ControlCenterDetail | undefined;
 	private input: Input | undefined;
 	private inputEvent: AudioNotificationEvent | undefined;
+	private confirmation: { action: ControlCenterAccountAction; accept: boolean } | undefined;
+	private lastWidth = 80;
 	private hasFocus = false;
 	get focused(): boolean { return this.hasFocus; }
 	set focused(value: boolean) {
@@ -67,8 +81,14 @@ export class ControlCenter implements Component, Focusable {
 		if (this.input) this.input.focused = value;
 	}
 
-	private service(): ControlCenterService | undefined {
-		return this.category === "Git" ? this.dependencies.git : this.category === "Sounds" ? this.dependencies.sounds : undefined;
+	private service(): Pick<ControlCenterService, "read"> | undefined {
+		switch (this.category) {
+			case "Git": return this.dependencies.git;
+			case "Sounds": return this.dependencies.sounds;
+			case "Account": return this.dependencies.account;
+			case "Usage": return this.dependencies.usage;
+			default: return undefined;
+		}
 	}
 
 	private async loadService(): Promise<void> {
@@ -94,32 +114,45 @@ export class ControlCenter implements Component, Focusable {
 		}
 	}
 
-	private async activateService(action: ControlCenterServiceAction): Promise<void> {
+	private applyService(action: InlineServiceAction) {
+		if (action.kind === "account-switch" || action.kind === "account-default") return this.dependencies.account?.apply(action);
+		if (action.kind === "usage-refresh" || action.kind === "usage-range" || action.kind === "usage-account" || action.kind === "usage-detail") return this.dependencies.usage?.apply(action);
+		return (this.category === "Git" ? this.dependencies.git : this.dependencies.sounds)?.apply(action);
+	}
+
+	private async activateService(action: InlineServiceAction): Promise<void> {
 		const service = this.service();
 		if (!service) return;
 		const category = this.category;
+		const actionGeneration = this.readGeneration;
 		this.saving = true;
 		this.failed = false;
-		this.feedback = action.kind === "sound-test" ? "Testing effective sound..." : "Saving globally...";
+		this.feedback = category === "Usage" ? "Refreshing usage / read-only view..."
+			: category === "Account" ? "Applying confirmed account action..."
+			: action.kind === "sound-test" ? "Testing effective sound..." : "Saving globally...";
 		try {
-			const result = await service.apply(action);
-			if (this.disposed) return;
+			const result = await this.applyService(action);
+			if (!result) return;
+			if (this.disposed || actionGeneration !== this.readGeneration) return;
 			this.failed = result.failed;
 			this.feedback = result.message;
 			if (category === this.category) {
 				const generation = this.readGeneration;
 				try {
 					const view = await service.read();
-					if (!this.disposed && generation === this.readGeneration) this.serviceView = view;
+					if (!this.disposed && generation === this.readGeneration) {
+						this.serviceView = view;
+						this.rowIndex = Math.min(this.rowIndex, Math.max(0, view.rows.length - 1));
+					}
 				} catch (error) {
-					if (!this.disposed) {
+					if (!this.disposed && generation === this.readGeneration) {
 						this.failed = true;
 						this.feedback = `${result.message} Details refresh failed: ${errorMessage(error)}`;
 					}
 				}
 			}
 		} catch (error) {
-			if (this.disposed) return;
+			if (this.disposed || actionGeneration !== this.readGeneration) return;
 			this.failed = true;
 			this.feedback = `Action failed: ${errorMessage(error)}. Persistence not confirmed.`;
 		} finally {
@@ -156,7 +189,7 @@ export class ControlCenter implements Component, Focusable {
 	}
 
 	private preferenceView() {
-		if (this.service()) return this.serviceView ?? { summary: this.loading ? "Loading details..." : "Details unavailable", note: "Opening categories never saves or plays sound.", rows: [] };
+		if (this.service()) return this.serviceView ?? { summary: this.loading ? "Loading details..." : "Details unavailable", note: "Opening categories never applies actions.", rows: [] };
 		const preferences = this.dependencies.preferences;
 		return preferences ? preferenceDetail(this.category, preferences.snapshot()) : undefined;
 	}
@@ -187,6 +220,10 @@ export class ControlCenter implements Component, Focusable {
 
 	private activate(action: ControlCenterAction): void {
 		if (this.saving || this.loading) return;
+		if (action.kind === "account-switch" || action.kind === "account-default") {
+			this.confirmation = { action, accept: false };
+			return;
+		}
 		if (action.kind === "sound-configure") {
 			this.inputEvent = action.event;
 			this.input = new Input({ prompt: "Path: ", placeholder: "/absolute/path/sound.mp3 or .wav" });
@@ -200,7 +237,7 @@ export class ControlCenter implements Component, Focusable {
 			};
 			return;
 		}
-		if (action.kind === "git-enabled" || action.kind === "sound-set" || action.kind === "sound-clear" || action.kind === "sound-test") {
+		if (action.kind === "git-enabled" || action.kind === "sound-set" || action.kind === "sound-clear" || action.kind === "sound-test" || action.kind === "usage-refresh" || action.kind === "usage-range" || action.kind === "usage-account" || action.kind === "usage-detail") {
 			void this.activateService(action);
 			return;
 		}
@@ -220,8 +257,34 @@ export class ControlCenter implements Component, Focusable {
 		}
 	}
 
+	private confirmationLines(): string[] {
+		const pending = this.confirmation;
+		if (!pending) return [];
+		const action = pending.action;
+		const operation = action.kind === "account-switch" ? `Switch to ${action.profile}?` : `Set default: ${action.profile ?? "none"}?`;
+		return [...wrapTextWithAnsi(operation, Math.max(1, this.lastWidth - 2)),
+			`${pending.accept ? " " : ">"} Cancel`, `${pending.accept ? ">" : " "} Confirm`, "↑/↓ choose · Enter select · Esc cancel"];
+	}
+
+	private confirmationFits(): boolean {
+		return this.lastWidth >= 11 && this.dependencies.height() >= this.confirmationLines().length + 2;
+	}
+
 	handleInput(data: string): void {
 		if (this.disposed) return;
+		if (this.confirmation) {
+			const pending = this.confirmation;
+			if (matchesKey(data, Key.escape)) this.confirmation = undefined;
+			else if (matchesKey(data, Key.up) || matchesKey(data, Key.down) || matchesKey(data, Key.tab)) pending.accept = !pending.accept;
+			else if (matchesKey(data, Key.enter)) {
+				if (!pending.accept || this.confirmationFits()) {
+					this.confirmation = undefined;
+					if (pending.accept) void this.activateService(pending.action);
+				}
+			}
+			this.dependencies.requestRender();
+			return;
+		}
 		if (this.input) {
 			this.input.handleInput(data);
 			this.dependencies.requestRender();
@@ -259,7 +322,7 @@ export class ControlCenter implements Component, Focusable {
 				if (this.categoryIndex !== index) {
 					this.categoryIndex = index;
 					this.rowIndex = Math.max(0, this.rows().findIndex((row) => row.current));
-					if (!this.saving) this.feedback = "";
+					this.feedback = "";
 					void this.loadService();
 				}
 			} else this.rowIndex = index;
@@ -268,10 +331,16 @@ export class ControlCenter implements Component, Focusable {
 	}
 
 	render(width: number): string[] {
+		this.lastWidth = width;
 		if (width <= 0 || this.disposed) return [];
 		const height = Math.max(0, Math.floor(this.dependencies.height()));
 		if (height === 0) return [];
 		const theme = this.dependencies.theme();
+		if (this.confirmation) {
+			return doubleBorderBox(theme, width, "Confirm account action",
+				this.confirmationFits() ? this.confirmationLines() : ["Resize to confirm; Esc cancels."])
+				.slice(0, height).map(line => truncateToWidth(line, width, "", true));
+		}
 		if (this.input) {
 			return doubleBorderBox(theme, width, `Sound path / ${this.inputEvent ?? ""}`,
 				[...this.input.render(Math.max(1, width - 2)), ".mp3/.wav · Enter save now · Esc cancel"])
@@ -330,7 +399,7 @@ export class ControlCenter implements Component, Focusable {
 }
 
 export async function showControlCenter(ctx: ControlCenterContext, preferences?: ControlCenterPreferences,
-	services?: Pick<ControlCenterDependencies, "git" | "sounds">): Promise<void> {
+	services?: Pick<ControlCenterDependencies, "git" | "sounds" | "account" | "usage">): Promise<void> {
 	if (!ctx.hasUI || ctx.mode !== "tui") {
 		ctx.ui.notify("Osdy Control Center requires the interactive terminal UI; RPC, JSON and print modes are unsupported.", "warning");
 		return;

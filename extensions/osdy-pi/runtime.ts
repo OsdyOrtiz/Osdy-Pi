@@ -5,6 +5,10 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
 import { showControlCenter } from "./control-center.js";
+import { bindControlCenterAccount } from "./control-center-account.js";
+import { readActiveProfileName } from "./account-profiles.js";
+import { createControlCenterUsage } from "./control-center-usage.js";
+import type { UsageSnapshot } from "./usage-analytics-store.js";
 import { createControlCenterGit } from "./control-center-git.js";
 import { bindControlCenterSounds } from "./control-center-sounds.js";
 import type { VisualPreferenceAction } from "./control-center-preferences.js";
@@ -846,9 +850,11 @@ function registerCommand(
 	startResponsive: () => void,
 	stopResponsive: () => void,
  todoActive: boolean,
+ readUsageHistory: () => Promise<UsageSnapshot>,
+ refreshUsage: () => Promise<void>,
 ): void {
 	pi.registerCommand("osdy", {
-		description: "Open Osdy Control Center (visual preferences, Git and Sounds).",
+		description: "Open Osdy Control Center (preferences, Git, Sounds, Account and Usage).",
 		handler: async (_args, ctx) => showControlCenter(ctx, {
 			snapshot: () => state,
 			apply: (action) => applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
@@ -863,6 +869,9 @@ function registerCommand(
 				applyEnabled: (value) => applyWorkingTreeEnabled(value, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
 			}),
 			sounds: bindControlCenterSounds(pi, ctx, settingsStore, createAudioPlaybackAdapter()),
+			account: bindControlCenterAccount(ctx, refreshUsage, () => state.tui?.requestRender()),
+			usage: createControlCenterUsage({ quota: () => state.codexUsage, history: readUsageHistory,
+				refresh: refreshUsage, active: readActiveProfileName }),
 		}),
 	});
 	pi.registerCommand("osdy-pi", {
@@ -1208,7 +1217,7 @@ export async function registerOsdyPi(
 		void refreshCurrentCodexUsage(ctx);
 	});
 
-	registerUsageAnalytics(pi, { isEnabled: () => usageSettingsReady && state.enabled });
+	const usageAnalytics = registerUsageAnalytics(pi, { isEnabled: () => usageSettingsReady && state.enabled });
 	registerUsageCommand(
 		pi,
 		state,
@@ -1226,5 +1235,10 @@ export async function registerOsdyPi(
 		startResponsive,
 		stopResponsive,
   todoActive,
+		() => usageAnalytics.read(),
+		async () => {
+			if (!sessionContext) throw new Error("Usage session unavailable");
+			await refreshCurrentCodexUsage(sessionContext);
+		},
 	);
 }

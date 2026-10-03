@@ -23,7 +23,7 @@ function identifier(value: unknown): value is string {
 }
 
 /** Observe new turn boundaries only. Never read session entries or import historical usage. */
-export function registerUsageAnalytics(pi: ExtensionAPI, options: UsageAnalyticsOptions): void {
+export function registerUsageAnalytics(pi: ExtensionAPI, options: UsageAnalyticsOptions): { read(): Promise<UsageSnapshot> } {
 	let started: StartedTurn | undefined;
 	let store: UsageAnalyticsStore | undefined;
 	let warned = false;
@@ -107,4 +107,5 @@ export function registerUsageAnalytics(pi: ExtensionAPI, options: UsageAnalytics
 			await (options.showPanel ?? showUsageAnalyticsPanel)(ctx, { read });
 		},
 	});
+	return { read };
 }

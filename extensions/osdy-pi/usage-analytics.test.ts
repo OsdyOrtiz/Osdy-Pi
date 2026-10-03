@@ -53,10 +53,20 @@ function harness() {
 	// Partial public API/context mocks deliberately omit unused capabilities; unexpected reads fail.
 	const pi = { on(name: string, handler: Handler) { handlers.set(name, [...handlers.get(name) ?? [], handler]); return () => {}; }, registerCommand(name: string, command: { handler: (args: string, ctx: ExtensionCommandContext) => Promise<void> }) { commands.set(name, command); } } as unknown as ExtensionAPI;
 	const ctx = { mode: "tui", hasUI: true, sessionManager: { getSessionId: () => sessionId, getEntries: () => { throw new Error("history scan forbidden"); } }, ui: { notify: (text: string) => notices.push(text), custom: () => { throw new Error("unexpected custom UI"); } } } as unknown as ExtensionCommandContext;
-	registerUsageAnalytics(pi, { isEnabled: () => enabled, resolveProfile: () => profile, createStore: () => { factories++; if (factoryError) throw new Error("private factory path"); return store; }, showPanel: (_ctx, options) => { panels++; readPanel = options.read; return Promise.resolve(); } });
+	const reader = registerUsageAnalytics(pi, { isEnabled: () => enabled, resolveProfile: () => profile, createStore: () => { factories++; if (factoryError) throw new Error("private factory path"); return store; }, showPanel: (_ctx, options) => { panels++; readPanel = options.read; return Promise.resolve(); } });
 	async function emit(name: string, event: unknown = {}): Promise<void> { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); }
-	return { ctx, records, notices, commands, emit, start: (turnIndex = 0) => emit("turn_start", { turnIndex, timestamp }), end: (overrides: Record<string, unknown> = {}) => emit("turn_end", { turnIndex: 0, messageEntryId: "a1b2c3d4", message: message(), ...overrides }), command: () => commands.get("osdy-usage")!.handler("", ctx), readPanel: () => readPanel!(), setEnabled: (v: boolean) => { enabled = v; }, setProfile: (v: unknown) => { profile = v; }, setSession: (v: string) => { sessionId = v; }, setAppendError: (v: boolean) => { appendError = v; }, setFactoryError: (v: boolean) => { factoryError = v; }, setDrainWait: (v: Promise<void>) => { drainWait = v; }, setDrainError: (v: boolean) => { drainError = v; }, counts: () => ({ factories, reads, drains, panels }) };
+	return { reader, ctx, records, notices, commands, emit, start: (turnIndex = 0) => emit("turn_start", { turnIndex, timestamp }), end: (overrides: Record<string, unknown> = {}) => emit("turn_end", { turnIndex: 0, messageEntryId: "a1b2c3d4", message: message(), ...overrides }), command: () => commands.get("osdy-usage")!.handler("", ctx), readPanel: () => readPanel!(), setEnabled: (v: boolean) => { enabled = v; }, setProfile: (v: unknown) => { profile = v; }, setSession: (v: string) => { sessionId = v; }, setAppendError: (v: boolean) => { appendError = v; }, setFactoryError: (v: boolean) => { factoryError = v; }, setDrainWait: (v: Promise<void>) => { drainWait = v; }, setDrainError: (v: boolean) => { drainError = v; }, counts: () => ({ factories, reads, drains, panels }) };
 }
+
+void test("Control Center reader shares the history owner and lost-coverage guard without opening a dialog", async () => {
+	const h = harness();
+	await h.start(); await h.end();
+	assert.equal((await h.reader.read()).records.length, 1);
+	assert.equal(h.counts().factories, 1);
+	assert.equal(h.counts().panels, 0);
+	h.setAppendError(true); await h.start(1); await h.end({ turnIndex: 1, messageEntryId: "f1e2d3c4" });
+	await assert.rejects(h.reader.read(), /unavailable or incomplete/);
+});
 
 void test("registration, replay and compaction do not import; capture actual message with start profile", async () => {
 	const h = harness();

@@ -4,7 +4,7 @@ import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { CURSOR_MARKER, visibleWidth } from "@earendil-works/pi-tui";
-import type { ControlCenterDependencies, ControlCenterServiceAction } from "./control-center.js";
+import type { ControlCenterDependencies, ControlCenterServiceAction, ControlCenterAccountAction } from "./control-center.js";
 import type { ControlCenterPreferences, VisualPreferenceAction } from "./control-center-preferences.js";
 
 registerHooks({
@@ -19,7 +19,7 @@ registerHooks({
 const { ControlCenter } = await import("./control-center.js");
 
 function fixture(names = ["dark", "light"], preferences?: ControlCenterPreferences,
-	services?: Pick<ControlCenterDependencies, "git" | "sounds">) {
+	services?: Pick<ControlCenterDependencies, "git" | "sounds" | "account" | "usage">) {
 	let current = "dark";
 	let appearance: "dark" | "light" = "dark";
 	let failure: string | undefined;
@@ -375,6 +375,96 @@ void test("explicit clear/test actions and late service completion preserve disp
 		f.dispose(); const renders = f.renders(); f.complete(true); await settle();
 		assert.equal(f.renders(), renders);
 	}
+});
+
+void test("Account switch has inline cancel-default confirmation and busy guarding", async () => {
+	const actions: ControlCenterAccountAction[] = [];
+	let complete = () => {};
+	const f = fixture(undefined, undefined, { account: {
+		read: () => Promise.resolve({ summary: "Current: work", note: "Login is Pi-owned", rows: [
+			{ label: "Switch to personal", current: false, action: { kind: "account-switch", profile: "personal" } },
+		] }),
+		apply: action => { actions.push(action); return new Promise(resolve => { complete = () => resolve({ failed: false, message: "Switched" }); }); },
+	} });
+	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	await settle();
+	assert.match(f.panel.render(100).join("\n"), /Current: work/);
+	assert.equal(actions.length, 0);
+	f.panel.handleInput(right); f.panel.handleInput("\r");
+	assert.match(f.panel.render(100).join("\n"), /Cancel/);
+	f.panel.handleInput("\r"); assert.equal(actions.length, 0);
+	f.panel.handleInput("\r"); f.panel.handleInput(down); f.panel.handleInput("\r");
+	assert.equal(actions.length, 1);
+	f.panel.handleInput("\r"); assert.equal(actions.length, 1);
+	f.dispose(); const renders = f.renders(); complete(); await settle();
+	assert.equal(f.renders(), renders);
+});
+
+void test("Usage loading and late results cannot replace a different category", async () => {
+	for (const failure of [false, true]) {
+		let finish = () => {};
+		const f = fixture(undefined, undefined, { usage: {
+			read: () => new Promise((resolve, reject) => { finish = () => failure ? reject(new Error("late usage")) : resolve({ summary: "Late quota", note: "Read-only", rows: [] }); }),
+			apply: () => Promise.resolve({ failed: false, message: "Refreshed" }),
+		} });
+		for (let i = 0; i < 7; i++) f.panel.handleInput(down);
+		assert.match(f.panel.render(80).join("\n"), /Loading/);
+		f.panel.handleInput(up); finish(); await settle();
+		assert.doesNotMatch(f.panel.render(80).join("\n"), /late usage|Late quota/);
+	}
+});
+
+void test("Account default clear confirmation supports Escape and narrow bounded rendering", async () => {
+	const actions: ControlCenterAccountAction[] = [];
+	const f = fixture(undefined, undefined, { account: {
+		read: () => Promise.resolve({ summary: "Default: work", note: "Metadata only", rows: [{ label: "Clear default", current: false, action: { kind: "account-default", profile: undefined } }] }),
+		apply: action => { actions.push(action); return Promise.resolve({ failed: false, message: "Default saved" }); },
+	} });
+	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	await settle(); f.panel.handleInput(right); f.panel.handleInput("\r");
+	for (const width of [1, 8, 24, 48]) assert.ok(f.panel.render(width).every(line => visibleWidth(line) <= width));
+	f.panel.handleInput("\x1b"); assert.equal(f.closes(), 0); assert.equal(actions.length, 0);
+	f.panel.handleInput("\r"); f.panel.handleInput(down); f.panel.handleInput("\r"); await settle();
+	assert.deepEqual(actions, [{ kind: "account-default", profile: undefined }]);
+});
+
+void test("late action refresh errors are suppressed after changing categories", async () => {
+	let reads = 0;
+	let rejectRead = () => {};
+	const f = fixture(undefined, undefined, { usage: {
+		read: () => ++reads === 1 ? Promise.resolve({ summary: "Quota", note: "Read-only", rows: [{ label: "Refresh", current: false, action: { kind: "usage-refresh" } }] })
+			: new Promise((_resolve, reject) => { rejectRead = () => reject(new Error("old refresh")); }),
+		apply: () => Promise.resolve({ failed: false, message: "Refreshed" }),
+	} });
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
+	await settle(); f.panel.handleInput(right); f.panel.handleInput("\r"); await settle();
+	f.panel.handleInput(left); f.panel.handleInput(up); rejectRead(); await settle();
+	assert.doesNotMatch(f.panel.render(80).join("\n"), /old refresh/);
+});
+
+void test("Account cannot confirm when the terminal hides confirmation choices", async () => {
+	let calls = 0;
+	const f = fixture(undefined, undefined, { account: {
+		read: () => Promise.resolve({ summary: "Accounts", note: "Metadata", rows: [{ label: "Switch", current: false, action: { kind: "account-switch", profile: "long-profile-name" } }] }),
+		apply: () => { calls++; return Promise.resolve({ failed: false, message: "Switched" }); },
+	} });
+	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	await settle(); f.panel.handleInput(right); f.panel.handleInput("\r");
+	f.resize(3); f.panel.render(8); f.panel.handleInput(down); f.panel.handleInput("\r");
+	assert.equal(calls, 0);
+});
+
+void test("Usage refresh is honestly read-only while pending and cannot duplicate", async () => {
+	let calls = 0;
+	const f = fixture(undefined, undefined, { usage: {
+		read: () => Promise.resolve({ summary: "Local analytics", note: "Read-only", rows: [{ label: "Refresh", current: false, action: { kind: "usage-refresh" } }] }),
+		apply: () => { calls++; return new Promise(() => {}); },
+	} });
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
+	await settle(); f.panel.handleInput(right); f.panel.handleInput("\r");
+	assert.match(f.panel.render(80).join("\n"), /Refreshing usage/);
+	assert.doesNotMatch(f.panel.render(80).join("\n"), /Saving globally/);
+	f.panel.handleInput("\r"); assert.equal(calls, 1); f.dispose();
 });
 
 void test("disposed overlays ignore late category reads, including errors", async () => {
