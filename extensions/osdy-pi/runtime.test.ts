@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -45,7 +48,168 @@ const {
 	getOsdyCommandCompletions,
 	handleAgentsSetupCommand,
 	refreshCodexUsage,
+ registerOsdyPi,
+ handleTodoProviderCommand,
 } = await import("./runtime.js");
+
+void test("actual factory registers no TODO surfaces by default, and all three only with opt-in", async () => {
+ const root = mkdtempSync(join(tmpdir(), "osdy-runtime-todo-"));
+ const agentDir = join(root, "agent"); mkdirSync(agentDir);
+ mkdirSync(join(root, "rpiv-todo"));
+ writeFileSync(join(root, "rpiv-todo", "config.json"), "{}");
+ const previous = process.env.PI_CODING_AGENT_DIR;
+ const previousConfig = process.env.XDG_CONFIG_HOME;
+ const previousCwd = process.cwd();
+ process.chdir(root);
+ process.env.PI_CODING_AGENT_DIR = agentDir;
+ process.env.XDG_CONFIG_HOME = root;
+ try {
+  for (const [settings, enabled, probes] of [
+   ["{}", false, 0],
+   ["{bad", false, 0],
+   [JSON.stringify({ osdyPiTodoProvider: { enabled: true } }), false, 0],
+   [JSON.stringify({ osdyPiTodoProvider: { version: 1, enabled: false, ownedExclusions: [] } }), false, 0],
+   [JSON.stringify({ osdyPiTodoProvider: { version: 1, enabled: true, ownedExclusions: [] } }), true, 1],
+   [JSON.stringify({ osdyPiTodoProvider: { version: 1, enabled: true, ownedExclusions: [] }, packages: ["npm:gentle-pi"] }), false, 1],
+  ] as const) {
+   writeFileSync(join(agentDir, "settings.json"), settings);
+   const commands: string[] = []; const tools: string[] = []; const shortcuts: string[] = [];
+   let execCalls = 0;
+   const pi = { registerCommand: (name: string) => commands.push(name), registerTool: (tool: { name: string }) => tools.push(tool.name),
+    registerShortcut: (key: string) => shortcuts.push(key), exec: (command: string, args: string[], options: { timeout: number; cwd?: string }) => {
+     execCalls++;
+     assert.equal(command, process.execPath);
+     assert.deepEqual(args, ["--input-type=commonjs", "--eval", "process.stdout.write(JSON.stringify(process.cwd()))"]);
+     assert.equal(options.cwd, undefined); assert.equal(options.timeout, 2000);
+     return Promise.resolve({ stdout: JSON.stringify(root), stderr: "", code: 0, killed: false });
+    }, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {}, on: () => {}, events: { on: () => () => {} } } as unknown as ExtensionAPI;
+   await registerOsdyPi(pi);
+   assert.ok(commands.includes("osdy-pi"));
+   assert.equal(commands.includes("todos"), enabled); assert.equal(tools.includes("todo"), enabled);
+   assert.equal(shortcuts.length > 0, enabled);
+   assert.equal(execCalls, probes);
+  }
+ } finally {
+  process.chdir(previousCwd);
+  if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
+  if (previousConfig === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = previousConfig;
+ }
+});
+
+void test("official SDK factory uses SDK cwd, not the safe process cwd, before TODO registration", async () => {
+ const { loadExtensionFromFactory, createExtensionRuntime } = await import("../../node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js");
+ const { default: factory } = await import("../osdy-pi.js");
+ const root = mkdtempSync(join(tmpdir(), "osdy-sdk-cwd-"));
+ const agentDir = join(root, "agent"); const safe = join(root, "safe"); const unsafe = join(root, "unsafe");
+ mkdirSync(agentDir); mkdirSync(safe); mkdirSync(join(unsafe, ".pi"), { recursive: true });
+ writeFileSync(join(unsafe, ".pi", "settings.json"), JSON.stringify({ packages: ["npm:gentle-pi"] }));
+ mkdirSync(join(root, "rpiv-todo"));
+ writeFileSync(join(root, "rpiv-todo", "config.json"), "{}");
+ const previous = process.env.PI_CODING_AGENT_DIR; const previousCwd = process.cwd();
+ const previousConfig = process.env.XDG_CONFIG_HOME;
+ process.env.PI_CODING_AGENT_DIR = agentDir; process.env.XDG_CONFIG_HOME = root; process.chdir(safe);
+ const eventBus = { on: () => () => {}, emit: () => {} };
+ try {
+  writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ osdyPiTodoProvider: { version: 1, enabled: true, ownedExclusions: [] } }));
+  for (const [cwd, active] of [[unsafe, false], [safe, true], [join(root, "missing"), false]] as const) {
+   const runtime = createExtensionRuntime();
+   try {
+    const extension = await loadExtensionFromFactory(factory, cwd, eventBus, runtime);
+    assert.ok(extension.commands.has("osdy-pi"));
+    assert.equal(extension.tools.has("todo"), active, cwd);
+    assert.equal(extension.commands.has("todos"), active, cwd);
+    assert.equal(extension.shortcuts.size > 0, active, cwd);
+   } finally { runtime.invalidate(); }
+  }
+ } finally {
+  process.chdir(previousCwd);
+  if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
+  if (previousConfig === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = previousConfig;
+ }
+});
+
+void test("unavailable, failed and invalid SDK cwd probes fail closed", async () => {
+ const root = mkdtempSync(join(tmpdir(), "osdy-sdk-probe-"));
+ const previous = process.env.PI_CODING_AGENT_DIR;
+ process.env.PI_CODING_AGENT_DIR = root;
+ writeFileSync(join(root, "settings.json"), JSON.stringify({ osdyPiTodoProvider: { version: 1, enabled: true, ownedExclusions: [] } }));
+ const ok = { stdout: JSON.stringify(root), stderr: "", code: 0, killed: false };
+ try {
+  for (const result of [undefined, new Error("exec unavailable"), { ...ok, code: 1 }, { ...ok, killed: true },
+   { ...ok, stderr: "warning" }, { ...ok, stdout: "not json" }, { ...ok, stdout: '"relative"' },
+   { ...ok, stdout: JSON.stringify(`${root}\u0000`) }, { ...ok, stdout: "{}" }, { ...ok, stdout: "x".repeat(16385) }]) {
+   const commands: string[] = []; const tools: string[] = []; const shortcuts: string[] = [];
+   const pi = { registerCommand: (name: string) => commands.push(name), registerTool: (tool: { name: string }) => tools.push(tool.name),
+    registerShortcut: (key: string) => shortcuts.push(key),
+    exec: result === undefined ? undefined : () => result instanceof Error ? Promise.reject(result) : Promise.resolve(result),
+    registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {}, on: () => {}, events: { on: () => () => {} },
+   } as unknown as ExtensionAPI;
+   await registerOsdyPi(pi);
+   assert.ok(commands.includes("osdy-pi")); assert.equal(commands.includes("todos"), false);
+   assert.equal(tools.includes("todo"), false); assert.equal(shortcuts.length, 0);
+  }
+ } finally {
+  if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
+ }
+});
+
+void test("TODO command confirms, cancels, reports activation and never touches stale context after reload", async () => {
+ const root = mkdtempSync(join(tmpdir(), "osdy-command-todo-"));
+ const previous = process.env.PI_CODING_AGENT_DIR; process.env.PI_CODING_AGENT_DIR = root;
+ let stale = false; let accepted = false; let writes = 0; const notices: string[] = [];
+ const ctx = { hasUI: true, cwd: root, ui: {
+  confirm: (_title: string, message: string) => { assert.match(message, new RegExp(root)); return Promise.resolve(accepted); },
+  notify: (message: string) => { assert.equal(stale, false); notices.push(message); },
+ }, reload: () => { stale = true; return Promise.reject(new Error("reload failed")); } } as unknown as ExtensionCommandContext;
+ try {
+  const select = () => { writes++; return { changed: true }; };
+  await handleTodoProviderCommand("on", ctx, false, select); assert.equal(writes, 0);
+  accepted = true; await handleTodoProviderCommand("on", ctx, false, select); assert.equal(writes, 1);
+  assert.ok(notices.some((text) => /restart|reload/i.test(text)));
+  stale = false; await handleTodoProviderCommand("status", ctx, false); assert.ok(notices.some((text) => /configured.*actual/i.test(text)));
+  await handleTodoProviderCommand("off", ctx, false, () => { throw new Error("write denied"); });
+  assert.ok(notices.some((text) => /write denied/.test(text)));
+  assert.deepEqual(getOsdyCommandCompletions("todo"), ["on", "off", "status"].map((action) => ({ value: `todo ${action}`, label: `todo ${action}` })));
+ } finally { if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous; }
+});
+
+void test("TODO command persists on/off in a disposable custom profile before successful reload", async () => {
+ const root = mkdtempSync(join(tmpdir(), "osdy-command-switch-"));
+ const previous = process.env.PI_CODING_AGENT_DIR;
+ process.env.PI_CODING_AGENT_DIR = root;
+ writeFileSync(join(root, "settings.json"), JSON.stringify({ packages: ["npm:gentle-pi"], theme: "retained" }));
+ let reloaded = false;
+ let reloads = 0;
+ const ctx = {
+  hasUI: true,
+  cwd: root,
+  ui: {
+   confirm: () => Promise.resolve(true),
+   notify: () => { assert.equal(reloaded, false); },
+  },
+  reload: () => { reloaded = true; reloads++; return Promise.resolve(); },
+ } as unknown as ExtensionCommandContext;
+ try {
+  await handleTodoProviderCommand("on", ctx, false);
+  let settings = JSON.parse(readFileSync(join(root, "settings.json"), "utf8")) as {
+   theme: string; packages: unknown[]; osdyPiTodoProvider: { enabled: boolean };
+  };
+  assert.equal(settings.osdyPiTodoProvider.enabled, true);
+  assert.equal(settings.theme, "retained");
+  reloaded = false;
+  await handleTodoProviderCommand("off", ctx, true);
+  settings = JSON.parse(readFileSync(join(root, "settings.json"), "utf8")) as typeof settings;
+  assert.equal(settings.osdyPiTodoProvider.enabled, false);
+  assert.deepEqual(settings.packages, ["npm:gentle-pi"]);
+  assert.equal(reloads, 2);
+  reloaded = false;
+  await handleTodoProviderCommand("bad", ctx, false);
+  assert.equal(reloads, 2);
+ } finally {
+  if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+  else process.env.PI_CODING_AGENT_DIR = previous;
+ }
+});
 
 class TestEventBus {
 	event: string | undefined;

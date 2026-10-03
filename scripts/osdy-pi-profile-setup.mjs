@@ -5,8 +5,8 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 const GENTLE_EXTENSIONS = ["gentle-todo.ts", "ask-user-question.ts", "gentle-agents.ts"];
 const ISOLATED_NAMES = new Set(["settings.json", "sessions", "pi-crash.log", "run-history.jsonl", ".DS_Store"]);
-const ASK_PACKAGE = "npm:@juicesharp/rpiv-ask-user-question";
-const AGENT_PACKAGE = "npm:pi-subagents-j0k3r";
+import { reconcileGentleSettings, resetInheritedTodoSelection } from "./osdy-pi-gentle-coexistence.mjs";
+import { fileURLToPath } from "node:url";
 
 function record(value) {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -66,25 +66,24 @@ async function chooseGentleRoot(packages, explicitRoot) {
 	return [...candidates][0];
 }
 
-function reconciledSettings(official, existing, gentleRoot, osdyRoot) {
-	const packages = (official.packages ?? []).filter((entry) => {
-		const source = packageSource(entry);
-		const lower = source.toLowerCase();
-		return source !== gentleRoot && source !== osdyRoot &&
-			!/^npm:gentle-pi(?:@[^\s]+)?$/.test(lower) &&
-			!/^npm:osdy-pi(?:@[^\s]+)?$/.test(lower) &&
-			!/^git:github\.com\/osdyortiz\/osdy-pi(?:@[^\s]+)?$/.test(lower) &&
-			lower !== ASK_PACKAGE && lower !== AGENT_PACKAGE;
-	});
-	const theme = existing?.theme;
-	return {
-		...official,
-		...(typeof theme === "string" && theme ? { theme } : {}),
-		packages: [...packages,
-			{ source: gentleRoot, extensions: GENTLE_EXTENSIONS.map((name) => `-extensions/${name}`), themes: [] },
-			ASK_PACKAGE, AGENT_PACKAGE, { source: osdyRoot },
-		],
-	};
+async function reconciledSettings(official, existing, gentleRoot, osdyRoot, sourceDir, targetDir) {
+ // Reset inherited ownership before remapping sources. User/legacy exclusions stay unowned.
+ const base = existing ? { ...existing } : resetInheritedTodoSelection(official);
+ const packages = (base.packages ?? []).map((entry) => {
+  const source = packageSource(entry);
+  if (/^(?:npm:osdy-pi(?:@[^\s]+)?|git:github\.com\/osdyortiz\/osdy-pi(?:@[^\s]+)?)$/i.test(source))
+   return typeof entry === "string" ? { source: osdyRoot } : { ...entry, source: osdyRoot };
+  if (!existing && source && !isAbsolute(source) && !source.includes(":" ) && !source.startsWith("~"))
+   return typeof entry === "string" ? resolve(sourceDir, source) : { ...entry, source: resolve(sourceDir, source) };
+  if (!existing && source.startsWith("file:")) {
+   const absolute = fileURLToPath(source);
+   return typeof entry === "string" ? absolute : { ...entry, source: absolute };
+  }
+  return entry;
+ });
+ if (!packages.some((entry) => packageSource(entry) === osdyRoot)) packages.push({ source: osdyRoot });
+ const result = await reconcileGentleSettings({ ...base, packages }, gentleRoot, existing ? targetDir : sourceDir);
+ return result.settings;
 }
 
 async function optionalEntry(path) {
@@ -143,7 +142,7 @@ export async function setupOsdyProfile({ officialDir, profileDir, osdyRoot, gent
 	if (sessionsState && !sessionsState.isDirectory())
 		throw new Error("Isolated sessions must be a directory, not a symlink.");
 	const existing = settingsState ? await settingsFrom(targetSettings, "Isolated") : undefined;
-	const next = `${JSON.stringify(reconciledSettings(official, existing, gentle, osdy), null, 2)}\n`;
+	const next = `${JSON.stringify(await reconciledSettings(official, existing, gentle, osdy, sourceDir, targetDir), null, 2)}\n`;
 	const current = settingsState ? await readFile(targetSettings, "utf8") : undefined;
 	const names = await readdir(sourceDir);
 	// Validate first: an existing entry always belongs to the user; never replace it.

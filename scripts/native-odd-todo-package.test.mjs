@@ -31,6 +31,7 @@ test("npm package includes the single native extension entry and session TODO mo
 		"extensions/osdy-pi/runtime.ts",
 		"extensions/osdy-pi/uninstall.ts",
 		"extensions/osdy-pi/agent-coexistence-setup.ts",
+  "extensions/osdy-pi/todo-provider-settings.ts",
 		"bin/osdy-pi.mjs",
 		"bin/osdy.mjs",
 		"extensions/osdy-pi/todo-tool.ts",
@@ -89,6 +90,7 @@ test("packed entry wires Osdy and exactly one native todo registration", async (
 	assert.equal(runtime.match(/registerTodoTool\(pi, todoStore\)/g)?.length, 1);
 	assert.equal(runtime.match(/registerTodosCommand\(pi, todoStore\)/g)?.length, 1);
 	assert.equal(runtime.match(/registerTodoWidget\(pi, todoStore\)/g)?.length, 1);
+ assert.match(runtime, /if \(todoActive\) \{[\s\S]*?registerTodoTool[\s\S]*?registerTodosCommand[\s\S]*?registerTodoWidget/);
 	assert.doesNotMatch(runtime, /registerOddTodo|odd-todo-ui/);
 	assert.equal(todo.match(/pi\.registerTool\(\{/g)?.length, 1);
 	assert.doesNotMatch(todo, /registerCommand\(/);

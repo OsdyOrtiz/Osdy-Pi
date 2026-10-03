@@ -18,7 +18,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 | Header and mascot | A theme-aware `neon` header and selectable `bts` mascot, both responsive and persisted independently. |
 | Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
 | Quota | `/usage` and compact bars emphasize remaining Codex quota at warning (40% or less) and error (15% or less) thresholds. |
-| TODO (starting in 1.5.0) | First-party `todo` snapshots track the Pi session branch; `/todos` reads them without editing. ODD Markdown remains separate. |
+| TODO (starting in 1.5.0, opt-in) | Default-off first-party `todo` snapshots track the Pi session branch; `/todos` reads them without editing. ODD Markdown remains separate. |
 
 ## Prerequisites
 
@@ -47,6 +47,8 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    ```bash
    pi
    ```
+
+**Osdy TODO is off by default**, so installing Osdy alongside Gentle Shell does not register a competing `todo`, `/todos`, or TODO widget. To select Osdy explicitly, run `/osdy-pi todo on`, confirm the active profile target, then check `/osdy-pi todo status`. See [TODO selection](#explicit-todo-selection).
 
 Osdy Pi's own extension and themes are bundled—do not install them separately. Version **1.11.0** bundles **23 themes**, including Spider-Man Classic, Miles Morales, and Spider-Verse: Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in 1.8.0; Halloween and Halloween Killer were added in 1.9.0. Check your installed npm version to see which themes are available. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
 
@@ -128,13 +130,29 @@ To load a local `gentle-pi` checkout while keeping Osdy Pi's UI authoritative, r
 osdy-pi gentle setup /absolute/path/to/gentle-pi
 ```
 
-The command validates that the absolute source is a readable `gentle-pi` package with Gentle's todo and agents extensions before atomically updating `$PI_CODING_AGENT_DIR/settings.json` (or `~/.pi/agent/settings.json`). It registers the local package immediately before the first configured Osdy Pi package entry, so Gentle Shell initializes first, with exclusions for Gentle's `gentle-todo.ts`, `ask-user-question.ts`, and `gentle-agents.ts`, plus `themes: []`. Restart Pi or run `/reload` after setup.
+The command validates that the absolute source is a readable `gentle-pi` package with Gentle's todo and agents extensions before atomically updating `$PI_CODING_AGENT_DIR/settings.json` (or `~/.pi/agent/settings.json`). For a new registration, it places the local package before the first configured Osdy Pi entry, with exclusions for `ask-user-question.ts` and `gentle-agents.ts`, plus `themes: []`. Existing Gentle entries, deliberate filters and resource selections are preserved. Gentle TODO remains eligible by default; an existing explicit Osdy TODO opt-in retains its TODO exclusion and ownership. Restart Pi or run `/reload` after setup.
 
 Gentle Shell intentionally remains fully active underneath Osdy, including its footer and widgets. While Osdy is enabled, Osdy claims the footer and editor; disabling Osdy restores the editor Gentle Shell provided at session startup. Gentle's changes widget may coexist with Osdy's visual widgets.
 
-The exclusions prevent Gentle's todo, questionnaire, and agents extensions from competing with the suite. Osdy's session-branch snapshots are authoritative for its `todo` tool and read-only `/todos` command; `pi-subagents-j0k3r` is the subagent system in Joker mode (Gentle agents in Gentle mode) and `@juicesharp/rpiv-ask-user-question` remains the structured-question plugin. This setup does **not** remove an independently installed `@juicesharp/rpiv-todo` package or edit its package entry. Remove that package yourself as described below to avoid duplicate `todo` and `/todos` registrations.
+The default exclusions prevent Gentle's questionnaire and agents extensions from competing with the suite, without selecting Osdy TODO. Pre-existing Gentle TODO exclusions remain unowned and are not erased or treated as opt-in. When explicitly selected, Osdy's session-branch snapshots are authoritative for its `todo` tool and read-only `/todos` command; `pi-subagents-j0k3r` is the subagent system in Joker mode (Gentle agents in Gentle mode) and `@juicesharp/rpiv-ask-user-question` remains the structured-question plugin. This setup does **not** remove an independently installed `@juicesharp/rpiv-todo` package or edit its package entry. Remove that package yourself as described below to avoid duplicate `todo` and `/todos` registrations.
+
+## Explicit TODO selection
+
+```text
+/osdy-pi todo on
+/osdy-pi todo status
+/osdy-pi todo off
+```
+
+`on` requires confirmation showing the active `$PI_CODING_AGENT_DIR/settings.json` (otherwise `~/.pi/agent/settings.json`). It atomically saves opt-in and only the necessary `-extensions/gentle-todo.ts` exclusions in the `osdyPiTodoProvider` namespace (`version: 1`, `enabled`, `ownedExclusions`). `off` opts out and removes only exclusions actually added by this selector; pre-existing user/legacy exclusions stay intact. Both preserve unrelated settings and task history. Successful switches notify before reloading; restart Pi if reload fails. Manual settings changes require `/reload` or restart. `status` distinguishes configured selection, actual registration in this runtime and current settings eligibility; legacy filters can leave no provider and are reported rather than repaired silently. `/osdy-pi off` remains visual-only.
+
+Supported scope: active personal, custom or isolated profiles with npm Gentle or validated local packages (absolute, settings-relative, `~/`, `file:`); duplicate entries are checked individually. Project Gentle overrides, malformed/symlink settings, direct-extension settings, unsupported identities and uncertain allowlists refuse activation without writes. Disabled `extensions: []` is never broadened by a negative filter. Startup fails closed if an opted-on profile later gains an unfiltered Gentle source. Startup never writes defaults or infers opt-in from old filters. Only an explicit opt-in runs a bounded read-only Node cwd probe through `pi.exec`; the awaited factory checks the SDK working directory before registering TODO surfaces and fails closed if it cannot obtain a valid cwd. Reordering selector-owned package entries requires resolving ownership before switching; the selector refuses ambiguous restoration.
+
+This is a supported-settings guarantee, not detection of arbitrary CLI/SDK-injected competing tools. SDK-only `agentDir` overrides must also set `PI_CODING_AGENT_DIR`. No project settings, installed packages, task snapshots, credentials or upstream Gentle code are changed. A new isolated setup defaults off and removes only proven selector-owned inherited TODO exclusions before remapping package sources; malformed or ambiguous ownership refuses setup before writes. User/legacy exclusions remain intact. Repeat setup preserves its existing explicit selection and resource filters.
 
 ## First-party TODO included starting in 1.5.0
+
+The surfaces below register only after explicit TODO opt-in.
 
 The model-facing `todo` tool supports `create`, `update`, `list`, `get`, `delete`, and `clear`. Tool results carry full task snapshots; Pi's current session branch is the TODO authority. Session switches and compaction replay the latest valid branch snapshot, rather than sharing one project-wide list. `/todos` opens a read-only, grouped modal (pending, in progress, completed) in interactive Pi; scroll with arrow or Page Up/Down keys and close with Esc or q. The refreshed modal adds a completed-task progress meter, theme-aware status groups and a scroll-position footer while keeping every task reachable. It is not an interactive Markdown editor. In non-terminal modes with UI support, it retains notification output. ODD's `odd/tasks/*.md` ledger and Engram are separate orchestration records: there is no automatic sync with these Pi TODOs.
 
@@ -144,7 +162,7 @@ Expansion and scroll position survive same-session refresh, tree navigation, and
 
 ### Try session TODO
 
-Use this checkout (or a package containing the three-task preview), ask the agent to track a task with `todo`, then run `/todos`. The modal shows the entire grouped list with arrow/Page Up/Down scrolling. `maxWidgetLines: 7` permits five task rows in the expanded fullscreen widget; the preview remains capped at three. Smaller budgets also constrain the preview. Fullscreen widget mouse handling uses Pi's public 0.99.1 component APIs.
+Run `/osdy-pi todo on` in this checkout (or a package containing the three-task preview), confirm and let Pi reload, then ask the agent to track a task with `todo`, then run `/todos`. The modal shows the entire grouped list with arrow/Page Up/Down scrolling. `maxWidgetLines: 7` permits five task rows in the expanded fullscreen widget; the preview remains capped at three. Smaller budgets also constrain the preview. Fullscreen widget mouse handling uses Pi's public 0.99.1 component APIs.
 
 **Verification to date (not complete):** The user confirmed fullscreen appearance and behavior via `pi:dev`. Automated PTY interaction passed 27 assertions, but fixture cleanup failed and the final task snapshot remains unverified; this was not a full end-to-end pass. Prior feature checks passed 187 extension tests, 60 script tests, typecheck, and lint. A disposable Pi TUI with seeded tasks showed the modal's progress meter, grouped rows, scroll footer, and close behavior. Authenticated RPC turns exercised all six `todo` actions, and an authenticated TUI smoke observed widget and `/todos` updates. An RPC lifecycle check observed an empty new session and the completed task on switching back. Compaction replay remains unverified because Pi returned “Nothing to compact (session too small).” Language switching in the authenticated TODO flow remains unverified (an isolated TUI with both extensions did switch English to Spanish). Visual strikethrough of completed rows in the authenticated TUI remains unverified. Launch under an installed Osdy account profile remains unverified. These checks do not establish full feature parity or validate a published npm artifact.
 
@@ -354,7 +372,8 @@ The enabled state, editor mode, working-tree visibility preference, header, and 
 | Main | `/osdy-pi` |
 | Main | `/osdy-pi enable\|disable\|on\|off\|status` |
 | Accounts | `/osdy-account` |
-| Session TODO (starting in 1.5.0) | `/todos` (read-only) |
+| TODO selection | `/osdy-pi todo on\|off\|status` |
+| Session TODO (opt-in, starting in 1.5.0) | `/todos` (read-only) |
 | Header | `/osdy-pi header osdy-theme\|neon\|status` |
 | Mascot | `/osdy-pi mascot current\|bts\|status` |
 | Editor | `/osdy-pi editor auto\|extended\|simple\|on\|off\|toggle\|status` |

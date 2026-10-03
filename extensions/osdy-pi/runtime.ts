@@ -5,7 +5,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
 import { identifyLocalPackage, runOsdyUninstall } from "./uninstall.js";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { inspectJokerAgents, setupJokerAgents, switchAgentMode } from "./agent-coexistence-setup.js";
 import { createAudioEventRouter } from "./audio-event-router.js";
 import { registerAudioNotificationFlags } from "./audio-notification-config.js";
@@ -63,6 +63,7 @@ import { createTodoSessionStore } from "./todo-session.js";
 import { registerMessageRoleMarkers } from "./message-role-markers.js";
 import { registerTodoWidget } from "./todo-widget.js";
 import { registerUsageAnalytics } from "./usage-analytics.js";
+import { inspectTodoProvider, selectTodoProvider, todoAgentDir, todoProviderConfigured } from "./todo-provider-settings.js";
 
 function scheduleOsdyRefresh(
 	delayMs: number,
@@ -256,6 +257,7 @@ export function getOsdyCommandCompletions(prefix: string) {
 	const parts = parseCommandArgs(trimmed);
 	if (parts.length === 0) {
 		return [
+   "todo",
 			"enable",
 			"disable",
 			"on",
@@ -271,6 +273,10 @@ export function getOsdyCommandCompletions(prefix: string) {
 			"uninstall",
 		].map((value) => ({ value, label: value }));
 	}
+ if (parts[0] === "todo" && parts.length <= 2) {
+  return ["on", "off", "status"].filter((action) => action.startsWith(parts[1] ?? ""))
+   .map((action) => ({ value: `todo ${action}`, label: `todo ${action}` }));
+ }
 	if (trimmed === "agents") {
 		return ["agents setup", "agents on", "agents off", "agents status"].map((value) => ({ value, label: value }));
 	}
@@ -313,6 +319,7 @@ export function getOsdyCommandCompletions(prefix: string) {
 	if (parts.length === 1) {
 		const valuePrefix = parts[0] ?? "";
 		return [
+   "todo",
 			"enable",
 			"disable",
 			"on",
@@ -761,6 +768,40 @@ export async function handleAgentsSetupCommand(
 	}
 }
 
+export async function handleTodoProviderCommand(
+ action: string | undefined,
+ ctx: ExtensionCommandContext,
+ active: boolean,
+ select: typeof selectTodoProvider = selectTodoProvider,
+): Promise<void> {
+ if (!["on", "off", "status"].includes(action ?? "")) {
+  ctx.ui.notify("Usage: /osdy-pi todo on|off|status", "warning");
+  return;
+ }
+ const options = { agentDir: todoAgentDir(), cwd: ctx.cwd };
+ if (action === "status") {
+  const status = inspectTodoProvider(options);
+  ctx.ui.notify(`TODO configured: ${status.configured ? "on" : "off"}; actual registration: ${active ? "on" : "off"}; current eligibility: ${status.active ? "on" : "off"}. ${status.reason} Target: ${status.target}`, "info");
+  return;
+ }
+ if (!ctx.hasUI) {
+  ctx.ui.notify("TODO selection requires interactive confirmation.", "warning");
+  return;
+ }
+ try {
+  if (!await ctx.ui.confirm(`Turn Osdy TODO ${action}?`,
+   `Target: ${join(options.agentDir, "settings.json")}\n${action === "on" ? "Opt Osdy in and exclude only -extensions/gentle-todo.ts from supported Gentle package entries." : "Opt Osdy out and restore only selector-owned Gentle TODO exclusions."} Unrelated resources and task history remain unchanged. Reload follows; restart Pi if it fails.`)) return;
+  select({ ...options, mode: action as "on" | "off" });
+  ctx.ui.notify(`TODO ${action} saved. Reloading resources; restart Pi if reload fails.`, "info");
+ } catch (error) {
+  ctx.ui.notify(`TODO selection failed: ${error instanceof Error ? error.message : "unknown error"}`, "error");
+  return;
+ }
+ // Reload invalidates the old runtime/context, even on failure. Never notify via it afterward.
+ try { await ctx.reload(); } catch { return; }
+ return;
+}
+
 function registerCommand(
 	pi: ExtensionAPI,
 	state: OsdyState,
@@ -771,10 +812,11 @@ function registerCommand(
 	editorSettingsStore: ReturnType<typeof createEditorSettingsStore>,
 	startResponsive: () => void,
 	stopResponsive: () => void,
+ todoActive: boolean,
 ): void {
 	pi.registerCommand("osdy-pi", {
 		description:
-			"Manage the Osdy Pi experience: enable/disable (on/off), status, mascot, editor, style, sound setup, working tree, or diff panel.",
+			"Manage Osdy Pi: visual on/off, status, todo on/off/status, agents, mascot, editor, sound, working tree, or diff.",
 		getArgumentCompletions: getOsdyCommandCompletions,
 		handler: async (args, ctx) => {
 			const [action = "status", ...rest] = parseCommandArgs(args);
@@ -799,6 +841,10 @@ function registerCommand(
 				});
 				return;
 			}
+   if (action === "todo") {
+    await handleTodoProviderCommand(rest.length === 1 ? rest[0] : undefined, ctx, todoActive);
+    return;
+   }
 			if (action === "agents") {
 				await handleAgentsSetupCommand(rest.length === 1 ? rest[0] : undefined, ctx);
 				return;
@@ -891,14 +937,31 @@ function registerCommand(
 				return;
 			}
 			ctx.ui.notify(
-				`Usage: /osdy-pi agents setup|on|off|status | enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff | uninstall`,
+				`Usage: /osdy-pi todo on|off|status | agents setup|on|off|status | enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff | uninstall`,
 				"warning",
 			);
 		},
 	});
 }
 
-export function registerOsdyPi(pi: ExtensionAPI): void {
+async function sdkTodoActive(pi: ExtensionAPI): Promise<boolean> {
+ const agentDir = todoAgentDir();
+ if (!todoProviderConfigured(agentDir)) return false;
+ try {
+  // No pure cwd getter exists during factory loading; getSettings is not bound yet.
+  // This opt-in-only, bounded read-only probe uses pi.exec's SDK cwd, never process.cwd.
+  // Await it before registering tools, commands or shortcuts; start no long-lived resource.
+  const result = await pi.exec(process.execPath,
+   ["--input-type=commonjs", "--eval", "process.stdout.write(JSON.stringify(process.cwd()))"],
+   { timeout: 2000 });
+  if (result.code !== 0 || result.killed || result.stderr || result.stdout.length > 16384) return false;
+  const cwd: unknown = JSON.parse(result.stdout);
+  if (typeof cwd !== "string" || !isAbsolute(cwd) || cwd.includes("\u0000")) return false;
+  return inspectTodoProvider({ agentDir, cwd }).active;
+ } catch { return false; }
+}
+
+export async function registerOsdyPi(pi: ExtensionAPI): Promise<void> {
 	const state: OsdyState = {
 		codexUsage: { kind: "idle" },
 		enabled: true,
@@ -932,10 +995,13 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 	const editorSettingsStore = createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
 	registerMessageRoleMarkers(pi, () => state.enabled);
-	const todoStore = createTodoSessionStore();
-	registerTodoTool(pi, todoStore);
-	registerTodosCommand(pi, todoStore);
-	registerTodoWidget(pi, todoStore);
+ const todoActive = await sdkTodoActive(pi);
+ if (todoActive) {
+  const todoStore = createTodoSessionStore();
+  registerTodoTool(pi, todoStore);
+  registerTodosCommand(pi, todoStore);
+  registerTodoWidget(pi, todoStore);
+ }
 	const audioRouter = createAudioEventRouter(
 		createAudioNotificationService(
 			pi,
@@ -1087,5 +1153,6 @@ export function registerOsdyPi(pi: ExtensionAPI): void {
 		editorSettingsStore,
 		startResponsive,
 		stopResponsive,
+  todoActive,
 	);
 }

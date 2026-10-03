@@ -51,9 +51,8 @@ test("creates an isolated profile, keeps official bytes and shares resources exp
 	assert.deepEqual(settings.custom, { saved: true });
 	assert.deepEqual(settings.packages, [
 		"npm:other",
-		{ source: paths.gentleRoot, extensions: ["-extensions/gentle-todo.ts", "-extensions/ask-user-question.ts", "-extensions/gentle-agents.ts"], themes: [] },
-		"npm:@juicesharp/rpiv-ask-user-question", "npm:pi-subagents-j0k3r",
-		{ source: paths.osdyRoot },
+		{ source: "npm:gentle-pi", extensions: ["-extensions/ask-user-question.ts", "-extensions/gentle-agents.ts"] },
+  "npm:pi-subagents-j0k3r", { source: paths.osdyRoot }, "npm:@juicesharp/rpiv-ask-user-question",
 	]);
 	assert.equal((await lstat(join(paths.profileDir, "auth.json"))).isSymbolicLink(), true);
 	assert.equal((await lstat(join(paths.profileDir, "npm"))).isSymbolicLink(), true);
@@ -79,6 +78,65 @@ test("repeated setup preserves isolated theme, sessions, local files and owned l
 	assert.equal(await readFile(join(paths.profileDir, "sessions", "old.jsonl"), "utf8"), "history");
 	assert.equal(await readFile(join(paths.profileDir, "local.json"), "utf8"), "private");
 	assert.equal((await lstat(localLink)).isSymbolicLink(), true);
+});
+
+test("repeated setup preserves explicit profile opt-in, owned filters and unrelated resources", async () => {
+ const paths = await fixture(); await setupOsdyProfile(paths);
+ const path = join(paths.profileDir, "settings.json");
+ const current = JSON.parse(await readFile(path, "utf8"));
+ current.packages[1].extensions.push("-extensions/gentle-todo.ts");
+ current.packages[1].themes = ["custom.json"];
+ current.custom = { isolated: true };
+ current.osdyPiTodoProvider = { version: 1, enabled: true, ownedExclusions: [{ index: 1, source: "npm:gentle-pi", wasString: false, hadExtensions: true }] };
+ await writeFile(path, JSON.stringify(current));
+ await setupOsdyProfile(paths);
+ assert.deepEqual(JSON.parse(await readFile(path, "utf8")), current);
+});
+
+test("new profile resets actual inherited selection and only its proven owned TODO exclusions", async () => {
+ const paths = await fixture();
+ const officialPath = join(paths.officialDir, "settings.json");
+ const user = { source: "npm:gentle-pi@2", extensions: ["extensions/*.ts", "-extensions/gentle-todo.ts"], skills: [], themes: ["user.json"] };
+ await writeFile(officialPath, JSON.stringify({ ...paths.settings, packages: [...paths.settings.packages, user, "../gentle"] }));
+ const selected = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e",
+  'import { selectTodoProvider } from "./extensions/osdy-pi/todo-provider-settings.ts"; selectTodoProvider({ agentDir: process.argv[1], cwd: process.argv[2], mode: "on" });', paths.officialDir, paths.root], { encoding: "utf8" });
+ assert.equal(selected.status, 0, selected.stderr);
+ const original = await readFile(officialPath, "utf8");
+ await setupOsdyProfile(paths);
+ const settings = JSON.parse(await readFile(join(paths.profileDir, "settings.json"), "utf8"));
+ assert.equal(settings.osdyPiTodoProvider, undefined);
+ assert.deepEqual(settings.packages[1].extensions, ["-extensions/ask-user-question.ts", "-extensions/gentle-agents.ts"]);
+ assert.deepEqual(settings.packages[4], { ...user, extensions: [...user.extensions, "-extensions/ask-user-question.ts", "-extensions/gentle-agents.ts"] });
+ assert.deepEqual(settings.packages[5], { source: paths.gentleRoot, extensions: ["-extensions/ask-user-question.ts", "-extensions/gentle-agents.ts"] });
+ assert.equal(settings.theme, paths.settings.theme);
+ assert.deepEqual(settings.custom, paths.settings.custom);
+ assert.equal(await readFile(officialPath, "utf8"), original);
+});
+
+test("new profile refuses malformed or position-reordered inherited ownership before writes", async () => {
+ for (const reorder of [false, true]) {
+  const paths = await fixture();
+  const packages = [{ source: "npm:gentle-pi", extensions: ["-extensions/gentle-todo.ts"] }, "npm:other"];
+  const owned = { index: 0, source: "npm:gentle-pi", wasString: true, hadExtensions: false };
+  if (reorder) packages.reverse(); else owned.wasString = "invalid";
+  const text = JSON.stringify({ packages, osdyPiTodoProvider: { version: 1, enabled: true, ownedExclusions: [owned] } });
+  await writeFile(join(paths.officialDir, "settings.json"), text);
+  await assert.rejects(setupOsdyProfile(paths), /ownership/i);
+  await assert.rejects(lstat(paths.profileDir), { code: "ENOENT" });
+  assert.equal(await readFile(join(paths.officialDir, "settings.json"), "utf8"), text);
+ }
+});
+
+test("new profile refuses mixed same-source duplicate ownership before restoring inherited filters", async () => {
+ const paths = await fixture();
+ const text = JSON.stringify({ packages: [
+  { source: "npm:gentle-pi", extensions: ["-extensions/gentle-todo.ts"] }, "npm:gentle-pi",
+ ], osdyPiTodoProvider: { version: 1, enabled: true,
+  ownedExclusions: [{ index: 0, source: "npm:gentle-pi", wasString: true, hadExtensions: false }] } });
+ await writeFile(join(paths.officialDir, "settings.json"), text);
+ await assert.rejects(setupOsdyProfile(paths), /ambiguous|duplicate/i);
+ await assert.rejects(lstat(paths.profileDir), { code: "ENOENT" });
+ assert.equal(await readFile(join(paths.officialDir, "settings.json"), "utf8"), text);
 });
 
 test("bad official settings and missing Gentle source fail without creating a profile", async () => {

@@ -49,10 +49,10 @@ test("osdy-pi setup creates an isolated profile without modifying official setti
 	assert.match(second.stdout, /already configured/);
 	assert.equal(await readFile(join(sourceDir, "settings.json"), "utf8"), initial);
 	assert.equal((await lstat(join(profileDir, "auth.json"))).isSymbolicLink(), true);
-	assert.deepEqual(JSON.parse(await readFile(join(profileDir, "settings.json"), "utf8")).packages.slice(-4), [
-		{ source: gentle, extensions: ["-extensions/gentle-todo.ts", "-extensions/ask-user-question.ts", "-extensions/gentle-agents.ts"], themes: [] },
-		"npm:@juicesharp/rpiv-ask-user-question", "npm:pi-subagents-j0k3r", { source: resolve(".") },
-	]);
+	assert.deepEqual(JSON.parse(await readFile(join(profileDir, "settings.json"), "utf8")).packages, [
+  { source: gentle, extensions: ["-extensions/ask-user-question.ts", "-extensions/gentle-agents.ts"] },
+  "npm:other", { source: resolve(".") }, "npm:@juicesharp/rpiv-ask-user-question", "npm:pi-subagents-j0k3r",
+ ]);
 	const malformed = spawnSync(process.execPath, [...command, "extra"], { encoding: "utf8", env });
 	assert.notEqual(malformed.status, 0);
 	assert.match(malformed.stderr, /Usage: osdy-pi setup/);
@@ -74,6 +74,8 @@ test("gentle setup configures the PI_CODING_AGENT_DIR settings file", async () =
 		await readFile(join(agentDir, "settings.json"), "utf8"),
 	);
 	assert.equal(settings.packages.at(-3).source, source);
+ assert.equal(settings.packages.at(-3).extensions.includes("-extensions/gentle-todo.ts"), false);
+ assert.equal(settings.osdyPiTodoProvider, undefined);
 	assert.deepEqual(settings.packages.slice(-2), [
 		"npm:@juicesharp/rpiv-ask-user-question",
 		"npm:pi-subagents-j0k3r",
