@@ -6,7 +6,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 ## Release highlights
 
-**1.11.0 adds three Spider-Man-inspired dark palettes**, bringing the bundle to **23 themes**. It retains the four-page local usage analytics introduced in 1.10.0, with shared period and profile/provider/model filters, keyboard navigation, and metadata-only history. These version introductions are historical, not a fixed latest-version claim. Every successful main push (including direct pushes) publishes an automatic patch to npm; failed checks publish nothing. Verify the resolved npm version before installing. Maintainers: [automatic npm publishing setup](https://github.com/OsdyOrtiz/Osdy-Pi/blob/main/docs/npm-publishing.md).
+**1.11.0 adds three Spider-Man-inspired dark palettes**, bringing the bundle to **23 themes**. It retains the four-page local usage analytics introduced in 1.10.0, with shared period and profile/provider/model filters, keyboard navigation, and metadata-only history. These version introductions are historical, not a fixed latest-version claim. After npm Trusted Publishing is configured, pushes to main (including direct pushes) run checks and attempt to publish an automatically allocated patch to npm. Failed checks publish nothing; authentication or registry failures can also stop publication. Verify the resolved npm version before installing. Maintainers: [automatic npm publishing setup](https://github.com/OsdyOrtiz/Osdy-Pi/blob/main/docs/npm-publishing.md).
 
 | Area | What ships |
 | --- | --- |

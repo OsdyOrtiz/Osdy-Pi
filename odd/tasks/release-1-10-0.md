@@ -13,7 +13,7 @@ Delivery strategy: `exception-ok`, direct coherent feature/release work unit wit
 - Known dirty scope: README, six-line runtime integration, seven untracked analytics source/test files, usage task ledger. No staged changes or unrelated edits observed.
 - Manifest `osdy-pi@1.9.0`; no npm lifecycle packing hooks. Current-version assertion is `scripts/native-odd-todo-package.test.mjs`; both lock roots must align.
 - Prior feature verification: 30 UI / 56 analytics / 356 full tests, typecheck/lint, synthetic PTY 125 checks. Human visual and live-provider capture remain unverified. Prior native review authority is burned; never reuse it.
-- npm identity check returned E401. The user approved the release plan but has not confirmed successful login. Publication is blocked on human authentication; public version/dist-tag state and current package rights remain unverified.
+- Initial npm identity check returned E401; this was resolved by human login and fresh `whoami=osdy` verification below. Publication now awaits the owner's interactive second factor (EOTP), not login.
 
 ## Tasks and route
 
@@ -21,8 +21,9 @@ Delivery strategy: `exception-ok`, direct coherent feature/release work unit wit
 | --- | --- | --- | --- | --- |
 | R110-1 | Finalize README/version assertions, verify and freeze source | delegated writer; multi-file writes | completed | dea780026cd17adcbf1e70136ef9324f09811569 |
 | R110-2 | Review frozen candidate, integrate/push Git, verify immutable artifact | delegated verifier; commands/archive inspection; parent Git/review | completed | 3ab79f7759eb187c362917070a2a402de5581dd6 (excluded source-verification evidence) |
-| R110-3 | Authenticate, publish/reconcile npm, create GitHub Release and close evidence | human authentication; parent delivery; delegated verification | pending | Pending |
-| R110-A | Restore npm authentication | human login; parent waits | in_progress | N/A |
+| R110-3 | Authenticate, publish/reconcile npm, create GitHub Release and close evidence | human authentication; parent delivery; delegated verification | in_progress | Pending |
+| R110-A | Restore npm authentication | human login and independent identity check | completed | N/A |
+| R110-O | Complete npm publication with second factor | owner interactive terminal; agent never handles OTP | pending | N/A |
 | R110-B | Resolve overstrict artifact verifier assumptions | delegated read-only incident diagnosis and supplemental verification | completed | No product changes |
 
 ### R110-1 acceptance
@@ -39,8 +40,8 @@ Delivery strategy: `exception-ok`, direct coherent feature/release work unit wit
 - [x] Independently compute SHA-1 and SHA-512 SRI, compare pack output, retain inventory/hash/README/source evidence. Never repack or publish mutable `.`.
 
 ### R110-3 acceptance
-- [ ] Human login confirmed; official npm identity and package rights match approved `osdy`.
-- [ ] Query chosen version and dist-tags before publish. Existing same integrity means verification only; mismatch or unknown state stops publication.
+- [x] Human login confirmed; official npm identity and package rights match approved `osdy`.
+- [x] Query chosen version and dist-tags before publish. Existing same integrity means verification only; mismatch or unknown state stops publication.
 - [ ] Publish exactly the verified archive with public access and latest, or hand it to owner for interactive EOTP. Never collect credentials or OTPs.
 - [ ] Bounded registry reconciliation: up to 180 seconds at 30-second intervals, no republish; verify version/latest/SHA-1/SHA-512.
 - [ ] Create GitHub Release only after npm verification, bound to the exact release tag. Commit/push excluded evidence separately without moving tag or changing packaged bytes.
@@ -53,9 +54,9 @@ Focused package and three analytics test files; `npm test`; `npm run typecheck`;
 
 Source preparation complete. Writer changed only manifest, two lock-root versions, current package-version assertion and README. RED 3 pass/1 fail, GREEN 4 package tests; 56 analytics and 356 full tests (285 extension + 71 script) passed, typecheck/lint/diff checks passed. Independent verifier repeated package 4/4, analytics 56/56 and diff check, reviewed README/source/theme registrations with no defect. Active LSP package test: no diagnostics. README fully reviewed against analytics modules and all 20 registered theme resources; exact source is frozen below.
 
-Source commit `dea780026cd17adcbf1e70136ef9324f09811569` on `feat/usage-analytics`: 14 intended files, 2,163 additions/11 deletions including excluded task evidence; clean immediately after commit. Message: `feat(analytics): add paged usage history and prepare 1.10.0`. No dependency or unrelated source edits. Git and artifact delivery evidence follows; npm publication has not been attempted.
+Source commit `dea780026cd17adcbf1e70136ef9324f09811569` on `feat/usage-analytics`: 14 intended files, 2,163 additions/11 deletions including excluded task evidence; clean immediately after commit. Message: `feat(analytics): add paged usage history and prepare 1.10.0`. No dependency or unrelated source edits. Git and artifact delivery evidence follows; one exact-artifact publication attempt is recorded below.
 
-Public registry reads succeeded: `latest=1.9.0`; target `1.10.0` returned actual E404; maintainer name `osdy`. This does not establish current authenticated identity. E401/human-login blocker remains.
+Initial public registry reads succeeded: `latest=1.9.0`; target `1.10.0` returned actual E404; maintainer name `osdy`. Public maintainer metadata alone did not establish authenticated identity; the later login verification below does.
 
 ## Review and Git delivery
 
@@ -82,4 +83,14 @@ Supplemental independent read-only verification completed all mandatory gates: 4
 
 ## Next step and publication boundary
 
-Git delivery and exact artifact verification are complete; npm and GitHub Release publication are pending. Human must run `npm login --registry=https://registry.npmjs.org/` and confirm completion; do not infer login from release-plan approval. Then recheck `npm whoami`, approved identity/rights, official target version/dist-tags and exact retained archive hashes before publishing. Never publish `.` or repack, never request credentials/OTP. EOTP requires the owner to publish this exact archive interactively. Create GitHub Release only after official version/latest and both archive hashes match. Human visual/live-provider capture and an installation smoke test remain unverified.
+Git delivery and exact artifact verification are complete. The user confirmed login; independent preflight at `2026-10-02T22:46:36Z` observed official `npm whoami=osdy` (exit 0), maintainer `osdy`, target 1.10.0 E404, latest 1.9.0, expected remote main/tag binding and unchanged archive SHA-1/SHA-512. Current main before this evidence update is `d9e712fe0b835bf3e27d93ff076c61d1dd58e782`; it differs from frozen source only in this excluded ledger.
+
+One authorized `npm publish` of the exact retained archive with `--access public --tag latest --registry=https://registry.npmjs.org/` exited 1 with EOTP. Publication was not accepted or confirmed; no agent retry, OTP, token, authentication URL or credential was collected. Independent one-shot reconciliation at `2026-10-02T22:49:43Z` still found 1.10.0 absent (E404), latest 1.9.0, and unchanged local hashes. Ordinary npm debug logs were not inspected.
+
+The owner must run the following exact command in an interactive terminal and complete browser/second-factor prompts there, without sharing any codes:
+
+```bash
+npm publish /private/var/folders/qg/r_11gk3n283_h43_7ncnf6r00000gn/T/osdy-pi-1.10.0-evidence-8xnrh2h0/osdy-pi-1.10.0.tgz --access public --tag latest --registry=https://registry.npmjs.org/
+```
+
+After owner confirmation, reconcile official version/latest and both archive hashes before any retry or GitHub Release. A successful/processing publish message alone is provisional. Never publish `.` or repack, never request credentials/OTP, and do not move the tag. Human visual/live-provider capture and an installation smoke test remain unverified.
