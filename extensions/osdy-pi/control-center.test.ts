@@ -3,7 +3,8 @@ import { existsSync } from "node:fs";
 import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { CURSOR_MARKER, visibleWidth } from "@earendil-works/pi-tui";
+import type { ControlCenterDependencies, ControlCenterServiceAction } from "./control-center.js";
 import type { ControlCenterPreferences, VisualPreferenceAction } from "./control-center-preferences.js";
 
 registerHooks({
@@ -17,7 +18,8 @@ registerHooks({
 });
 const { ControlCenter } = await import("./control-center.js");
 
-function fixture(names = ["dark", "light"], preferences?: ControlCenterPreferences) {
+function fixture(names = ["dark", "light"], preferences?: ControlCenterPreferences,
+	services?: Pick<ControlCenterDependencies, "git" | "sounds">) {
 	let current = "dark";
 	let appearance: "dark" | "light" = "dark";
 	let failure: string | undefined;
@@ -32,6 +34,7 @@ function fixture(names = ["dark", "light"], preferences?: ControlCenterPreferenc
 			fg: (_color, text) => `\x1b[${appearance === "dark" ? 31 : 32}m${text}\x1b[0m`,
 		}),
 		preferences,
+		...services,
 		readThemes: () => names.map((name) => ({ name, path: undefined })),
 		applyTheme: (name) => {
 			assert.equal(disposed, false);
@@ -308,4 +311,81 @@ void test("empty and failed theme reads are safe; disposal ignores input and inv
 	});
 	assert.ok(panel.render(30).length <= 4);
 	assert.match(panel.render(80).join("\n"), /themes unavailable/);
+});
+
+function serviceFixture() {
+	const actions: ControlCenterServiceAction[] = [];
+	let complete: (result: { failed: boolean; message: string }) => void = () => {};
+	const service = {
+		read: () => Promise.resolve({ summary: "Master unavailable", note: "Flags override saved paths", rows: [
+			{ label: "Configure completion", current: false, details: ["Saved: /saved.wav", "Effective (startup-flag): /flag.wav"], action: { kind: "sound-configure" as const, event: "completion" as const, path: "/saved.wav" } },
+			{ label: "Clear completion", current: false, action: { kind: "sound-clear" as const, event: "completion" as const } },
+			{ label: "Test completion", current: false, action: { kind: "sound-test" as const, event: "completion" as const } },
+		] }),
+		apply: (action: ControlCenterServiceAction) => {
+			actions.push(action);
+			return new Promise<{ failed: boolean; message: string }>((resolve) => { complete = resolve; });
+		},
+	};
+	return { ...fixture(undefined, undefined, { sounds: service }), actions,
+		complete: (failed: boolean) => complete({ failed, message: failed ? "Not saved" : "Saved globally" }) };
+}
+const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+async function openSounds(f: ReturnType<typeof serviceFixture>) {
+	for (let i = 0; i < 5; i++) f.panel.handleInput(down);
+	await settle(); f.panel.handleInput(right);
+}
+
+void test("Sounds opening is read-only; inline Input cancel and submit stay in the overlay", async () => {
+	const f = serviceFixture(); await openSounds(f);
+	assert.match(f.panel.render(100).join("\n"), /Master unavailable/);
+	assert.match(f.panel.render(100).join("\n"), /Saved: \/saved.wav/);
+	assert.match(f.panel.render(100).join("\n"), /Effective \(startup-flag\): \/flag.wav/);
+	assert.deepEqual(f.actions, []);
+	f.panel.focused = true;
+	f.panel.handleInput("\r");
+	assert.match(f.panel.render(100).join("\n"), /Sound path.*completion/);
+	assert.ok(f.panel.render(100).join("\n").includes(CURSOR_MARKER));
+	for (const width of [1, 8, 24, 48]) assert.ok(f.panel.render(width).every((line) => visibleWidth(line) <= width));
+	f.panel.handleInput("\x1b");
+	assert.equal(f.closes(), 0); assert.deepEqual(f.actions, []);
+	f.panel.handleInput("\r"); f.panel.handleInput("\x01"); f.panel.handleInput("\x0b");
+	f.panel.handleInput("/custom.wav"); f.panel.handleInput("\r");
+	assert.deepEqual(f.actions, [{ kind: "sound-set", event: "completion", path: "/custom.wav" }]);
+	f.panel.handleInput("\r"); assert.equal(f.actions.length, 1);
+	f.complete(false); await settle();
+	assert.match(f.panel.render(100).join("\n"), /Saved globally/);
+});
+
+void test("inline sound failures report Not saved and allow retry", async () => {
+	const f = serviceFixture(); await openSounds(f);
+	f.panel.handleInput(down); f.panel.handleInput("\r");
+	f.complete(true); await settle();
+	assert.match(f.panel.render(100).join("\n"), /Not saved/);
+	assert.doesNotMatch(f.panel.render(100).join("\n"), /Saved globally/);
+	f.panel.handleInput("\r"); assert.equal(f.actions.length, 2);
+});
+
+void test("explicit clear/test actions and late service completion preserve disposal and narrow bounds", async () => {
+	for (const [index, kind] of [[1, "sound-clear"], [2, "sound-test"]] as const) {
+		const f = serviceFixture(); await openSounds(f);
+		for (let i = 0; i < index; i++) f.panel.handleInput(down);
+		f.panel.handleInput("\r"); assert.equal(f.actions[0]?.kind, kind);
+		for (const width of [1, 8, 24, 48]) assert.ok(f.panel.render(width).every((line) => visibleWidth(line) <= width));
+		f.dispose(); const renders = f.renders(); f.complete(true); await settle();
+		assert.equal(f.renders(), renders);
+	}
+});
+
+void test("disposed overlays ignore late category reads, including errors", async () => {
+	for (const fails of [true, false]) {
+		let finish: () => void = () => {};
+		const f = fixture(undefined, undefined, { git: {
+			read: () => new Promise((resolve, reject) => { finish = () => fails ? reject(new Error("late")) : resolve({ summary: "Branch main", note: "Read-only", rows: [] }); }),
+			apply: () => Promise.resolve({ failed: false, message: "Saved globally" }),
+		} });
+		for (let i = 0; i < 4; i++) f.panel.handleInput(down);
+		f.dispose(); const renders = f.renders(); finish(); await settle();
+		assert.equal(f.renders(), renders);
+	}
 });

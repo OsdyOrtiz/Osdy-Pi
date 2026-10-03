@@ -141,13 +141,19 @@ void test("registered legacy commands and the modal share live values and existi
 	const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
 	const writes: GlobalEditorSettings[] = [];
 	const notices: { message: string; level: string | undefined }[] = [];
+	const gitCalls: { command: string; args: string[] }[] = [];
 	let failure = false;
 	let mounts = 0;
 	let panels = 0;
 	const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
 		on: () => {}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
+		exec: (command: string, args: string[]) => {
+			gitCalls.push({ command, args: [...args] });
+			const subcommand = args[0] === "--no-optional-locks" ? args[1] : args[0];
+			return Promise.resolve({ stdout: subcommand === "branch" ? "test-branch\n" : "", stderr: "", code: 0, killed: false });
+		},
 		events: { on: () => () => {} } } as unknown as ExtensionAPI;
-	const ctx = { mode: "tui", hasUI: true, ui: {
+	const ctx = { cwd: process.cwd(), mode: "tui", hasUI: true, ui: {
 		notify: (message: string, level?: string) => { notices.push({ message, level }); },
 		setHeader: () => { mounts++; }, setFooter: () => {}, setWidget: () => {}, setWorkingVisible: () => {},
 		setEditorComponent: () => {},
@@ -166,6 +172,15 @@ void test("registered legacy commands and the modal share live values and existi
 			assert.match(panel.render(100).join("\n"), /Current: osdy-theme/);
 			await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
 			assert.match(panel.render(100).join("\n"), /Saved globally: osdy-theme/);
+			panel.handleInput("\x1b[D");
+			for (let i = 0; i < 3; i++) panel.handleInput("\x1b[B");
+			for (let i = 0; i < 8; i++) await Promise.resolve();
+			assert.match(panel.render(100).join("\n"), /Branch: test-branch/);
+			assert.match(panel.render(100).join("\n"), /disabled.*current/);
+			panel.handleInput("\x1b[C"); panel.handleInput("\x1b[H"); panel.handleInput("\r");
+			assert.equal(writes.at(-1)?.workingTreeEnabled, true, "modal uses shared legacy Git store owner");
+			for (let i = 0; i < 64; i++) await Promise.resolve();
+			assert.match(panel.render(100).join("\n"), /enabled.*current/);
 			panel.handleInput("\x1b"); panel.dispose();
 		},
 	} } as unknown as ExtensionCommandContext;
@@ -186,12 +201,27 @@ void test("registered legacy commands and the modal share live values and existi
 			assert.deepEqual(notices.at(-1), { message: expected, level: "info" });
 			assert.equal(writes.at(-1)?.[field], value);
 		}
+		await legacy.handler("working-tree off", ctx);
+		assert.equal(writes.at(-1)?.workingTreeEnabled, false);
+		assert.equal(notices.at(-1)?.message, "osdy-pi working tree disabled");
 		const before = writes.length;
-		for (const args of ["header status", "mascot status", "editor status", "header invalid", "mascot bts extra", "editor simple extra"]) await legacy.handler(args, ctx);
+		for (const args of ["working-tree status", "header status", "mascot status", "editor status", "header invalid", "mascot bts extra", "editor simple extra"]) await legacy.handler(args, ctx);
 		assert.equal(writes.length, before, "status and invalid inputs never save");
+		const beforeModalGitCalls = gitCalls.length;
+		const beforeModalNotices = notices.length;
 		await modal.handler("", ctx);
+		assert.deepEqual(notices.slice(beforeModalNotices).filter((notice) => notice.level === "error"), [],
+			"modal integration assertions must not be swallowed as Control Center error notifications");
 		assert.equal(panels, 1);
+		assert.deepEqual(gitCalls.slice(beforeModalGitCalls, beforeModalGitCalls + 2), [
+			{ command: "git", args: ["--no-optional-locks", "branch", "--show-current"] },
+			{ command: "git", args: ["--no-optional-locks", "status", "--short", "--untracked-files=normal"] },
+		], "modal inspection uses exact read-only Git commands, including the global option");
 		failure = true;
+		await legacy.handler("working-tree off", ctx);
+		assert.match(notices.at(-1)?.message ?? "", /disabled but could not be saved/);
+		await legacy.handler("working-tree status", ctx);
+		assert.equal(notices.at(-1)?.message, "osdy-pi working tree disabled");
 		for (const args of ["header neon", "mascot current", "editor simple"]) {
 			await legacy.handler(args, ctx);
 			assert.match(notices.at(-1)?.message ?? "", /changed but could not be saved/);

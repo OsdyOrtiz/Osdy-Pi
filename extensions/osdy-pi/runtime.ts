@@ -5,6 +5,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
 import { showControlCenter } from "./control-center.js";
+import { createControlCenterGit } from "./control-center-git.js";
+import { bindControlCenterSounds } from "./control-center-sounds.js";
 import type { VisualPreferenceAction } from "./control-center-preferences.js";
 import { identifyLocalPackage, runOsdyUninstall } from "./uninstall.js";
 import { isAbsolute, join } from "node:path";
@@ -544,6 +546,26 @@ async function saveWorkingTreePreference(
 	return saveVisualSettings(state, settingsStore);
 }
 
+/** Shared by legacy commands and the modal; session placement is not persisted. */
+export async function applyWorkingTreeEnabled(
+	value: boolean,
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+	workingState: WorkingWidgetState,
+	workingTreeState: WorkingTreeState,
+	settingsStore: ReturnType<typeof createEditorSettingsStore>,
+): Promise<boolean> {
+	state.workingTreeEnabled = value;
+	workingTreeState.enabled = value;
+	syncWorkingTreeWidget(ctx, state, workingState, workingTreeState);
+	reconcileResponsiveUi(pi, ctx, state, workingTreeState);
+	if (!value) clearWorkingTree(workingTreeState);
+	const saved = await saveWorkingTreePreference(state, settingsStore);
+	if (value) await refreshWorkingTree(pi, ctx, workingTreeState);
+	return saved;
+}
+
 async function handleWorkingTreeCommand(
 	action: string | undefined,
 	rest: string[],
@@ -566,12 +588,7 @@ async function handleWorkingTreeCommand(
 		return;
 	}
 	if (action === "on") {
-		state.workingTreeEnabled = true;
-		workingTreeState.enabled = true;
-		syncWorkingTreeWidget(ctx, state, workingState, workingTreeState);
-		reconcileResponsiveUi(pi, ctx, state, workingTreeState);
-		const saved = await saveWorkingTreePreference(state, settingsStore);
-		await refreshWorkingTree(pi, ctx, workingTreeState);
+		const saved = await applyWorkingTreeEnabled(true, pi, ctx, state, workingState, workingTreeState, settingsStore);
 		ctx.ui.notify(
 			saved
 				? "osdy-pi working tree enabled"
@@ -581,12 +598,7 @@ async function handleWorkingTreeCommand(
 		return;
 	}
 	if (action === "off") {
-		state.workingTreeEnabled = false;
-		workingTreeState.enabled = false;
-		syncWorkingTreeWidget(ctx, state, workingState, workingTreeState);
-		reconcileResponsiveUi(pi, ctx, state, workingTreeState);
-		clearWorkingTree(workingTreeState);
-		const saved = await saveWorkingTreePreference(state, settingsStore);
+		const saved = await applyWorkingTreeEnabled(false, pi, ctx, state, workingState, workingTreeState, settingsStore);
 		ctx.ui.notify(
 			saved
 				? "osdy-pi working tree disabled"
@@ -836,10 +848,21 @@ function registerCommand(
  todoActive: boolean,
 ): void {
 	pi.registerCommand("osdy", {
-		description: "Open Osdy Control Center (inline Theme, Header, Mascot and Editor controls).",
+		description: "Open Osdy Control Center (visual preferences, Git and Sounds).",
 		handler: async (_args, ctx) => showControlCenter(ctx, {
 			snapshot: () => state,
 			apply: (action) => applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
+		}, {
+			git: createControlCenterGit({
+				snapshot: () => ({ enabled: state.workingTreeEnabled, placement: state.workingTreePlacement }),
+				exec: async (args) => {
+					const result = await pi.exec("git", args, { cwd: ctx.cwd, timeout: 5000 });
+					if (result.code !== 0 || result.killed) throw new Error("Git inspection failed");
+					return result.stdout;
+				},
+				applyEnabled: (value) => applyWorkingTreeEnabled(value, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
+			}),
+			sounds: bindControlCenterSounds(pi, ctx, settingsStore, createAudioPlaybackAdapter()),
 		}),
 	});
 	pi.registerCommand("osdy-pi", {
