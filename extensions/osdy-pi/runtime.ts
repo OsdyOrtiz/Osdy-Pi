@@ -4,6 +4,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
+import { showControlCenter } from "./control-center.js";
 import { identifyLocalPackage, runOsdyUninstall } from "./uninstall.js";
 import { isAbsolute, join } from "node:path";
 import { inspectJokerAgents, setupJokerAgents, switchAgentMode } from "./agent-coexistence-setup.js";
@@ -814,6 +815,10 @@ function registerCommand(
 	stopResponsive: () => void,
  todoActive: boolean,
 ): void {
+	pi.registerCommand("osdy", {
+		description: "Open Osdy Control Center (inline Theme selection).",
+		handler: async (_args, ctx) => showControlCenter(ctx),
+	});
 	pi.registerCommand("osdy-pi", {
 		description:
 			"Manage Osdy Pi: visual on/off, status, todo on/off/status, agents, mascot, editor, sound, working tree, or diff.",

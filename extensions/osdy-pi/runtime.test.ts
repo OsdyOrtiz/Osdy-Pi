@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -42,6 +42,38 @@ registerHooks({
 });
 
 const profileLabels = await import("./profile-label.js");
+const { showControlCenter } = await import("./control-center.js");
+
+void test("Control Center refuses RPC, print, JSON and missing UI without custom or mutation", async () => {
+ for (const mode of ["rpc", "print", "json", "tui"] as const) {
+  const notices: string[] = [];
+  await showControlCenter({
+   mode, hasUI: mode === "rpc",
+   ui: {
+    notify: (message) => { notices.push(message); },
+    custom: () => { throw new Error("custom must not run"); },
+    get theme(): Theme { throw new Error("theme must not be read"); },
+    getAllThemes: () => { throw new Error("themes must not be read"); },
+    setTheme: () => { throw new Error("settings must not mutate"); },
+   },
+  });
+  assert.match(notices.join("\n"), /interactive terminal UI/);
+ }
+});
+
+void test("Control Center reports custom UI startup errors", async () => {
+ const notices: string[] = [];
+ await showControlCenter({
+  mode: "tui", hasUI: true,
+  ui: {
+   notify: (message) => { notices.push(message); },
+   custom: () => Promise.reject(new Error("overlay failed")),
+   get theme(): Theme { throw new Error("factory not invoked"); },
+   getAllThemes: () => [], setTheme: () => ({ success: false }),
+  },
+ });
+ assert.match(notices.join("\n"), /overlay failed/);
+});
 
 const { PLUGIN_EVENTS, subscribeQuestionPromptAudioNotification } =
 	await import("./plugin-events.js");
@@ -87,6 +119,7 @@ void test("actual factory registers no TODO surfaces by default, and all three o
     }, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {}, on: () => {}, events: { on: () => () => {} } } as unknown as ExtensionAPI;
    await registerOsdyPi(pi);
    assert.ok(commands.includes("osdy-pi"));
+   assert.ok(commands.includes("osdy"));
    assert.equal(commands.includes("todos"), enabled); assert.equal(tools.includes("todo"), enabled);
    assert.equal(shortcuts.length > 0, enabled);
    assert.equal(execCalls, probes);
@@ -118,6 +151,7 @@ void test("official SDK factory uses SDK cwd, not the safe process cwd, before T
    try {
     const extension = await loadExtensionFromFactory(factory, cwd, eventBus, runtime);
     assert.ok(extension.commands.has("osdy-pi"));
+    assert.ok(extension.commands.has("osdy"));
     assert.equal(extension.tools.has("todo"), active, cwd);
     assert.equal(extension.commands.has("todos"), active, cwd);
     assert.equal(extension.shortcuts.size > 0, active, cwd);

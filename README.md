@@ -52,6 +52,16 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 Osdy Pi's own extension and themes are bundled—do not install them separately. Starting with **1.11.0**, the package bundles **23 themes**, including Spider-Man Classic, Miles Morales, and Spider-Verse: Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute were introduced in 1.8.0; Halloween and Halloween Killer were added in 1.9.0. Check your installed npm version to see which themes are available. Launch through `osdy-pi` (or `npm run pi:dev`) to activate a valid Osdy default account into Pi's shared agent directory before Pi starts. With no default, Pi remains unmanaged; run `/osdy-account` to create a profile and establish a default. On session start, Osdy Pi restores its persisted enabled state when a UI is available and preserves your selected Pi theme. When disabled, it leaves Gentle Shell (or Pi's native UI) untouched.
 
+### Control Center in Pi
+
+Run **`/osdy`** in interactive Pi to open the Osdy Control Center. This first increment supports **Theme** inline; Header, Mascot, Editor, Git, Sounds, Account, and Usage explicitly show **not yet available**. Their existing commands remain available.
+
+- Use **↑/↓**, **Home/End**, or **Page Up/Down** to navigate; **Tab** or **←/→** switches between categories and details. **Enter** selects.
+- Theme lists Pi's available themes and marks the current theme. A successful selection applies live and saves globally in the active Pi agent directory; project settings can override it at startup. Failures appear in the modal.
+- **Esc** closes without undoing saved changes. On narrow terminals, categories and details share the viewport; use Tab to switch.
+
+This modal requires Pi's terminal UI, not RPC, JSON, or print mode. `/osdy-pi` remains the legacy extension command; the external shell command `osdy` (`bin/osdy.mjs`) remains the isolated launcher described below.
+
 ### Optional: isolated `osdy` command
 
 Use this path when you want **installed, normal Pi** with Osdy-specific settings and sessions, without changing the official Pi profile. `pi install` loads package resources in Pi; it does not guarantee that package executables are available on your shell's `PATH`. To use the packaged commands, install the CLI separately (or run the scripts directly from a checkout):
