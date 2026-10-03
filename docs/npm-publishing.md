@@ -1,6 +1,6 @@
 # Publish npm patches automatically from main
 
-After owner setup, every push to `main`—merges **and direct pushes**—runs checks and publishes `osdy-pi` to `https://registry.npmjs.org/` with `latest`. Failed checks publish nothing. No version commits, tags, or GitHub Releases are written back.
+After owner setup, every push to `main`—merges **and direct pushes**—runs checks that gate an attempt to publish `osdy-pi` to `https://registry.npmjs.org/` with `latest`. Failed checks publish nothing; authentication, permissions, or registry failures can still prevent publication. No version commits, tags, or GitHub Releases are written back.
 
 ## Owner setup
 
@@ -14,8 +14,11 @@ After owner setup, every push to `main`—merges **and direct pushes**—runs ch
    | Workflow filename | `npm-publish.yml` |
    | Environment | Leave blank; this workflow has no environment |
 
-3. Save the binding, then merge the workflow to `main` when ready to publish. This merge itself triggers publication. Never provide an npm token to the workflow or an agent.
-4. Inspect the Actions run and retained `npm-release-*` artifact. Success means the official registry version, source commit, SHA-1, SHA-512 integrity, and `latest` all matched—not merely that npm accepted the command.
+   Binding values are case-sensitive. Use the workflow filename only (`npm-publish.yml`), not a path; leave the environment blank.
+
+3. Under **Allowed actions**, enable **Allow npm publish**: it is **required** for this workflow's direct publication. **npm stage publish** is always allowed. **npm dist-tag** is independent and optional here: the workflow publishes with `--tag latest` but does not issue `npm dist-tag` commands.
+4. Save the binding, then merge the workflow to `main` when ready for a publication attempt. This merge itself triggers the workflow. Never provide an npm token to the workflow or an agent.
+5. Inspect the Actions run and retained `npm-release-*` artifact. Success means the official registry version, source commit, SHA-1, SHA-512 integrity, and `latest` all matched—not merely that npm accepted the command.
 
 Trusted publishing uses GitHub-hosted Linux runners, Node 24, and npm **11.5.1 or newer**. The script checks that minimum and fails if the runner toolchain is too old. Only the publish job has `id-token: write`; repository access is read-only. Local tests do not prove the npm account binding or live OIDC publication.
 
@@ -37,7 +40,9 @@ The concurrency group serializes the entire workflow with `queue: max` and `canc
 
 Download the retained archive and `evidence.json` (30-day retention). The script makes **one publish attempt**, then at most six read-only version checks, separated by ten seconds when absent. Network/service failures, missing hash evidence, conflicts, or wrong `latest` fail closed. A timeout is not permission to publish again.
 
-Reconcile the evidence's exact version, `releaseSource`, both hashes, and `latest` on the official registry before taking further action. If all match, rerun to verify without republishing. If the version exists with different bytes or `latest` has moved, stop for owner investigation; this workflow does not repair tags. If still absent, determine whether the original request is definitively rejected before approving a fresh main push. Do not use a new push to bypass uncertainty. There is no manual-dispatch trigger or automatic publish retry.
+Reconcile the evidence's exact version, `releaseSource`, both hashes, and `latest` on the official registry before taking further action. If all match, rerun to verify without republishing. If the version exists with different bytes or `latest` has moved, stop for owner investigation; this workflow does not repair tags. There is no manual-dispatch trigger or automatic publish retry.
+
+After a definitive denial, reconcile that exact version, source, both hashes, and tag before any retry. A rerun (`run_attempt=2`) with no registry-visible matching source is deliberately rejected by the guard, even after a known denial. Only after known rejection, no conflicting publication, and explicit owner approval may a fresh `main` update trigger a new `run_attempt=1`. Never use a new push to bypass an unknown outcome. An E403 on the final publication PUT establishes denial, not that the binding lacked rights or that a permissions change fixed the cause; effective permission timing remains unverified.
 
 ## Review and local checks
 
