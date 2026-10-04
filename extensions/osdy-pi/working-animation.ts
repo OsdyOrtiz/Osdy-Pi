@@ -1,17 +1,19 @@
-import { WORKING_SPINNER_FRAMES } from "./constants.js";
+import { WORKING_ACTIVITY_FRAMES, WORKING_SYMBOL_PULSE } from "./constants.js";
 import type { SimpleTheme, WorkingWidgetState } from "./types.js";
 import { fitCenterVisible } from "./utils.js";
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const isWhitespace = (segment: string) => /\s/u.test(segment);
 
-/** Render the theme-accent Braille spinner beside a theme-aware traveling letter highlight. */
+/** Render a compact activity symbol with a shared theme pulse beside the traveling letter highlight. */
 export function renderWorkingWidget(
 	state: WorkingWidgetState,
 	theme: SimpleTheme,
 	width: number,
 ): string[] {
 	if (!state.active) return [];
-	const spinner = WORKING_SPINNER_FRAMES[state.frame % WORKING_SPINNER_FRAMES.length] ?? "";
+	const frames = WORKING_ACTIVITY_FRAMES[state.activity];
+	const symbol = frames[state.frame % frames.length] ?? "";
+	const symbolColor = WORKING_SYMBOL_PULSE[state.frame % WORKING_SYMBOL_PULSE.length] ?? "mdQuoteBorder";
 	const segments = [...graphemes.segment(state.label)].map(({ segment }) => segment);
 	const letterCount = segments.filter((segment) => !isWhitespace(segment)).length;
 	const highlighted = letterCount > 0 ? state.frame % letterCount : -1;
@@ -29,5 +31,5 @@ export function renderWorkingWidget(
 			return theme.fg("text", segment);
 		})
 		.join("");
-	return [fitCenterVisible(`${theme.fg("accent", spinner)} ${label}`, width)];
+	return [fitCenterVisible(`${theme.fg(symbolColor, symbol)} ${label}`, width)];
 }

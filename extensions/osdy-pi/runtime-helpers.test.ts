@@ -101,6 +101,7 @@ function createWorkingTreeState(): WorkingTreeState {
 function createWorkingState(): WorkingWidgetState {
 	return {
 		active: false,
+		activity: "thinking",
 		label: "Working...",
 		frame: 0,
 		timer: undefined,

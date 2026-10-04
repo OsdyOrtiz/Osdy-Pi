@@ -303,7 +303,7 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 | Header and mascot | Independently selectable `osdy-theme`/`neon` headers and `current`/`bts` mascots |
 | Messages | Native colored user cards without emojis and plain assistant Markdown with a separate assistant `🦝` row |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
-| Status | Theme-aware Braille spinner and animated working label, responsive footer metrics, dynamic extension statuses, and Codex subscription quota with low-capacity emphasis |
+| Status | Six activity labels with compact per-state glyphs and a shared theme-color pulse, responsive footer metrics, dynamic extension statuses, and Codex subscription quota with low-capacity emphasis |
 | Local analytics | Four keyboard-selectable pages with shared filters, token charts, estimated cost, and private metadata-only history from new assistant turns |
 | Git | Working-tree summary and a centered, filterable diff panel |
 | Audio | Optional event sounds on macOS and Windows |
@@ -475,7 +475,20 @@ The default `auto` editor mode preserves the responsive behavior: it uses the fr
 
 In auto or extended mode at a non-small width, the framed editor shows the model and thinking level in its title and session usage in its footer. For an account-profile launch, the left title shows the active profile name instead of `Osdy-Pi`. When the native editor is effective (simple mode or any small terminal), the Osdy footer instead shows model, active profile when present, thinking, and usage rows before its path/branch and status rows. It uses the currently active Pi/Osdy theme palette; no separate editor theme selector exists. Usage covers input, output, cache read, cache write when present, cost, and context. If Pi supports autocomplete, the editor uses Pi's native autocomplete rendering while the completion UI is visible.
 
-While work is active, Osdy Pi shows the original Braille spinner above the editor in the selected theme's accent color. A two-color wave travels across the `Working...` and `Running ...` letters: the current letter uses the active theme's `accent`, the trailing letter uses `warning`, and the rest use `text`. Only the current `accent` letter tries the active theme's bold styling; this is a terminal-dependent visual trial, not a change to font size. The trailing `warning` letter stays plain, as does the accent spinner. The spinner and label update when the theme changes. Osdy Pi hides Pi's built-in working row while enabled to avoid a duplicate indicator.
+While work is active, Osdy Pi centers an activity label and compact animated glyph above the editor:
+
+| Activity | Glyph frames | Meaning |
+| --- | --- | --- |
+| `Thinking...` | ◌ ◎ ◉ ● | Waiting on the model without active tools—not guaranteed internal reasoning. |
+| `Exploring...` | ✶ ✷ ✸ ✹ | Recognized reads, searches, and documentation tools. |
+| `Verifying...` | ◇ ◈ ◆ ◈ | Recognized checks. |
+| `Working...` | ✻ ✼ ✽ ❋ | Recognized mutations. |
+| `Delegating...` | ✧ ✦ ✧ | Subagent handoffs. |
+| `Executing...` | ◴ ◷ ◶ ◵ | Unknown or ambiguous tools. |
+
+When tools overlap, the latest remaining tool owns the display. All glyphs share a brightness pulse through the active theme's `mdQuoteBorder`, `thinkingHigh`, `accent`, and `borderAccent` colors; the animation signals activity, not measured percentage progress. Glyphs and labels use a single 80 ms timer, with no new controls or settings.
+
+A two-color wave travels across the label: the current letter uses the active theme's `accent`, the trailing letter uses `warning`, and the rest use `text`. Only the current `accent` letter tries the active theme's bold styling; this is a terminal-dependent visual trial, not a change to font size. The trailing `warning` letter and glyph stay plain. The glyph and label update when the theme changes. Osdy Pi hides Pi's built-in working row while enabled to avoid a duplicate indicator.
 
 ## Working tree and diff
 

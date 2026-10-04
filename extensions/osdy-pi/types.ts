@@ -76,8 +76,17 @@ export type OsdyState = {
 	workingTreePlacement: WorkingTreePlacement;
 };
 
+export type WorkingActivity =
+	| "thinking"
+	| "exploring"
+	| "verifying"
+	| "working"
+	| "delegating"
+	| "executing";
+
 export type WorkingWidgetState = {
 	active: boolean;
+	activity: WorkingActivity;
 	label: string;
 	frame: number;
 	timer: ReturnType<typeof setInterval> | undefined;

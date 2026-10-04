@@ -1,21 +1,23 @@
-import type { OsdyState, WorkingWidgetState } from "./types.js";
+import type { OsdyState, WorkingActivity, WorkingWidgetState } from "./types.js";
+import { classifyWorkingActivity, WORKING_ACTIVITY_LABELS } from "./working-activity.js";
 
 export type WorkingController = {
 	onAgentStart(): void;
 	onAgentEnd(): void;
-	onToolStart(toolName: string): void;
-	onToolEnd(): void;
+	onToolStart(toolName: string, toolCallId: string, args?: unknown): void;
+	onToolEnd(toolCallId: string): void;
 	onShutdown(): void;
 	refreshWorking(): void;
 	stopWorking(): void;
 };
 
 export function createWorkingController(
-	state: OsdyState,
+	state: Pick<OsdyState, "enabled">,
 	workingState: WorkingWidgetState,
 ): WorkingController {
 	let activeAgent = false;
-	let activeToolCount = 0;
+	// Map insertion order is start order; duplicate starts must not reorder it.
+	const activeTools = new Map<string, WorkingActivity>();
 
 	const requestWorkingRender = () => workingState.tui?.requestRender();
 	const clearWorkingTimer = () => {
@@ -30,33 +32,31 @@ export function createWorkingController(
 			requestWorkingRender();
 		}, 80);
 	};
-	const setWorkingState = (active: boolean, label: string) => {
-		workingState.active = active;
-		workingState.label = label;
-	};
-	const startWorking = (label: string) => {
-		if (!state.enabled) return;
-		setWorkingState(true, label);
-		ensureWorkingTimer();
-		requestWorkingRender();
+	const setActivity = (activity: WorkingActivity) => {
+		workingState.activity = activity;
+		workingState.label = WORKING_ACTIVITY_LABELS[activity];
 	};
 	const stopWorking = () => {
-		setWorkingState(false, workingState.label);
+		workingState.active = false;
 		clearWorkingTimer();
 		requestWorkingRender();
 	};
-	const getIdleLabel = () =>
-		activeToolCount > 0 ? "Running tool..." : "Working...";
 	const refreshWorking = () => {
-		if (!state.enabled || (!activeAgent && activeToolCount === 0)) {
+		let activity: WorkingActivity = "thinking";
+		for (const remaining of activeTools.values()) activity = remaining;
+		setActivity(activity);
+		if (!state.enabled || (!activeAgent && activeTools.size === 0)) {
 			stopWorking();
 			return;
 		}
-		startWorking(getIdleLabel());
+		workingState.active = true;
+		ensureWorkingTimer();
+		requestWorkingRender();
 	};
 	const resetActivity = () => {
 		activeAgent = false;
-		activeToolCount = 0;
+		activeTools.clear();
+		setActivity("thinking");
 	};
 
 	return {
@@ -68,12 +68,13 @@ export function createWorkingController(
 			resetActivity();
 			refreshWorking();
 		},
-		onToolStart(toolName: string): void {
-			activeToolCount += 1;
-			startWorking(`Running ${toolName}...`);
+		onToolStart(toolName: string, toolCallId: string, args?: unknown): void {
+			if (activeTools.has(toolCallId)) return;
+			activeTools.set(toolCallId, classifyWorkingActivity(toolName, args));
+			refreshWorking();
 		},
-		onToolEnd(): void {
-			activeToolCount = Math.max(0, activeToolCount - 1);
+		onToolEnd(toolCallId: string): void {
+			if (!activeTools.delete(toolCallId)) return;
 			refreshWorking();
 		},
 		onShutdown(): void {

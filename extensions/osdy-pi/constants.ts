@@ -1,20 +1,26 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import type { HeaderVariant, MascotChoice } from "./types.js";
+import type { HeaderVariant, MascotChoice, WorkingActivity } from "./types.js";
 
 export const ANIMATION_ENABLED = true;
 export const ANIMATION_INTERVAL_MS = 30;
 export const INTRO_ANIMATION_FRAMES = 28;
-export const WORKING_SPINNER_FRAMES = [
-  "⠋",
-  "⠙",
-  "⠹",
-  "⠸",
-  "⠼",
-  "⠴",
-  "⠦",
-  "⠧",
-  "⠇",
-  "⠏",
+export const WORKING_ACTIVITY_FRAMES: Record<WorkingActivity, readonly string[]> = {
+  thinking: ["◌", "◎", "◉", "●"],
+  exploring: ["✶", "✷", "✸", "✹"],
+  verifying: ["◇", "◈", "◆", "◈"],
+  working: ["✻", "✼", "✽", "❋"],
+  delegating: ["✧", "✦", "✧"],
+  executing: ["◴", "◷", "◶", "◵"],
+};
+export const WORKING_SYMBOL_PULSE: readonly string[] = [
+  "mdQuoteBorder",
+  "thinkingHigh",
+  "accent",
+  "borderAccent",
+  "accent",
+  "thinkingHigh",
+  "mdQuoteBorder",
+  "mdQuoteBorder",
 ];
 export const WORKING_WIDGET_KEY = "osdy-pi-working";
 export const WORKING_TREE_WIDGET_KEY = "osdy-pi-working-tree";

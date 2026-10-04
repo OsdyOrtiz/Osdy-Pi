@@ -111,6 +111,12 @@ void test("Control Center refuses RPC, print, JSON and missing UI without custom
  }
 });
 
+void test("runtime forwards tool identity and unknown start args to the working controller", () => {
+	const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
+	assert.match(source, /controller\.onToolStart\(event\.toolName, event\.toolCallId, event\.args\)/);
+	assert.match(source, /controller\.onToolEnd\(event\.toolCallId\)/);
+});
+
 void test("Control Center reports custom UI startup errors", async () => {
  const notices: string[] = [];
  await showControlCenter({
@@ -149,7 +155,7 @@ void test("shared visual actions apply immediately, save the complete settings, 
 				editorEffective: true, smallMode: false, workingTreeEnabled: false, workingTreePlacement: "aboveEditor",
 				codexUsage: { kind: "idle" }, fallbackEditorFactory: undefined, tui: undefined };
 			const tree: WorkingTreeState = { enabled: false, visible: false, loading: false, snapshot: null, error: undefined, tui: undefined };
-			const working: WorkingWidgetState = { active: false, label: "Working", frame: 0, timer: undefined, tui: undefined };
+			const working: WorkingWidgetState = { active: false, activity: "thinking", label: "Working", frame: 0, timer: undefined, tui: undefined };
 			let mounts = 0;
 			let editor: unknown = "unchanged";
 			const ctx = { hasUI: true, ui: { setHeader: () => { mounts++; }, setFooter: () => {}, setWidget: () => {},
@@ -216,7 +222,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 		editorEffective: !smallMode, smallMode, workingTreeEnabled: false, workingTreePlacement: "aboveEditor",
 		codexUsage: { kind: "idle" }, fallbackEditorFactory: fallback, tui };
 	const tree: WorkingTreeState = { enabled: false, visible: false, loading: false, snapshot: null, error: undefined, tui: undefined };
-	const working: WorkingWidgetState = { active: false, label: "Working", frame: 0, timer: undefined, tui: undefined };
+	const working: WorkingWidgetState = { active: false, activity: "thinking", label: "Working", frame: 0, timer: undefined, tui: undefined };
 	let resolveSave: () => void = () => {};
 	let rejectSave: () => void = () => {};
 	const store = { path: "/unused", load: () => Promise.reject(new Error("must not load")), save: (settings: GlobalEditorSettings) => new Promise<void>((resolve, reject) => {

@@ -1093,7 +1093,8 @@ export async function registerOsdyPi(
 	};
 	const workingState: WorkingWidgetState = {
 		active: false,
-		label: "Working...",
+		activity: "thinking",
+		label: "Thinking...",
 		frame: 0,
 		timer: undefined,
 		tui: undefined,
@@ -1195,10 +1196,10 @@ export async function registerOsdyPi(
 		}
 	});
 	pi.on("tool_execution_start", (event) =>
-		controller.onToolStart(event.toolName),
+		controller.onToolStart(event.toolName, event.toolCallId, event.args),
 	);
 	pi.on("tool_execution_end", (event, ctx) => {
-		controller.onToolEnd();
+		controller.onToolEnd(event.toolCallId);
 		audioRouter.onToolExecutionEnd(event.isError === true, ctx);
 		if (state.enabled) clearGentleShellChangesWidget(ctx);
 		if (
