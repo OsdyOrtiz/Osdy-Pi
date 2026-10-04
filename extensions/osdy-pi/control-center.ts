@@ -4,10 +4,11 @@ import { doubleBorderBox, MODAL_OVERLAY_OPTIONS } from "./modal-frame.js";
 import { preferenceDetail, visualPreferenceLabel } from "./control-center-preferences.js";
 import type { ControlCenterPreferences, VisualPreferenceAction } from "./control-center-preferences.js";
 import type { ControlCenterTodoAction, ControlCenterTodoService } from "./control-center-todo.js";
+import type { ControlCenterAgentsAction, ControlCenterAgentsService } from "./control-center-agents.js";
 import type { AudioNotificationEvent } from "./audio-notification-types.js";
 
 export const CONTROL_CENTER_CATEGORIES = [
-	"Theme", "Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage", "TODO",
+	"Theme", "Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage", "TODO", "Agents",
 ] as const;
 export type ControlCenterCategory = (typeof CONTROL_CENTER_CATEGORIES)[number];
 export type ControlCenterServiceAction =
@@ -24,7 +25,7 @@ export type ControlCenterUsageAction =
 	| { kind: "usage-account"; current: boolean }
 	| { kind: "usage-detail" };
 export type ControlCenterAction = { kind: "theme"; name: string } | VisualPreferenceAction
-	| ControlCenterServiceAction | ControlCenterAccountAction | ControlCenterUsageAction | ControlCenterTodoAction
+	| ControlCenterServiceAction | ControlCenterAccountAction | ControlCenterUsageAction | ControlCenterTodoAction | ControlCenterAgentsAction
 	| { kind: "sound-configure"; event: AudioNotificationEvent; path: string };
 type InlineServiceAction = ControlCenterServiceAction | ControlCenterAccountAction | ControlCenterUsageAction;
 export interface ControlCenterDetail { summary: string; note: string; rows: ControlCenterRow[] }
@@ -39,6 +40,7 @@ export interface ControlCenterRow {
 	details?: string[];
 }
 export type ControlCenterResult = { kind: "closed" } | { kind: "reload" };
+export type ProviderApplyResult = { kind: "reload"; message: string } | { kind: "rejected"; message: string };
 export interface ControlCenterDependencies {
 	preferences?: ControlCenterPreferences | undefined;
 	git?: ControlCenterService | undefined;
@@ -46,6 +48,7 @@ export interface ControlCenterDependencies {
 	account?: ControlCenterService<ControlCenterAccountAction> | undefined;
 	usage?: ControlCenterService<ControlCenterUsageAction> | undefined;
 	todo?: ControlCenterTodoService | undefined;
+	agents?: ControlCenterAgentsService | undefined;
 	reload?: (result: { kind: "reload" }) => void;
 	theme: () => Pick<Theme, "name" | "appearance" | "fg">;
 	readThemes: () => { name: string; path: string | undefined }[];
@@ -76,7 +79,7 @@ export class ControlCenter implements Component, Focusable {
 	private serviceView: ControlCenterDetail | undefined;
 	private input: Input | undefined;
 	private inputEvent: AudioNotificationEvent | undefined;
-	private confirmation: { action: ControlCenterAccountAction | ControlCenterTodoAction; accept: boolean; details: string[] } | undefined;
+	private confirmation: { action: ControlCenterAccountAction | ControlCenterTodoAction | ControlCenterAgentsAction; accept: boolean; details: string[] } | undefined;
 	private lastWidth = 80;
 	private hasFocus = false;
 	get focused(): boolean { return this.hasFocus; }
@@ -92,6 +95,7 @@ export class ControlCenter implements Component, Focusable {
 			case "Account": return this.dependencies.account;
 			case "Usage": return this.dependencies.usage;
 			case "TODO": return this.dependencies.todo;
+			case "Agents": return this.dependencies.agents;
 			default: return undefined;
 		}
 	}
@@ -223,13 +227,16 @@ export class ControlCenter implements Component, Focusable {
 		}
 	}
 
-	private async activateTodo(action: ControlCenterTodoAction): Promise<void> {
-		const service = this.dependencies.todo;
+	private async activateProvider(action: ControlCenterTodoAction | ControlCenterAgentsAction): Promise<void> {
+		const label = action.kind === "todo-provider" ? "TODO" : "Agents";
+		const service = action.kind === "todo-provider" ? this.dependencies.todo : this.dependencies.agents;
 		if (!service || !this.dependencies.reload) return;
 		this.saving = true;
-		this.feedback = "Saving confirmed TODO selection...";
+		this.feedback = `Saving confirmed ${label} selection...`;
 		try {
-			const result = await service.apply(action);
+			const result = action.kind === "todo-provider"
+				? await this.dependencies.todo!.apply(action)
+				: await this.dependencies.agents!.apply(action);
 			if (this.disposed) return;
 			if (result.kind === "reload") {
 				// done owns overlay removal; showControlCenter finally owns disposal.
@@ -241,7 +248,7 @@ export class ControlCenter implements Component, Focusable {
 		} catch (error) {
 			if (this.disposed) return;
 			this.failed = true;
-			this.feedback = `TODO selection failed: ${errorMessage(error)}. Reload not requested.`;
+			this.feedback = `${label} selection failed: ${errorMessage(error)}. Reload not requested.`;
 		}
 		if (!this.disposed) {
 			this.saving = false;
@@ -251,7 +258,7 @@ export class ControlCenter implements Component, Focusable {
 
 	private activate(action: ControlCenterAction): void {
 		if (this.saving || this.loading) return;
-		if (action.kind === "account-switch" || action.kind === "account-default" || action.kind === "todo-provider") {
+		if (action.kind === "account-switch" || action.kind === "account-default" || action.kind === "todo-provider" || action.kind === "agents-provider") {
 			this.confirmation = { action, accept: false, details: this.rows()[this.rowIndex]?.details ?? [] };
 			return;
 		}
@@ -293,6 +300,7 @@ export class ControlCenter implements Component, Focusable {
 		if (!pending) return [];
 		const action = pending.action;
 		const operation = action.kind === "todo-provider" ? `Turn Osdy TODO ${action.mode}?`
+			: action.kind === "agents-provider" ? `Select ${action.mode === "joker" ? "Joker" : "Gentle"} agents?`
 			: action.kind === "account-switch" ? `Switch to ${action.profile}?` : `Set default: ${action.profile ?? "none"}?`;
 		return [...[operation, ...pending.details].flatMap(line => wrapTextWithAnsi(line, Math.max(1, this.lastWidth - 2))),
 			`${pending.accept ? " " : ">"} Cancel`, `${pending.accept ? ">" : " "} Confirm`, "↑/↓ choose · Enter select · Esc cancel"];
@@ -312,7 +320,7 @@ export class ControlCenter implements Component, Focusable {
 				if (!pending.accept || this.confirmationFits()) {
 					this.confirmation = undefined;
 					if (pending.accept) {
-						if (pending.action.kind === "todo-provider") void this.activateTodo(pending.action);
+						if (pending.action.kind === "todo-provider" || pending.action.kind === "agents-provider") void this.activateProvider(pending.action);
 						else void this.activateService(pending.action);
 					}
 				}
@@ -320,7 +328,7 @@ export class ControlCenter implements Component, Focusable {
 			this.dependencies.requestRender();
 			return;
 		}
-		if (this.saving && this.category === "TODO") return;
+		if (this.saving && (this.category === "TODO" || this.category === "Agents")) return;
 		if (this.input) {
 			this.input.handleInput(data);
 			this.dependencies.requestRender();
@@ -373,7 +381,8 @@ export class ControlCenter implements Component, Focusable {
 		if (height === 0) return [];
 		const theme = this.dependencies.theme();
 		if (this.confirmation) {
-			return doubleBorderBox(theme, width, this.confirmation.action.kind === "todo-provider" ? "Confirm TODO selection" : "Confirm account action",
+			return doubleBorderBox(theme, width, this.confirmation.action.kind === "todo-provider" ? "Confirm TODO selection"
+				: this.confirmation.action.kind === "agents-provider" ? "Confirm Agents selection" : "Confirm account action",
 				this.confirmationFits() ? this.confirmationLines() : ["Resize to confirm; Esc cancels."])
 				.slice(0, height).map(line => truncateToWidth(line, width, "", true));
 		}
@@ -438,7 +447,7 @@ export class ControlCenter implements Component, Focusable {
 }
 
 export async function showControlCenter(ctx: ControlCenterContext, preferences?: ControlCenterPreferences,
-	services?: Pick<ControlCenterDependencies, "git" | "sounds" | "account" | "usage" | "todo">): Promise<ControlCenterResult> {
+	services?: Pick<ControlCenterDependencies, "git" | "sounds" | "account" | "usage" | "todo" | "agents">): Promise<ControlCenterResult> {
 	if (!ctx.hasUI || ctx.mode !== "tui") {
 		ctx.ui.notify("Osdy Control Center requires the interactive terminal UI; RPC, JSON and print modes are unsupported.", "warning");
 		return { kind: "closed" };

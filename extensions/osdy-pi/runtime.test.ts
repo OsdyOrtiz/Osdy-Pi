@@ -295,7 +295,8 @@ void test("registered TODO reload follows public done, SDK hide/dispose and defe
 			f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r");
 			f.resolveSave(); await Promise.resolve(); await Promise.resolve();
 			assert.equal(f.replacements(), 0);
-			f.send("\x1b[D"); f.send("\x1b[F");
+			f.send("\x1b[D"); f.send("\x1b[H");
+			for (let i = 0; i < 8; i++) f.send("\x1b[B");
 			await Promise.resolve(); await Promise.resolve();
 			assert.match(f.text(), /Configured: off.*Loaded registration: off/);
 			f.send("\x1b[C"); f.send("\x1b[H"); f.send("\r");
@@ -312,6 +313,58 @@ void test("registered TODO reload follows public done, SDK hide/dispose and defe
 			f.cleanup();
 			if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
 		}
+	}
+});
+
+void test("registered Agents uses synthetic normal Pi and reloads only after SDK disposal and hold release", { timeout: 5000 }, async () => {
+	const previousHome = process.env.HOME; const previousDir = process.env.PI_CODING_AGENT_DIR;
+	const home = mkdtempSync(join(tmpdir(), "osdy-cc08-runtime-"));
+	const agentDir = join(home, ".pi", "agent"); mkdirSync(agentDir, { recursive: true });
+	const path = join(agentDir, "settings.json");
+	writeFileSync(path, JSON.stringify({ packages: ["npm:gentle-pi", "npm:pi-subagents-j0k3r"], unrelated: true }));
+	process.env.HOME = home; delete process.env.PI_CODING_AGENT_DIR;
+	const f = await focusFixture({ registered: true, todoDir: home });
+	try {
+		f.lifecycle.length = 0;
+		for (let i = 0; i < 3; i++) f.send("\x1b[B");
+		f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r"); f.resolveSave(); await flushFocus();
+		assert.equal(f.replacements(), 0);
+		f.send("\x1b[D"); f.send("\x1b[F");
+		while (f.text().includes("Loading")) await new Promise<void>(resolve => setImmediate(resolve));
+		assert.match(f.text(), /Agent mode: mixed/);
+		assert.doesNotMatch(readFileSync(path, "utf8"), /-\.\/index.ts/);
+		f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r");
+		assert.match(f.text(), /> Cancel/); assert.ok(f.text().includes(path));
+		f.send("\r"); assert.equal(f.closes(), 0);
+		f.send("\r"); f.text(); f.send("\x1b[B"); f.send("\r");
+		await f.showing;
+		assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed", "editor-mount", "reload"]);
+		assert.equal(f.closes(), 1); assert.equal(f.tui.hasOverlay(), false); assert.deepEqual(f.notices, []);
+		assert.match(readFileSync(path, "utf8"), /-\.\/index.ts/);
+		assert.match(readFileSync(path, "utf8"), /"unrelated": true/);
+	} finally {
+		f.cleanup();
+		if (previousHome === undefined) delete process.env.HOME; else process.env.HOME = previousHome;
+		if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
+	}
+});
+
+void test("registered Agents isolated navigation exposes the owner block without settings effects or reload", async () => {
+	const previousDir = process.env.PI_CODING_AGENT_DIR;
+	const agentDir = mkdtempSync(join(tmpdir(), "osdy-cc08-isolated-"));
+	const path = join(agentDir, "settings.json"); const before = JSON.stringify({ unrelated: true });
+	writeFileSync(path, before); process.env.PI_CODING_AGENT_DIR = agentDir;
+	const f = await focusFixture({ registered: true, todoDir: agentDir });
+	try {
+		f.send("\x1b[F"); await flushFocus();
+		assert.match(f.text(), /normal personal Pi.*override or isolated/);
+		f.send("\x1b[C"); f.send("\r"); await flushFocus();
+		assert.equal(readFileSync(path, "utf8"), before); assert.equal(f.closes(), 0);
+		f.send("\x1b"); await f.showing;
+		assert.ok(!f.lifecycle.includes("reload"));
+	} finally {
+		f.cleanup();
+		if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
 	}
 });
 

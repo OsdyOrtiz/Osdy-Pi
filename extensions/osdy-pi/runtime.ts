@@ -5,6 +5,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
 import { createControlCenterTodo } from "./control-center-todo.js";
+import { createControlCenterAgents } from "./control-center-agents.js";
 import { showControlCenter, type ControlCenterResult } from "./control-center.js";
 import { bindControlCenterAccount } from "./control-center-account.js";
 import { readActiveProfileName } from "./account-profiles.js";
@@ -883,7 +884,7 @@ function registerCommand(
 	captureCurrentRuntime: () => () => boolean,
 ): void {
 	pi.registerCommand("osdyConfig", {
-		description: "Open Osdy Control Center (preferences, Git, Sounds, Account, Usage and TODO).",
+		description: "Open Osdy Control Center (preferences, Git, Sounds, Account, Usage, TODO and Agents).",
 		handler: async (_args, ctx) => {
 			const isCurrent = captureCurrentRuntime();
 			const completion: { result: ControlCenterResult } = { result: { kind: "closed" } };
@@ -909,6 +910,8 @@ function registerCommand(
 						refresh: refreshUsage, active: readActiveProfileName }),
 					todo: createControlCenterTodo({ agentDir: todoAgentDir(), cwd: ctx.cwd,
 						loaded: todoActive, isIdle: () => ctx.isIdle(), isCurrent }),
+					agents: createControlCenterAgents({ agentDir: todoAgentDir(), cwd: ctx.cwd,
+						env: { ...process.env }, isIdle: () => ctx.isIdle(), isCurrent }),
 				});
 			}, isCurrent);
 			if (completion.result.kind === "reload" && isCurrent()) {

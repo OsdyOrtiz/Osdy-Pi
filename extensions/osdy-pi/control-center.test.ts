@@ -30,7 +30,8 @@ void test("TODO confirmation is Cancel-first, blocks navigation while saving, an
 			{ label: "Opt in", current: false, action: { kind: "todo-provider", mode: "on" }, details: ["Owned filters only. Reload follows."] },
 		] }), apply: () => { calls++; return new Promise(resolve => { complete = resolve; }); } },
 	});
-	panel.handleInput("\x1b[F"); await Promise.resolve();
+	for (let i = 0; i < 8; i++) panel.handleInput(down);
+	await Promise.resolve();
 	panel.handleInput(right); panel.handleInput("\r");
 	assert.match(panel.render(100).join("\n"), /> Cancel/);
 	assert.match(panel.render(100).join("\n"), /Owned filters only.*Reload/);
@@ -56,7 +57,8 @@ void test("TODO failure stays in-panel and disposed completions never close or r
 					{ label: "on", current: false, action: { kind: "todo-provider", mode: "on" }, details: ["Reload follows"] },
 				] }), apply: () => new Promise((success, fail) => { resolve = success; reject = fail; }),
 			} }, () => { reloads++; });
-			f.panel.handleInput("\x1b[F"); await Promise.resolve();
+			for (let i = 0; i < 8; i++) f.panel.handleInput(down);
+			await Promise.resolve();
 			f.panel.handleInput(right); f.panel.handleInput("\r"); f.panel.render(100);
 			f.panel.handleInput(down); f.panel.handleInput("\r");
 			if (disposed) f.dispose();
@@ -70,8 +72,49 @@ void test("TODO failure stays in-panel and disposed completions never close or r
 	}
 });
 
+void test("Agents navigation and Cancel never apply; confirmation freezes input until typed reload", async () => {
+	let calls = 0; let finish: (value: { kind: "reload"; message: string }) => void = () => {}; let reloads = 0;
+	const f = fixture(undefined, undefined, { agents: {
+		read: () => Promise.resolve({ summary: "Agent mode: gentle", note: "Read only", rows: [
+			{ label: "Joker", current: false, action: { kind: "agents-provider", mode: "joker" }, details: ["Target: /synthetic/settings.json", "Install Joker if absent; owned filters only. Unrelated resources preserved. Reload; restart if it fails."] },
+		] }), apply: () => { calls++; return new Promise(resolve => { finish = resolve; }); },
+	} }, () => { reloads++; });
+	f.resize(30); f.panel.handleInput("\x1b[F"); await settle();
+	assert.match(f.panel.render(120).join("\n"), /Agent mode: gentle/); assert.equal(calls, 0);
+	f.panel.handleInput(right); f.panel.handleInput("\r");
+	assert.match(f.panel.render(120).join("\n"), /> Cancel/);
+	assert.match(f.panel.render(120).join("\n"), /Target: \/synthetic\/settings.json/);
+	f.panel.handleInput("\r"); assert.equal(calls, 0);
+	f.panel.handleInput("\r"); f.resize(3); f.panel.render(8); f.panel.handleInput(down); f.panel.handleInput("\r");
+	assert.equal(calls, 0, "hidden confirmation effects cannot be accepted");
+	f.resize(30); f.panel.render(120); f.panel.handleInput("\r");
+	assert.equal(calls, 1);
+	for (const key of [left, up, "\r", "\x1b", "\t"]) f.panel.handleInput(key);
+	assert.match(f.panel.render(120).join("\n"), /Agents/); assert.equal(calls, 1); assert.equal(f.closes(), 0);
+	finish({ kind: "reload", message: "saved" }); await settle(); assert.equal(reloads, 1);
+	f.dispose();
+});
+
+void test("Agents failed, rejected and disposed successful responses never reload", async () => {
+	for (const outcome of ["reject", "error", "disposed"] as const) {
+		let finish = () => {}; let reloads = 0;
+		const f = fixture(undefined, undefined, { agents: {
+			read: () => Promise.resolve({ summary: "Agents", note: "", rows: [
+				{ label: "Gentle", current: false, action: { kind: "agents-provider", mode: "gentle" }, details: ["Owned filters; reload follows."] },
+			] }), apply: () => new Promise((resolve, reject) => { finish = () => outcome === "error" ? reject(new Error("owner failure")) : resolve({ kind: outcome === "disposed" ? "reload" : "rejected", message: "owner failure" }); }),
+		} }, () => { reloads++; });
+		f.panel.handleInput("\x1b[F"); await settle(); f.panel.handleInput(right); f.panel.handleInput("\r");
+		f.panel.render(100); f.panel.handleInput(down); f.panel.handleInput("\r");
+		if (outcome === "disposed") f.dispose();
+		const renders = f.renders(); finish(); await settle();
+		assert.equal(reloads, 0); assert.equal(f.closes(), 0);
+		if (outcome === "disposed") assert.equal(f.renders(), renders);
+		else assert.match(f.panel.render(100).join("\n"), /owner failure/);
+	}
+});
+
 function fixture(names = ["dark", "light"], preferences?: ControlCenterPreferences,
-	services?: Pick<ControlCenterDependencies, "git" | "sounds" | "account" | "usage" | "todo">,
+	services?: Pick<ControlCenterDependencies, "git" | "sounds" | "account" | "usage" | "todo" | "agents">,
 	reload?: ControlCenterDependencies["reload"]) {
 	let current = "dark";
 	let appearance: "dark" | "light" = "dark";
@@ -261,7 +304,7 @@ void test("empty feedback preserves the current theme summary on short terminals
 
 void test("empty feedback preserves focus and position with ANSI colors", () => {
 	const f = fixture();
-	assert.match(f.panel.render(80).join("\n"), /categories: 1\/9/);
+	assert.match(f.panel.render(80).join("\n"), /categories: 1\/10/);
 	f.panel.handleInput(right);
 	assert.match(f.panel.render(80).join("\n"), /detail: 1\/2/);
 	f.panel.handleInput(down);
