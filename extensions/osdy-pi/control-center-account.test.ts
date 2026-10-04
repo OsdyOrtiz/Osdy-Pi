@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { registerHooks } from "node:module";
 import test from "node:test";
+import type { ProfileCodexUsageResult } from "./profile-codex-usage.js";
 import { fileURLToPath } from "node:url";
 registerHooks({ resolve(specifier, context, next) {
 	if (specifier.startsWith(".") && specifier.endsWith(".js") && context.parentURL?.endsWith(".ts")) {
@@ -11,6 +12,39 @@ registerHooks({ resolve(specifier, context, next) {
 	return next(specifier, context);
 } });
 const { createControlCenterAccount, bindControlCenterAccount } = await import("./control-center-account.js");
+
+void test("Profile preview is explicit, independently selected and never activates", async () => {
+	const requests: string[] = [];
+	const service = createControlCenterAccount({
+		profiles: () => Promise.resolve(["work", "personal"]), active: () => "work",
+		defaultProfile: () => Promise.resolve(undefined),
+		switch: () => { throw new Error("activation forbidden"); }, setDefault: () => { throw new Error("write forbidden"); },
+		usage: profile => {
+			requests.push(profile);
+			return Promise.resolve({ status: "ready", profile, checkedAt: 1000, quotaSnapshot: { fetchedAt: 1000,
+				planType: undefined, ordinaryUsageAllowed: undefined, credits: undefined,
+				buckets: [
+					{ id: "codex", label: undefined, primary: { usedPercent: 25, windowMinutes: 300, resetsAt: 2000 }, secondary: { usedPercent: 80, windowMinutes: 10080, resetsAt: undefined } },
+					{ id: "extra", label: "Extra bucket", primary: { usedPercent: 10, windowMinutes: undefined, resetsAt: undefined }, secondary: undefined },
+				] } });
+		},
+	});
+	const initial = await service.read();
+	assert.deepEqual(requests, []);
+	assert.equal(initial.rows[0]?.label, "View usage: work");
+	assert.ok(initial.rows.findIndex(row => row.label === "View usage: personal") < initial.rows.findIndex(row => row.label === "Switch to personal"));
+	for (const profile of ["work", "personal"]) {
+		assert.equal((await service.apply({ kind: "account-usage", profile })).failed, false);
+		const row = (await service.read()).rows.find(row => row.label === `View usage: ${profile}`);
+		assert.match(row?.details?.join(" ") ?? "", /75% remaining/);
+		assert.match(row?.details?.join(" ") ?? "", /Weekly: 20% remaining.*Next reset: unknown/);
+		assert.match(row?.details?.join(" ") ?? "", /Extra bucket.*90% remaining.*Next reset: unknown/);
+		assert.ok(row?.details?.includes(`Profile: ${profile}`));
+		assert.ok(row?.details?.includes(`Checked: ${new Date(1000).toLocaleString()} (local time)`));
+		assert.ok(row?.details?.some(line => line.endsWith(`Next reset: ${new Date(2000).toLocaleString()}`)));
+	}
+	assert.deepEqual(requests, ["work", "personal"]);
+});
 
 void test("Account projects validated metadata, never output or credential fields", async () => {
 	const service = createControlCenterAccount({
@@ -51,8 +85,9 @@ void test("Bound Account reuses idle switching, quota refresh, and authoritative
 	process.env.OSDY_PI_PROFILE_NAME = "personal";
 	const events: string[] = [];
 	const commands: string[][] = [];
-	const service = bindControlCenterAccount({ isIdle: () => false,
-		waitForIdle: () => { events.push("idle"); return Promise.resolve(); },
+	let idle = false;
+	const service = bindControlCenterAccount({ isIdle: () => idle,
+		waitForIdle: () => { events.push("idle"); idle = true; return Promise.resolve(); },
 		ui: { notify: text => events.push(text), select: () => Promise.reject(new Error("old dialog forbidden")), input: () => Promise.reject(new Error("old dialog forbidden")) } },
 		() => { events.push("refresh"); return Promise.resolve(); }, () => { events.push("render"); },
 		{ profiles: () => Promise.resolve(["work", "personal"]), activate: name => { events.push(`activate:${name}`); return Promise.resolve(); },
@@ -118,4 +153,64 @@ void test("Account errors are fixed messages and never leak backend errors", asy
 	const result = await service.apply({ kind: "account-default", profile: "work" });
 	assert.equal(result.failed, true);
 	assert.equal(result.message.includes("token-secret"), false);
+});
+
+void test("Profile preview cancellation, supersession and stale runtime discard ignored-abort results", async () => {
+	const requests: { signal: AbortSignal; finish: (result: ProfileCodexUsageResult) => void }[] = [];
+	let current = true;
+	const service = createControlCenterAccount({ profiles: () => Promise.resolve(["work", "personal"]), active: () => "work",
+		defaultProfile: () => Promise.resolve(undefined), switch: () => { throw new Error("forbidden"); }, setDefault: () => { throw new Error("forbidden"); },
+		isCurrent: () => current, usage: (_profile, signal) => new Promise(finish => requests.push({ signal, finish })),
+	});
+	const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+	const first = service.apply({ kind: "account-usage", profile: "work" }); await flush();
+	assert.equal((await service.apply({ kind: "account-default", profile: undefined })).failed, true);
+	const second = service.apply({ kind: "account-usage", profile: "personal" }); await flush();
+	assert.equal(requests[0]?.signal.aborted, true);
+	requests[1]?.finish({ status: "unavailable", profile: "personal", checkedAt: 1000, reason: "remote-usage-unavailable" });
+	await second;
+	requests[0]?.finish({ status: "unavailable", profile: "work", checkedAt: 1000, reason: "stored-credentials-unavailable" }); await first;
+	assert.match(JSON.stringify(await service.read()), /Remote Codex usage unavailable/);
+	assert.doesNotMatch(JSON.stringify(await service.read()), /Stored credentials unavailable \(missing/);
+	const third = service.apply({ kind: "account-usage", profile: "work" }); await flush();
+	service.cancelUsage?.(); assert.equal(requests[2]?.signal.aborted, true);
+	requests[2]?.finish({ status: "unavailable", profile: "work", checkedAt: 1000, reason: "stored-credentials-unavailable" }); await third;
+	assert.doesNotMatch(JSON.stringify(await service.read()), /Checked:/);
+	const fourth = service.apply({ kind: "account-usage", profile: "work" }); await flush(); current = false;
+	requests[3]?.finish({ status: "unavailable", profile: "work", checkedAt: 1000, reason: "stored-credentials-unavailable" }); await fourth;
+	assert.doesNotMatch(JSON.stringify(await service.read()), /Checked:/);
+	assert.equal((await service.apply({ kind: "account-switch", profile: "personal" })).failed, true);
+});
+
+void test("Unavailable, cancelled, absent quota and unexpected errors never fabricate zero or leak raw errors", async () => {
+	for (const outcome of ["stored-credentials-unavailable", "remote-usage-unavailable", "cancelled", "empty", "error"] as const) {
+		const service = createControlCenterAccount({ profiles: () => Promise.resolve(["work"]), active: () => "work",
+			defaultProfile: () => Promise.resolve(undefined), switch: () => Promise.resolve(true), setDefault: () => Promise.resolve(true),
+			usage: profile => {
+				if (outcome === "error") throw new Error("/private/auth.json token-secret");
+				if (outcome === "empty") return Promise.resolve({ status: "ready", profile, checkedAt: 1000,
+					quotaSnapshot: { fetchedAt: 1000, buckets: [], credits: undefined, planType: undefined, ordinaryUsageAllowed: undefined } });
+				if (outcome === "cancelled") return Promise.resolve({ status: "cancelled", profile, checkedAt: 1000, reason: "cancelled" });
+				return Promise.resolve({ status: "unavailable", profile, checkedAt: 1000, reason: outcome });
+			},
+		});
+		await service.apply({ kind: "account-usage", profile: "work" });
+		const text = JSON.stringify(await service.read());
+		assert.doesNotMatch(text, /0%|token-secret|private\/auth/);
+		assert.match(text, outcome === "empty" ? /unknown/ : /unavailable|cancelled/);
+	}
+});
+
+void test("Bound preview uses injected service independently of active refresh and queued stale activation", async () => {
+	let current = true; let release = () => {}; const names: string[] = [];
+	const service = bindControlCenterAccount({ isIdle: () => false, waitForIdle: () => new Promise<void>(resolve => { release = resolve; }),
+		ui: { notify: () => {}, select: () => Promise.resolve(undefined), input: () => Promise.resolve(undefined) } },
+		() => { throw new Error("active quota forbidden"); }, () => {},
+		{ profiles: () => Promise.resolve(["work"]), activate: () => { throw new Error("stale activation forbidden"); }, run: () => Promise.resolve({ code: 0, stdout: "", stderr: "" }) },
+		{ isCurrent: () => current, usage: (profile, signal) => { names.push(profile); assert.equal(signal.aborted, false);
+			return Promise.resolve({ status: "unavailable", profile, checkedAt: 1000, reason: "stored-credentials-unavailable" }); } });
+	await service.apply({ kind: "account-usage", profile: "work" }); assert.deepEqual(names, ["work"]);
+	const switching = service.apply({ kind: "account-switch", profile: "work" });
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+	current = false; release(); assert.equal((await switching).failed, true);
 });

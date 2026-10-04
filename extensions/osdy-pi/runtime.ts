@@ -882,6 +882,7 @@ function registerCommand(
  readUsageHistory: () => Promise<UsageSnapshot>,
  refreshUsage: () => Promise<void>,
 	captureCurrentRuntime: () => () => boolean,
+	accountFactory: typeof bindControlCenterAccount,
 ): void {
 	pi.registerCommand("osdyConfig", {
 		description: "Open Osdy Control Center (preferences, Git, Sounds, Account, Usage, TODO and Agents).",
@@ -905,7 +906,7 @@ function registerCommand(
 						applyEnabled: (value) => applyWorkingTreeEnabled(value, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
 					}),
 					sounds: bindControlCenterSounds(pi, ctx, settingsStore, createAudioPlaybackAdapter()),
-					account: bindControlCenterAccount(ctx, refreshUsage, () => state.tui?.requestRender()),
+					account: accountFactory(ctx, refreshUsage, () => state.tui?.requestRender(), undefined, { isCurrent }),
 					usage: createControlCenterUsage({ quota: () => state.codexUsage, history: readUsageHistory,
 						refresh: refreshUsage, active: readActiveProfileName }),
 					todo: createControlCenterTodo({ agentDir: todoAgentDir(), cwd: ctx.cwd,
@@ -1073,6 +1074,7 @@ export async function registerOsdyPi(
 	pi: ExtensionAPI,
 	dependencies: {
 		readActiveProfile?: () => Promise<string | undefined>;
+		accountFactory?: typeof bindControlCenterAccount;
 		editorSettingsStore?: ReturnType<typeof createEditorSettingsStore>;
 	} = {},
 ): Promise<void> {
@@ -1303,5 +1305,6 @@ export async function registerOsdyPi(
 			const generation = runtimeGeneration;
 			return () => generation === runtimeGeneration;
 		},
+		dependencies.accountFactory ?? bindControlCenterAccount,
 	);
 }

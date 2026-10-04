@@ -17,6 +17,7 @@ export type ControlCenterServiceAction =
 	| { kind: "sound-clear"; event: AudioNotificationEvent }
 	| { kind: "sound-test"; event: AudioNotificationEvent };
 export type ControlCenterAccountAction =
+	| { kind: "account-usage"; profile: string }
 	| { kind: "account-switch"; profile: string }
 	| { kind: "account-default"; profile: string | undefined };
 export type ControlCenterUsageAction =
@@ -45,7 +46,7 @@ export interface ControlCenterDependencies {
 	preferences?: ControlCenterPreferences | undefined;
 	git?: ControlCenterService | undefined;
 	sounds?: ControlCenterService | undefined;
-	account?: ControlCenterService<ControlCenterAccountAction> | undefined;
+	account?: (ControlCenterService<ControlCenterAccountAction> & { cancelUsage?(): void; isCurrent?(): boolean }) | undefined;
 	usage?: ControlCenterService<ControlCenterUsageAction> | undefined;
 	todo?: ControlCenterTodoService | undefined;
 	agents?: ControlCenterAgentsService | undefined;
@@ -124,9 +125,28 @@ export class ControlCenter implements Component, Focusable {
 	}
 
 	private applyService(action: InlineServiceAction) {
-		if (action.kind === "account-switch" || action.kind === "account-default") return this.dependencies.account?.apply(action);
+		if (action.kind === "account-usage" || action.kind === "account-switch" || action.kind === "account-default") return this.dependencies.account?.apply(action);
 		if (action.kind === "usage-refresh" || action.kind === "usage-range" || action.kind === "usage-account" || action.kind === "usage-detail") return this.dependencies.usage?.apply(action);
 		return (this.category === "Git" ? this.dependencies.git : this.dependencies.sounds)?.apply(action);
+	}
+
+	private queryingUsage = false;
+	private async previewUsage(action: Extract<ControlCenterAccountAction, { kind: "account-usage" }>): Promise<void> {
+		const generation = this.readGeneration;
+		this.queryingUsage = true;
+		this.feedback = `Querying stored-profile Codex usage: ${action.profile}...`;
+		try {
+			const result = await this.dependencies.account?.apply(action);
+			if (this.disposed || generation !== this.readGeneration || this.dependencies.account?.isCurrent?.() === false) return;
+			this.failed = result?.failed ?? true;
+			this.feedback = result?.message ?? "Profile usage unavailable.";
+			const view = await this.dependencies.account?.read();
+			if (!this.disposed && generation === this.readGeneration && this.dependencies.account?.isCurrent?.() !== false) this.serviceView = view;
+		} catch {
+			if (!this.disposed && generation === this.readGeneration && this.dependencies.account?.isCurrent?.() !== false) { this.failed = true; this.feedback = "Profile usage unavailable."; }
+		} finally {
+			if (!this.disposed && generation === this.readGeneration && this.dependencies.account?.isCurrent?.() !== false) { this.queryingUsage = false; this.dependencies.requestRender(); }
+		}
 	}
 
 	private async activateService(action: InlineServiceAction): Promise<void> {
@@ -257,7 +277,8 @@ export class ControlCenter implements Component, Focusable {
 	}
 
 	private activate(action: ControlCenterAction): void {
-		if (this.saving || this.loading) return;
+		if (this.saving || this.loading || this.queryingUsage) return;
+		if (action.kind === "account-usage") { void this.previewUsage(action); return; }
 		if (action.kind === "account-switch" || action.kind === "account-default" || action.kind === "todo-provider" || action.kind === "agents-provider") {
 			this.confirmation = { action, accept: false, details: this.rows()[this.rowIndex]?.details ?? [] };
 			return;
@@ -364,6 +385,8 @@ export class ControlCenter implements Component, Focusable {
 			index = Math.max(0, Math.min(Math.max(0, count - 1), index));
 			if (this.focus === "categories") {
 				if (this.categoryIndex !== index) {
+					if (this.category === "Account") this.dependencies.account?.cancelUsage?.();
+					this.queryingUsage = false;
 					this.categoryIndex = index;
 					this.rowIndex = Math.max(0, this.rows().findIndex((row) => row.current));
 					this.feedback = "";
@@ -443,6 +466,7 @@ export class ControlCenter implements Component, Focusable {
 	dispose(): void {
 		if (this.disposed) return;
 		this.disposed = true;
+		this.dependencies.account?.cancelUsage?.();
 	}
 }
 

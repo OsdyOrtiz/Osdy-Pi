@@ -10,6 +10,7 @@ import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/
 import ts from "typescript";
 import type { OsdyState, WorkingTreeState, WorkingWidgetState, GlobalEditorSettings } from "./types.js";
 import type { VisualPreferenceAction } from "./control-center-preferences.js";
+import type { ProfileCodexUsageResult } from "./profile-codex-usage.js";
 import { Container, TuiMainScreen, type Component, type OverlayHandle, type Terminal, type TUI } from "@earendil-works/pi-tui";
 
 registerHooks({
@@ -46,6 +47,52 @@ registerHooks({
 
 const profileLabels = await import("./profile-label.js");
 const { showControlCenter } = await import("./control-center.js");
+
+void test("registered Account factory isolates profile preview from active quota and cancels SDK overlay requests", async () => {
+	const { bindControlCenterAccount } = await import("./control-center-account.js");
+	const { registerOsdyPi } = await import("./runtime.js");
+	const previous = process.env.PI_CODING_AGENT_DIR;
+	process.env.PI_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "osdy-preview-runtime-"));
+	const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
+	const notices: string[] = []; const queries: string[] = []; const views: string[] = [];
+	let signal: AbortSignal | undefined; let finish = () => {}; let factoryCalls = 0; let renderCount = 0;
+	let current: (() => boolean) | undefined;
+	const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
+		on: () => {}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {}, events: { on: () => () => {} },
+		exec: () => { throw new Error("launcher or provider forbidden"); } } as unknown as ExtensionAPI;
+	const ctx = { cwd: process.cwd(), mode: "tui", hasUI: true, isIdle: () => true, waitForIdle: () => Promise.resolve(), ui: {
+		notify: (text: string) => notices.push(text),
+		setEditorComponent: () => {}, setHeader: () => {}, setFooter: () => {}, setWidget: () => {}, setWorkingVisible: () => {},
+		theme: { name: "dark", appearance: "dark", fg: (_color: string, text: string) => text }, getAllThemes: () => [], setTheme: () => ({ success: false }),
+		custom: async (factory: (tui: unknown, theme: unknown, keys: unknown, done: (result: unknown) => void) => Component & { handleInput(data: string): void }) => {
+			let result: unknown;
+			const panel = factory({ terminal: { rows: 40 }, requestRender: () => { renderCount++; } }, undefined, undefined, value => { result = value; });
+			for (let i = 0; i < 6; i++) panel.handleInput("\x1b[B");
+			for (let i = 0; i < 16; i++) await Promise.resolve();
+			panel.handleInput("\x1b[C"); views.push(panel.render(140).join("\n"));
+			panel.handleInput("\r"); for (let i = 0; i < 16; i++) await Promise.resolve();
+			panel.handleInput("\r"); views.push(panel.render(140).join("\n"));
+			panel.handleInput("\x1b"); return result;
+		},
+	} } as unknown as ExtensionCommandContext;
+	try {
+		await registerOsdyPi(pi, { accountFactory: (context, _refresh, render, _backend, options) => {
+			factoryCalls++; current = options?.isCurrent;
+			return bindControlCenterAccount(context, () => { throw new Error("active refresh forbidden"); }, render,
+				{ profiles: () => Promise.resolve(["work"]), run: () => Promise.resolve({ code: 0, stdout: "No default account.", stderr: "" }),
+					activate: () => { throw new Error("activation forbidden"); } },
+				{ ...options, usage: (profile, requestSignal) => { queries.push(profile); signal = requestSignal;
+					return new Promise(resolve => { finish = () => resolve({ status: "unavailable", profile, checkedAt: 1000, reason: "remote-usage-unavailable" }); }); } });
+		} });
+		const handler = commands.get("osdyConfig"); assert.ok(handler); await handler.handler("", ctx);
+		const before = renderCount; finish(); for (let i = 0; i < 16; i++) await Promise.resolve();
+		assert.equal(factoryCalls, 1); assert.equal(current?.(), true); assert.deepEqual(queries, ["work"]);
+		assert.match(views[0] ?? "", /View usage: work/); assert.match(views[1] ?? "", /Querying stored-profile Codex usage: work/);
+		assert.equal(signal?.aborted, true); assert.equal(renderCount, before); assert.deepEqual(notices, []);
+	} finally {
+		if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
+	}
+});
 
 void test("Control Center refuses RPC, print, JSON and missing UI without custom or mutation", async () => {
  for (const mode of ["rpc", "print", "json", "tui"] as const) {
@@ -139,7 +186,8 @@ void test("shared visual actions apply immediately, save the complete settings, 
 const { isSmallResponsiveMode } = await import("./utils.js");
 const { createResponsiveCoordinator, reconcileResponsiveUi, disableOsdyPi } = await import("./runtime-helpers.js");
 
-async function focusFixture(options: { boundary?: boolean; throwApply?: boolean; synchronousThrow?: boolean; underlyingOverlay?: boolean; startupFailure?: boolean; registered?: boolean; todoDir?: string; reloadFails?: boolean } = {}) {
+async function focusFixture(options: { boundary?: boolean; throwApply?: boolean; synchronousThrow?: boolean; underlyingOverlay?: boolean; startupFailure?: boolean; registered?: boolean; todoDir?: string; reloadFails?: boolean;
+	accountFactory?: NonNullable<Parameters<typeof registerOsdyPi>[1]>["accountFactory"] } = {}) {
 	let input: (data: string) => void = () => {};
 	const columns = options.boundary
 		? Array.from({ length: 300 }, (_, i) => i + 1).find(width =>
@@ -254,7 +302,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 		const previousDir = process.env.PI_CODING_AGENT_DIR;
 		process.env.PI_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "osdy-modal-runtime-"));
 		try {
-			await registerOsdyPi(pi, { readActiveProfile: () => Promise.resolve(undefined), editorSettingsStore: {
+			await registerOsdyPi(pi, { ...(options.accountFactory ? { accountFactory: options.accountFactory } : {}), readActiveProfile: () => Promise.resolve(undefined), editorSettingsStore: {
 				...store, load: () => Promise.resolve({ version: 1, enabled: true, editorMode: "auto", headerVariant: "osdy-theme",
 					mascot: "current", workingTreeEnabled: false }),
 			} });
@@ -282,6 +330,80 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 		editors, mountedEditor: () => editors.find(candidate => editorArea.children.includes(candidate))!,
 		other: () => otherHandle, cleanup: () => { shutdown(); coordinator.stop(); panel?.dispose?.(); handle?.hide(); otherHandle?.hide(); tui.stop(); } };
 }
+for (const closePending of [false, true]) {
+	void test(`registered Account real TUI ${closePending ? "aborts pending preview and ignores late completion" : "renders selected profile quota before Escape restores mounted input"}`, async () => {
+		const { bindControlCenterAccount } = await import("./control-center-account.js");
+		const queries: string[] = []; const metadataCalls: string[][] = [];
+		let signal: AbortSignal | undefined;
+		let finish: (result: ProfileCodexUsageResult) => void = () => {};
+		let factoryCalls = 0; let renders = 0; let activations = 0; let activeRefreshes = 0;
+		const checkedAt = 1_900_000_000_000; const resetsAt = checkedAt + 3_600_000;
+		const result: ProfileCodexUsageResult = {
+			status: "ready", profile: "work", checkedAt,
+			quotaSnapshot: { fetchedAt: checkedAt, planType: "plus", ordinaryUsageAllowed: true, credits: undefined,
+				buckets: [{ id: "codex", label: "Codex", primary: { usedPercent: 37, windowMinutes: 300, resetsAt }, secondary: undefined }] },
+		};
+		const f = await focusFixture({ registered: true, accountFactory: (context, _refresh, render, _backend, options) => {
+			factoryCalls++;
+			return bindControlCenterAccount(context, () => { activeRefreshes++; throw new Error("active quota refresh forbidden"); }, render,
+				{ profiles: () => Promise.resolve(["personal", "work"]),
+					run: (args) => { metadataCalls.push([...args]); assert.deepEqual(args, ["account", "default"]);
+						return Promise.resolve({ code: 0, stdout: "No default account.", stderr: "" }); },
+					activate: () => { activations++; throw new Error("activation forbidden"); } },
+				{ ...options, usage: (profile, requestSignal) => { queries.push(profile); signal = requestSignal;
+					return new Promise(resolve => { finish = resolve; }); } });
+		} });
+		// Count actual TUI render requests, including any incorrectly resurrected preview.
+		const requestRender = f.tui.requestRender.bind(f.tui);
+		f.tui.requestRender = (...args) => { renders++; return requestRender(...args); };
+		try {
+			const mounted = f.mountedEditor();
+			// Queue an editor replacement to exercise the registered runtime mount hold.
+			chooseVisual(f, 3); f.resolveSave(); await flushFocus();
+			assert.equal(f.replacements(), 0);
+			f.send("\x1b[D");
+			for (let i = 0; i < 3; i++) f.send("\x1b[B");
+			await flushFocus(); await flushFocus();
+			f.send("\x1b[C"); f.send("\x1b[H");
+			// Each inactive profile has preview, switch and default rows: select work's preview.
+			for (let i = 0; i < 3; i++) f.send("\x1b[B");
+			assert.match(f.text(), /> View usage: work/);
+			assert.deepEqual(queries, [], "navigation must not query quota");
+			f.send("\r"); await flushFocus(); f.send("\r"); await flushFocus();
+			assert.deepEqual(queries, ["work"], "duplicate Enter while pending must not fetch again");
+			assert.match(f.text(), /Querying stored-profile Codex usage: work/);
+			assert.equal(f.focused(), true); assert.equal(f.mountedEditor(), mounted);
+			assert.equal(signal?.aborted, false);
+			if (!closePending) {
+				finish(result); await flushFocus(); await flushFocus();
+				const text = f.text();
+				assert.match(text, /Stored-profile Codex usage checked/);
+				assert.match(text, /Profile: work/); assert.match(text, /Codex \/ Session: 63% remaining/);
+				assert.ok(text.includes(`Next reset: ${new Date(resetsAt).toLocaleString()}`));
+				assert.ok(text.includes(`Checked: ${new Date(checkedAt).toLocaleString()} (local time)`));
+				assert.doesNotMatch(text, /Confirm account action/);
+			}
+			f.lifecycle.length = 0;
+			f.send("\x1b"); await f.showing;
+			assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed", "editor-mount"]);
+			assert.equal(f.closes(), 1); assert.equal(f.replacements(), 1);
+			assert.equal(f.tui.hasOverlay(), false); assert.equal(f.focused(), false);
+			assert.notEqual(f.mountedEditor(), mounted);
+			assertEditorContinuity(f);
+			if (closePending) {
+				assert.equal(signal?.aborted, true);
+				const before = renders; const reads = metadataCalls.length;
+				finish(result); await flushFocus(); await flushFocus();
+				assert.equal(renders, before, "late completion must not repaint the disposed panel");
+				assert.equal(metadataCalls.length, reads, "late completion must not reload preview metadata");
+				assert.equal(f.text(), ""); assertEditorContinuity(f);
+			}
+			assert.equal(factoryCalls, 1); assert.equal(activations, 0); assert.equal(activeRefreshes, 0);
+			assert.ok(metadataCalls.length > 0); assert.deepEqual(f.notices, []);
+		} finally { f.tui.requestRender = requestRender; f.cleanup(); }
+	});
+}
+
 void test("registered TODO reload follows public done, SDK hide/dispose and deferred editor mount release", async () => {
 	for (const reloadFails of [false, true]) {
 		const previousDir = process.env.PI_CODING_AGENT_DIR;

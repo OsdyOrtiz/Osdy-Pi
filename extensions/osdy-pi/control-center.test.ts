@@ -428,6 +428,53 @@ function serviceFixture() {
 		complete: (failed: boolean) => complete({ failed, message: failed ? "Not saved" : "Saved globally" }) };
 }
 const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+
+void test("Account explicit preview precedes independent Cancel-first activation; navigation never queries", async () => {
+	const { createControlCenterAccount } = await import("./control-center-account.js");
+	const requests: string[] = []; const switches: string[] = [];
+	const account = createControlCenterAccount({ profiles: () => Promise.resolve(["work", "personal"]), active: () => undefined,
+		defaultProfile: () => Promise.resolve(undefined), switch: profile => { switches.push(profile); return Promise.resolve(true); },
+		setDefault: () => Promise.resolve(true), usage: profile => { requests.push(profile); return Promise.resolve({ status: "unavailable", profile, checkedAt: 1000, reason: "stored-credentials-unavailable" }); } });
+	const f = fixture(undefined, undefined, { account }); f.resize(30);
+	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	await settle(); f.panel.handleInput(right); f.panel.handleInput(down); f.panel.handleInput(up);
+	assert.deepEqual(requests, []); assert.deepEqual(switches, []);
+	f.panel.handleInput("\r"); await settle();
+	assert.deepEqual(requests, ["work"]); assert.match(f.panel.render(120).join("\n"), /Profile: work.*|Checked:/);
+	f.panel.handleInput(down); f.panel.handleInput("\r");
+	assert.match(f.panel.render(120).join("\n"), /> Cancel/);
+	f.panel.handleInput("\r"); assert.deepEqual(switches, []);
+	f.panel.handleInput("\r"); f.panel.handleInput(down); f.panel.handleInput("\r"); await settle();
+	assert.deepEqual(switches, ["work"]); assert.deepEqual(requests, ["work"]);
+});
+
+void test("Pending profile reads block duplicate Enter but exit, disposal and stale generation suppress completion", async () => {
+	const { createControlCenterAccount } = await import("./control-center-account.js");
+	for (const boundary of ["category", "escape", "dispose", "runtime"] as const) {
+		let calls = 0; let current = true; let signal: AbortSignal | undefined; let finish = () => {};
+		const account = createControlCenterAccount({ profiles: () => Promise.resolve(["work"]), active: () => undefined,
+			defaultProfile: () => Promise.resolve(undefined), switch: () => { throw new Error("forbidden"); }, setDefault: () => { throw new Error("forbidden"); },
+			isCurrent: () => current, usage: (profile, requestSignal) => { calls++; signal = requestSignal; return new Promise(resolve => {
+				finish = () => resolve({ status: "ready", profile, checkedAt: 1000, quotaSnapshot: { fetchedAt: 1000, buckets: [], credits: undefined, planType: undefined, ordinaryUsageAllowed: undefined } });
+			}); } });
+		const f = fixture(undefined, undefined, { account });
+		for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+		await settle(); f.panel.handleInput(right); f.panel.handleInput("\r"); await settle();
+		f.panel.handleInput("\r"); assert.equal(calls, 1);
+		if (boundary === "category") { f.panel.handleInput(left); f.panel.handleInput(down); await settle(); }
+		else if (boundary === "escape") f.panel.handleInput("\x1b");
+		else if (boundary === "dispose") f.dispose();
+		else current = false;
+		if (boundary !== "runtime") assert.equal(signal?.aborted, true);
+		const renders = f.renders(); finish(); await settle();
+		assert.equal(f.renders(), renders); assert.doesNotMatch(f.panel.render(120).join("\n"), /usage checked|Checked:/);
+		if (boundary === "category") {
+			f.panel.handleInput(up); await settle(); f.panel.handleInput(right); f.panel.handleInput("\r"); await settle();
+			assert.equal(calls, 2, "reopened category can replace a cancelled query");
+			f.dispose(); finish(); await settle();
+		}
+	}
+});
 async function openSounds(f: ReturnType<typeof serviceFixture>) {
 	for (let i = 0; i < 5; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right);
