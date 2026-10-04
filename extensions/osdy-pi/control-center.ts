@@ -395,7 +395,10 @@ export class ControlCenter implements Component, Focusable {
 
 	// Rendering reads the live theme; there are no cached ANSI strings to rebuild.
 	invalidate(): void {}
-	dispose(): void { this.disposed = true; }
+	dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
+	}
 }
 
 export async function showControlCenter(ctx: ControlCenterContext, preferences?: ControlCenterPreferences,

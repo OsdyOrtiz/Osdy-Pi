@@ -45,23 +45,41 @@ function desiredSmallMode(state: OsdyState): boolean {
 		: false;
 }
 
+/** Only editor reconstruction is deferred: all other visual owners stay live. */
+function reconcileEditorMount(pi: ExtensionAPI, ctx: ExtensionContext, state: OsdyState): void {
+	const extended = state.enabled && resolveEffectiveEditorMode(state.editorMode, state.smallMode) === "extended";
+	if (state.enabled && state.editorEffective === extended && !state.editorSessionRemountPending) {
+		state.editorReconcilePending = false;
+		return;
+	}
+	if (state.editorMountHold?.count || state.tui?.hasOverlay()) {
+		state.editorReconcilePending = true;
+		return;
+	}
+	if (extended) mountOsdyEditor(pi, ctx, state);
+	else if (state.enabled) unmountOsdyEditor(ctx);
+	else ctx.ui.setEditorComponent(state.fallbackEditorFactory);
+	state.editorEffective = extended;
+	state.editorReconcilePending = false;
+	state.editorSessionRemountPending = false;
+	if (!state.enabled) state.tui = undefined;
+}
+
 export function reconcileResponsiveUi(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	state: OsdyState,
 	workingTreeState: WorkingTreeState,
 ): void {
-	if (!ctx.hasUI || !state.enabled) return;
+	if (!ctx.hasUI) return;
+	if (!state.enabled) {
+		if (state.editorReconcilePending) reconcileEditorMount(pi, ctx, state);
+		return;
+	}
 	const nextSmallMode = desiredSmallMode(state);
 	const smallModeChanged = nextSmallMode !== state.smallMode;
 	state.smallMode = nextSmallMode;
-	const editorEffective =
-		resolveEffectiveEditorMode(state.editorMode, state.smallMode) === "extended";
-	if (state.editorEffective !== editorEffective) {
-		state.editorEffective = editorEffective;
-		if (editorEffective) mountOsdyEditor(pi, ctx, state);
-		else unmountOsdyEditor(ctx);
-	}
+	reconcileEditorMount(pi, ctx, state);
 	const treeVisible = state.workingTreeEnabled && !state.smallMode;
 	if (workingTreeState.visible !== treeVisible) {
 		workingTreeState.visible = treeVisible;
@@ -82,9 +100,12 @@ export function createResponsiveCoordinator(
 			if (timer) return;
 			reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 			timer = setInterval(() => {
-				if (!state.enabled) return;
+				if (!state.enabled && !state.editorReconcilePending) {
+					this.stop();
+					return;
+				}
 				const nextSmallMode = desiredSmallMode(state);
-				if (nextSmallMode !== state.smallMode) {
+				if (state.editorReconcilePending || nextSmallMode !== state.smallMode) {
 					reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 				}
 			}, RESPONSIVE_WATCH_INTERVAL_MS);
@@ -166,14 +187,20 @@ export function applyOsdyPi(
 export function disableOsdyPi(ctx: ExtensionContext, state: OsdyState): void {
 	if (!ctx.hasUI) return;
 	ctx.ui.setHeader(undefined);
-	ctx.ui.setEditorComponent(state.fallbackEditorFactory);
+	if (state.editorMountHold?.count || state.tui?.hasOverlay()) {
+		state.editorReconcilePending = true;
+	} else {
+		ctx.ui.setEditorComponent(state.fallbackEditorFactory);
+		state.editorEffective = false;
+		state.editorReconcilePending = false;
+		state.editorSessionRemountPending = false;
+		state.tui = undefined;
+	}
 	ctx.ui.setFooter(undefined);
 	ctx.ui.setWidget(WORKING_WIDGET_KEY, undefined);
 	ctx.ui.setWidget(WORKING_TREE_WIDGET_KEY, undefined);
 	ctx.ui.setWorkingVisible(true);
-	state.editorEffective = false;
 	state.smallMode = false;
-	state.tui = undefined;
 }
 
 export function notifyStatus(ctx: ExtensionContext, state: OsdyState): void {

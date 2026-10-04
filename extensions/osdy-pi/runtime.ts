@@ -173,6 +173,33 @@ export async function applyVisualPreference(
 	return saveVisualSettings(state, settingsStore);
 }
 
+/** The SDK completion promise owns overlay removal; never manipulate its handle. */
+export async function withEditorMountHold(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+	workingTreeState: WorkingTreeState,
+	show: () => Promise<void>,
+	isCurrent: () => boolean = () => true,
+): Promise<void> {
+	if (!ctx.hasUI || ctx.mode !== "tui") return show();
+	const hold = state.editorMountHold ?? { count: 0 };
+	state.editorMountHold = hold;
+	hold.count++;
+	try {
+		await show();
+	} finally {
+		// Session transitions invalidate ownership before an old modal can finish.
+		if (state.editorMountHold === hold) {
+			hold.count--;
+			if (!hold.count) {
+				state.editorMountHold = undefined;
+				if (isCurrent()) reconcileResponsiveUi(pi, ctx, state, workingTreeState);
+			}
+		}
+	}
+}
+
 async function enableOsdyPi(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
@@ -202,12 +229,12 @@ async function disableOsdyPiCommand(
 	stopResponsive: () => void,
 	settingsStore: ReturnType<typeof createEditorSettingsStore>,
 ): Promise<void> {
-	stopResponsive();
 	state.enabled = false;
 	workingTreeState.visible = false;
 	controller.stopWorking();
 	clearWorkingTree(workingTreeState);
 	disableOsdyPi(ctx, state);
+	if (!state.editorReconcilePending) stopResponsive();
 	const saved = await saveVisualSettings(state, settingsStore);
 	ctx.ui.notify(
 		saved ? "osdy-pi disabled" : "osdy-pi disabled but could not be saved",
@@ -852,12 +879,17 @@ function registerCommand(
  todoActive: boolean,
  readUsageHistory: () => Promise<UsageSnapshot>,
  refreshUsage: () => Promise<void>,
+	captureCurrentRuntime: () => () => boolean,
 ): void {
 	pi.registerCommand("osdyConfig", {
 		description: "Open Osdy Control Center (preferences, Git, Sounds, Account and Usage).",
-		handler: async (_args, ctx) => showControlCenter(ctx, {
+		handler: async (_args, ctx) => {
+			const isCurrent = captureCurrentRuntime();
+			await withEditorMountHold(pi, ctx, state, workingTreeState, () => showControlCenter(ctx, {
 			snapshot: () => state,
-			apply: (action) => applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
+			apply: (action) => isCurrent()
+				? applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore)
+				: Promise.resolve(false),
 		}, {
 			git: createControlCenterGit({
 				snapshot: () => ({ enabled: state.workingTreeEnabled, placement: state.workingTreePlacement }),
@@ -872,7 +904,8 @@ function registerCommand(
 			account: bindControlCenterAccount(ctx, refreshUsage, () => state.tui?.requestRender()),
 			usage: createControlCenterUsage({ quota: () => state.codexUsage, history: readUsageHistory,
 				refresh: refreshUsage, active: readActiveProfileName }),
-		}),
+			}), isCurrent);
+		},
 	});
 	pi.registerCommand("osdy-pi", {
 		description:
@@ -1080,6 +1113,7 @@ export async function registerOsdyPi(
 		| ReturnType<typeof createResponsiveCoordinator>
 		| undefined;
 	let sessionContext: ExtensionContext | undefined;
+	let runtimeGeneration = 0;
 	let usageSettingsReady = false;
 	let codexUsageAbort: AbortController | undefined;
 	const refreshCurrentCodexUsage = async (
@@ -1162,6 +1196,11 @@ export async function registerOsdyPi(
 	});
 	pi.on("session_shutdown", () => {
 		usageSettingsReady = false;
+		runtimeGeneration++;
+		state.editorMountHold = undefined;
+		state.editorReconcilePending = false;
+		state.tui = undefined;
+		state.editorSessionRemountPending = false;
 		codexUsageAbort?.abort();
 		codexUsageAbort = undefined;
 		state.codexUsage = { kind: "idle" };
@@ -1173,8 +1212,14 @@ export async function registerOsdyPi(
 	});
 	pi.on("session_start", async (_event, ctx) => {
 		usageSettingsReady = false;
+		runtimeGeneration++;
+		state.editorMountHold = undefined;
+		state.editorReconcilePending = false;
+		state.tui = undefined;
+		state.editorSessionRemountPending = state.editorEffective;
 		cancelOsdyRefreshes();
 		stopResponsive();
+		responsiveCoordinator = undefined;
 		sessionContext = ctx;
 		const startupProfile = process.env.OSDY_PI_PROFILE_NAME;
 		if (resolveActiveProfileLabel() === undefined) {
@@ -1239,6 +1284,10 @@ export async function registerOsdyPi(
 		async () => {
 			if (!sessionContext) throw new Error("Usage session unavailable");
 			await refreshCurrentCodexUsage(sessionContext);
+		},
+		() => {
+			const generation = runtimeGeneration;
+			return () => generation === runtimeGeneration;
 		},
 	);
 }

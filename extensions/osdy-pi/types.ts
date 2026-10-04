@@ -59,7 +59,13 @@ export type CodexUsageState =
 export type OsdyState = {
 	codexUsage: CodexUsageState;
 	enabled: boolean;
+	/** Actual mounted editor, including while a desired change is deferred. */
 	editorEffective: boolean;
+	/** Volatile interaction ownership; never saved in global settings. */
+	editorMountHold?: { count: number } | undefined;
+	editorReconcilePending?: boolean;
+	/** A new session must reconstruct the editor's captured context, even in the same mode. */
+	editorSessionRemountPending?: boolean;
 	editorMode: EditorMode;
 	fallbackEditorFactory: EditorFactory | undefined;
 	headerVariant: HeaderVariant;

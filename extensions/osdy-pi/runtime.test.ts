@@ -10,7 +10,7 @@ import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/
 import ts from "typescript";
 import type { OsdyState, WorkingTreeState, WorkingWidgetState, GlobalEditorSettings } from "./types.js";
 import type { VisualPreferenceAction } from "./control-center-preferences.js";
-import type { TUI } from "@earendil-works/pi-tui";
+import { Container, TuiMainScreen, type Component, type OverlayHandle, type Terminal, type TUI } from "@earendil-works/pi-tui";
 
 registerHooks({
 	resolve(specifier, context, nextResolve) {
@@ -88,6 +88,7 @@ const {
  registerOsdyPi,
  handleTodoProviderCommand,
  applyVisualPreference,
+ withEditorMountHold,
 } = await import("./runtime.js");
 
 void test("shared visual actions apply immediately, save the complete settings, and keep live state on save failure", async () => {
@@ -124,7 +125,7 @@ void test("shared visual actions apply immediately, save the complete settings, 
 				{ path: "/unused", load: () => Promise.reject(new Error("must not load")), save: () => Promise.reject(new Error("disk full")) }), false);
 			assert.equal(action.kind === "header" ? state.headerVariant : action.kind === "mascot" ? state.mascot : state.editorMode, action.value);
 			if (enabled) {
-				state.tui = { terminal: { columns: 20, rows: 6 }, requestRender: () => {} } as unknown as TUI;
+				state.tui = { terminal: { columns: 20, rows: 6 }, requestRender: () => {}, hasOverlay: () => false } as unknown as TUI;
 				await applyVisualPreference({ kind: "editor", value: "extended" }, {} as ExtensionAPI, ctx, state, working, tree,
 					{ path: "/unused", load: () => Promise.reject(new Error("must not load")), save: () => Promise.resolve() });
 				assert.equal(state.editorMode, "extended");
@@ -133,6 +134,479 @@ void test("shared visual actions apply immediately, save the complete settings, 
 			}
 		}
 	}
+});
+
+const { isSmallResponsiveMode } = await import("./utils.js");
+const { createResponsiveCoordinator, reconcileResponsiveUi, disableOsdyPi } = await import("./runtime-helpers.js");
+
+async function focusFixture(options: { boundary?: boolean; throwApply?: boolean; synchronousThrow?: boolean; underlyingOverlay?: boolean; startupFailure?: boolean; registered?: boolean } = {}) {
+	let input: (data: string) => void = () => {};
+	const columns = options.boundary
+		? Array.from({ length: 300 }, (_, i) => i + 1).find(width =>
+			isSmallResponsiveMode("osdy-theme", width, 40) !== isSmallResponsiveMode("neon", width, 40))!
+		: 300;
+	let width = columns;
+	const terminal: Terminal = {
+		get columns() { return width; }, rows: 40, kittyProtocolActive: false,
+		start: (onInput) => { input = onInput; }, stop: () => {}, drainInput: async () => {},
+		write: () => {}, moveBy: () => {}, hideCursor: () => {}, showCursor: () => {},
+		clearLine: () => {}, clearFromCursor: () => {}, clearScreen: () => {}, setTitle: () => {}, setProgress: () => {},
+	};
+	const tui = new TuiMainScreen(terminal);
+	const editorArea = new Container();
+	tui.addChild(editorArea);
+	const makeEditor = () => ({ focused: false, input: "", render: () => [], invalidate: () => {},
+		handleInput(data: string) { this.input += data; } });
+	const editor = makeEditor();
+	const editors = [editor];
+	editorArea.addChild(editor);
+	tui.setFocus(editor);
+	const smallMode = isSmallResponsiveMode("osdy-theme", columns, 40);
+	const fallback = () => { throw new Error("fixture tracks factories without invoking the captured fallback"); };
+	const editorFactories: unknown[] = [];
+	const state: OsdyState = { enabled: true, headerVariant: "osdy-theme", mascot: "current", editorMode: "auto",
+		editorEffective: !smallMode, smallMode, workingTreeEnabled: false, workingTreePlacement: "aboveEditor",
+		codexUsage: { kind: "idle" }, fallbackEditorFactory: fallback, tui };
+	const tree: WorkingTreeState = { enabled: false, visible: false, loading: false, snapshot: null, error: undefined, tui: undefined };
+	const working: WorkingWidgetState = { active: false, label: "Working", frame: 0, timer: undefined, tui: undefined };
+	let resolveSave: () => void = () => {};
+	let rejectSave: () => void = () => {};
+	const store = { path: "/unused", load: () => Promise.reject(new Error("must not load")), save: (settings: GlobalEditorSettings) => new Promise<void>((resolve, reject) => {
+		writes.push(settings);
+		resolveSave = resolve; rejectSave = () => reject(new Error("disk full"));
+	}) };
+	let panel: Component & { dispose?(): void };
+	let handle: OverlayHandle;
+	let otherHandle: OverlayHandle | undefined;
+	let complete: () => void = () => {};
+	let current = true;
+	let headerMounts = 0;
+	const writes: GlobalEditorSettings[] = [];
+	let replacements = 0;
+	let closes = 0;
+	const notices: string[] = [];
+	const theme = { name: "dark", appearance: "dark" as const, fg: (_color: string, text: string) => text };
+	const ctx = { hasUI: true, mode: "tui", modelRegistry: { getProviderAuth: () => Promise.resolve(undefined) }, ui: {
+		theme, getAllThemes: () => [{ name: "dark", path: undefined }],
+		setTheme: () => { theme.name = "light"; panel.invalidate(); return { success: true }; },
+		notify: (message: string) => { notices.push(message); },
+		setHeader: (factory?: (tui: TUI, theme: Theme) => Component & { dispose?(): void }) => {
+			headerMounts++;
+			factory?.(tui, theme as Theme).dispose?.(); // Bind the runtime TUI without leaving animation timers.
+		}, setFooter: () => {}, setWidget: () => {}, setWorkingVisible: () => {},
+		getEditorComponent: () => fallback,
+		setEditorComponent: (factory?: unknown) => {
+			editorFactories.push(factory);
+			replacements++;
+			const replacement = makeEditor();
+			editors.push(replacement);
+			editorArea.clear(); editorArea.addChild(replacement);
+			tui.setFocus(replacement); // Pi's public setCustomEditorComponent always does this.
+
+		},
+		custom: async <T,>(factory: Parameters<ExtensionContext["ui"]["custom"]>[0], customOptions: Parameters<ExtensionContext["ui"]["custom"]>[1]) => {
+			if (options.startupFailure) throw new Error("factory failed");
+			return new Promise<T>((resolve) => {
+				// SDK done hides the top overlay BEFORE disposal. Manual handle.hide is not cancellation.
+				const finish = (result: unknown) => { closes++; tui.hideOverlay(); resolve(result as T); panel.dispose?.(); };
+				complete = () => finish(undefined);
+				panel = factory(tui, theme as Theme, undefined as never, finish) as typeof panel;
+				const overlayOptions = customOptions?.overlayOptions;
+				handle = tui.showOverlay(panel, typeof overlayOptions === "function" ? overlayOptions() : overlayOptions);
+				customOptions?.onHandle?.(handle);
+			});
+		},
+	} };
+	tui.start();
+	const runtimeCtx = ctx as unknown as ExtensionContext;
+	const coordinator = createResponsiveCoordinator({} as ExtensionAPI, runtimeCtx, state, tree);
+	coordinator.start();
+	const showDirect = () => withEditorMountHold({} as ExtensionAPI, runtimeCtx, state, tree, () => showControlCenter(runtimeCtx, {
+		snapshot: () => state,
+		apply: action => {
+			if (options.synchronousThrow) {
+				throw new Error("UI apply failed");
+			}
+			if (options.throwApply) return Promise.reject(new Error("UI apply failed"));
+			return applyVisualPreference(action, {} as ExtensionAPI, runtimeCtx, state, working, tree, store);
+		},
+	}), () => current);
+	let shutdown = () => {};
+	let transition = () => Promise.resolve();
+	let reopen = showDirect;
+	if (options.registered) {
+		coordinator.stop();
+		const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
+		const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>();
+		const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
+			on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => Promise<void> | void) => {
+				const registered = handlers.get(name) ?? []; registered.push(handler); handlers.set(name, registered);
+			},
+			registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {}, events: { on: () => () => {} },
+		} as unknown as ExtensionAPI;
+		const previousDir = process.env.PI_CODING_AGENT_DIR;
+		process.env.PI_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "osdy-modal-runtime-"));
+		try {
+			await registerOsdyPi(pi, { readActiveProfile: () => Promise.resolve(undefined), editorSettingsStore: {
+				...store, load: () => Promise.resolve({ version: 1, enabled: true, editorMode: "auto", headerVariant: "osdy-theme",
+					mascot: "current", workingTreeEnabled: false }),
+			} });
+		} finally {
+			if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
+		}
+		await handlers.get("session_start")?.[1]?.({}, runtimeCtx);
+		replacements = 0;
+		headerMounts = 0;
+		shutdown = () => { void handlers.get("session_shutdown")?.[1]?.({}, runtimeCtx); };
+		transition = async () => { await handlers.get("session_start")?.[1]?.({}, runtimeCtx); };
+		reopen = () => commands.get("osdyConfig")!.handler("", runtimeCtx as ExtensionCommandContext);
+	}
+	if (options.underlyingOverlay) otherHandle = tui.showOverlay({ render: () => ["Other overlay"], invalidate: () => {} });
+	const showing = reopen();
+	await Promise.resolve();
+	return { tui, showing, state, tree, notices, writes, editorFactories, fallback, shutdown, transition, reopen, resize: (columns: number) => { width = columns; }, headerMounts: () => headerMounts,
+		failFactory: () => withEditorMountHold({} as ExtensionAPI, runtimeCtx, state, tree,
+			() => ctx.ui.custom(() => { throw new Error("factory callback failed"); }, { overlay: true })),
+		invalidateRuntime: () => { current = false; state.editorMountHold = undefined; state.editorReconcilePending = false; coordinator.stop(); },
+		disable: () => { state.enabled = false; disableOsdyPi(runtimeCtx, state); },
+		reconcile: () => reconcileResponsiveUi({} as ExtensionAPI, runtimeCtx, state, tree), send: (data: string) => input(data), text: () => panel.render(100).join("\n"),
+		focused: () => handle.isFocused(), replacements: () => replacements, closes: () => closes,
+		resolveSave: () => resolveSave(), rejectSave: () => rejectSave(), complete: () => complete(),
+		editors, mountedEditor: () => editors.find(candidate => editorArea.children.includes(candidate))!,
+		other: () => otherHandle, cleanup: () => { shutdown(); coordinator.stop(); panel?.dispose?.(); handle?.hide(); otherHandle?.hide(); tui.stop(); } };
+}
+void test("deferred editor policy keeps the mounted editor while Header saves live through real TUI", async () => {
+	const f = await focusFixture({ boundary: true });
+	try {
+		const original = f.mountedEditor();
+		const effective = f.state.editorEffective;
+		chooseVisual(f, 1);
+		assert.equal(f.state.headerVariant, "neon");
+		assert.equal(f.headerMounts(), 1, "Header remount is immediate");
+		assert.equal(f.writes.at(-1)?.headerVariant, "neon", "save starts immediately");
+		assert.match(f.text(), /Saving globally/);
+		assert.equal(f.replacements(), 0, "editor replacement must wait until custom completion");
+		assert.equal(f.state.editorEffective, effective, "effective reports the mounted editor, not the queued desire");
+		assert.equal(f.mountedEditor(), original);
+		f.send("\x1b[D"); f.send("\x1b[B");
+		assert.match(f.text(), /Control Center \/ Mascot/);
+		f.send("\x1b"); await f.showing;
+		assert.equal(f.replacements(), 1);
+		assertEditorContinuity(f);
+		f.resolveSave(); await flushFocus();
+		assertEditorContinuity(f);
+	} finally { f.cleanup(); }
+});
+
+function assertEditorContinuity(f: Awaited<ReturnType<typeof focusFixture>>) {
+	const mounted = f.mountedEditor();
+	const before = mounted.input;
+	const previousInputs = new Map(f.editors.map(editor => [editor, editor.input]));
+	f.send("editor-marker");
+	assert.equal(mounted.input, `${before}editor-marker`, "post-close input must reach the mounted editor");
+	assert.equal(mounted.focused, true);
+	for (const detached of f.editors.filter(editor => editor !== mounted)) {
+		assert.equal(detached.input, previousInputs.get(detached), "detached editors must never receive new input");
+		assert.equal(detached.focused, false);
+	}
+}
+const flushFocus = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+function chooseVisual(f: Awaited<ReturnType<typeof focusFixture>>, category: number) {
+	for (let i = 0; i < category; i++) f.send("\x1b[B");
+	f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r");
+}
+
+for (const [name, category, boundary, expectedReplacements] of [
+	["Header boundary", 1, true, 1], ["Header without boundary", 1, false, 0],
+	["Mascot responsive reconciliation", 2, false, 1], ["Editor replacement", 3, false, 1],
+] as const) {
+	void test(`real TUI keeps ${name} navigation and Escape working while save is pending`, async () => {
+		const f = await focusFixture({ boundary });
+		try {
+			// Mascot remount can reconcile an editor whose responsive state needs updating.
+			if (category === 2) f.state.editorEffective = false;
+			chooseVisual(f, category);
+			assert.equal(f.replacements(), 0, "mounted editor must survive the modal");
+			assert.equal(f.focused(), true, "visible Control Center must retain keyboard ownership before save finishes");
+			assert.match(f.text(), /Saving globally/);
+			f.send("\x1b[D"); f.send("\x1b[B");
+			assert.match(f.text(), new RegExp(`Control Center / ${["", "Mascot", "Editor", "Git"][category]}`));
+			f.send("\x1b"); await f.showing;
+			assert.equal(f.closes(), 1, "Escape must reach the overlay through TUI");
+			assert.equal(f.replacements(), expectedReplacements);
+			assertEditorContinuity(f);
+			f.resolveSave(); await flushFocus();
+			assert.equal(f.focused(), false); assert.deepEqual(f.notices, []);
+		} finally { f.cleanup(); }
+	});
+}
+
+for (const failure of ["save", "apply", "synchronous apply"] as const) {
+	void test(`real TUI restores focus after ${failure} failure and preserves honest feedback`, async () => {
+		const f = await focusFixture({ throwApply: failure === "apply", synchronousThrow: failure === "synchronous apply" });
+		try {
+			chooseVisual(f, 3);
+			assert.equal(f.focused(), true);
+			if (failure === "save") f.rejectSave();
+			await flushFocus();
+			assert.match(f.text(), failure === "save" ? /Applied live.*could not be saved/ : /Preference failed: UI apply failed.*Not saved/);
+			f.send("\x1b"); await f.showing;
+			assert.equal(f.closes(), 1); assert.deepEqual(f.notices, []);
+			assertEditorContinuity(f);
+		} finally { f.cleanup(); }
+	});
+}
+
+void test("real TUI close during save ignores late failure without regaining focus", async () => {
+	const f = await focusFixture();
+	try {
+		chooseVisual(f, 3); f.send("\x1b"); await f.showing;
+		f.rejectSave(); await flushFocus();
+		assert.equal(f.closes(), 1); assert.equal(f.focused(), false);
+		assert.equal(f.tui.hasOverlay(), false); assert.deepEqual(f.notices, []);
+		assertEditorContinuity(f);
+	} finally { f.cleanup(); }
+});
+
+void test("real TUI never steals another overlay's focus or resurrects completed interactions", async (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const f = await focusFixture({ underlyingOverlay: true });
+	try {
+		const original = f.mountedEditor();
+		chooseVisual(f, 3);
+		t.mock.timers.tick(150);
+		assert.equal(f.replacements(), 0);
+		f.send("\x1b"); await f.showing;
+		assert.equal(f.other()?.isFocused(), true);
+		assert.equal(f.replacements(), 0);
+		assert.equal(f.state.editorEffective, true);
+		f.rejectSave(); await flushFocus();
+		t.mock.timers.tick(150);
+		assert.equal(f.other()?.isFocused(), true);
+		assert.equal(f.focused(), false);
+		assert.equal(f.mountedEditor(), original);
+		f.other()?.hide();
+		assertEditorContinuity(f); // Original mounted focus chain is still valid before retry.
+		assert.equal(f.replacements(), 0);
+		t.mock.timers.tick(150);
+		assert.equal(f.replacements(), 1, "pending retry runs even without a small-mode change");
+		assert.equal(f.state.editorEffective, false);
+		assert.equal(f.tui.hasOverlay(), false, "original modal is never resurrected");
+		assertEditorContinuity(f);
+		assert.deepEqual(f.notices, []);
+	} finally { f.cleanup(); }
+});
+
+void test("real TUI theme invalidation and a later overlay during save do not change focus ownership", async () => {
+	const f = await focusFixture();
+	try {
+		f.send("\x1b[C"); f.send("\r");
+		assert.equal(f.focused(), true); assert.match(f.text(), /Current: light/);
+		f.send("\x1b[D"); chooseVisual(f, 3);
+		const other = f.tui.showOverlay({ render: () => ["Later overlay"], invalidate: () => {} });
+		try {
+			f.resolveSave(); await flushFocus();
+			assert.equal(other.isFocused(), true); assert.equal(f.focused(), false);
+		} finally { other.hide(); }
+		f.send("\x1b"); await f.showing;
+		assertEditorContinuity(f);
+	} finally { f.cleanup(); }
+});
+
+void test("real TUI coalesces two editor changes to the latest mounted mode on Escape", async () => {
+	const f = await focusFixture();
+	try {
+		chooseVisual(f, 3);
+		f.resolveSave(); await flushFocus();
+		// Simple then extended returns to the original actual mode; no reconstruction is needed.
+		f.send("\x1b[A"); f.send("\r");
+		assert.equal(f.state.editorMode, "extended");
+		assert.equal(f.replacements(), 0);
+		assert.equal(f.focused(), true);
+		f.send("\x1b"); await f.showing;
+		assertEditorContinuity(f);
+		f.resolveSave(); await flushFocus();
+		assertEditorContinuity(f);
+		assert.deepEqual(f.notices, []);
+	} finally { f.cleanup(); }
+});
+
+void test("public custom completion releases the hold and ignores late save success", async () => {
+	const f = await focusFixture();
+	try {
+		chooseVisual(f, 3);
+		f.complete(); await f.showing;
+		assert.equal(f.state.editorMountHold, undefined);
+		assert.equal(f.tui.hasOverlay(), false);
+		assertEditorContinuity(f);
+		f.resolveSave(); await flushFocus();
+		assertEditorContinuity(f);
+		assert.deepEqual(f.notices, []);
+	} finally { f.cleanup(); }
+});
+
+void test("SDK custom startup failure releases editor ownership without changing mounted input", async () => {
+	const f = await focusFixture({ startupFailure: true });
+	try {
+		await f.showing;
+		assert.equal(f.state.editorMountHold, undefined);
+		assert.equal(f.replacements(), 0);
+		assert.match(f.notices.join("\n"), /factory failed/);
+		assertEditorContinuity(f);
+	} finally { f.cleanup(); }
+});
+
+void test("resize and swapped Header keep responsive state live while latest editor choice waits", async (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	for (const mode of ["simple", "extended"] as const) {
+		const f = await focusFixture({ boundary: true });
+		try {
+			chooseVisual(f, 1);
+			f.resolveSave(); await flushFocus();
+			f.send("\x1b[H"); f.send("\r"); // Swap back to osdy-theme.
+			f.resolveSave(); await flushFocus();
+			f.send("\x1b[D"); f.send("\x1b[B"); f.send("\x1b[B");
+			f.send("\x1b[C"); f.send(mode === "simple" ? "\x1b[F" : "\x1b[H");
+			if (mode === "extended") f.send("\x1b[B");
+			f.send("\r");
+			assert.equal(f.state.editorMode, mode);
+			f.resize(20);
+			t.mock.timers.tick(150);
+			assert.equal(f.state.smallMode, true);
+			assert.equal(f.replacements(), 0);
+			f.resize(300);
+			t.mock.timers.tick(150);
+			assert.equal(f.state.smallMode, false);
+			assert.equal(f.replacements(), 0);
+			assert.equal(f.headerMounts(), 2);
+			f.send("\x1b"); await f.showing;
+			assert.equal(f.state.editorEffective, mode === "extended");
+			assert.equal(f.replacements(), mode === "simple" ? 1 : 0);
+			assertEditorContinuity(f);
+			f.resolveSave(); await flushFocus();
+		} finally { f.cleanup(); }
+	}
+});
+
+void test("disable under a modal restores fallback only after all overlays clear", async (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const f = await focusFixture({ underlyingOverlay: true });
+	try {
+		chooseVisual(f, 3);
+		f.disable();
+		assert.equal(f.replacements(), 0);
+		assert.equal(f.state.editorEffective, true);
+		f.send("\x1b"); await f.showing;
+		t.mock.timers.tick(150);
+		assert.equal(f.replacements(), 0);
+		assert.equal(f.other()?.isFocused(), true);
+		f.other()?.hide();
+		t.mock.timers.tick(150);
+		assert.equal(f.replacements(), 1);
+		assert.equal(f.state.editorEffective, false);
+		assert.equal(f.state.editorReconcilePending, false);
+		assert.equal(f.editorFactories.at(-1), f.fallback, "disable restores the captured fallback, not the native editor");
+		assertEditorContinuity(f);
+		f.rejectSave(); await flushFocus();
+		t.mock.timers.tick(450);
+		assert.equal(f.replacements(), 1, "disabled watcher retires after fallback reconciliation");
+	} finally { f.cleanup(); }
+});
+
+void test("invalidated runtime completion and pending watcher never remount old UI", async (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const f = await focusFixture();
+	try {
+		chooseVisual(f, 3);
+		f.invalidateRuntime();
+		f.send("\x1b"); await f.showing;
+		f.rejectSave(); await flushFocus();
+		t.mock.timers.tick(450);
+		assert.equal(f.replacements(), 0);
+		assert.equal(f.state.editorMountHold, undefined);
+		assert.equal(f.state.editorReconcilePending, false);
+		assertEditorContinuity(f);
+	} finally { f.cleanup(); }
+});
+
+void test("runtime hold is per state, repeated interactions release it, and no-UI failures leak nothing", async () => {
+	const f = await focusFixture();
+	try {
+		f.send("\x1b"); await f.showing;
+		for (let i = 0; i < 3; i++) {
+			await withEditorMountHold({} as ExtensionAPI, { hasUI: true, mode: "tui" } as ExtensionContext,
+				f.state, f.tree, () => {
+					assert.equal(f.state.editorMountHold?.count, 1);
+					return Promise.resolve();
+				});
+			assert.equal(f.state.editorMountHold, undefined);
+		}
+		await assert.rejects(withEditorMountHold({} as ExtensionAPI, { hasUI: false, mode: "tui" } as ExtensionContext,
+			f.state, f.tree, () => Promise.reject(new Error("no UI"))), /no UI/);
+		assert.equal(f.state.editorMountHold, undefined);
+		await assert.rejects(f.failFactory(), /factory callback failed/);
+		assert.equal(f.state.editorMountHold, undefined, "actual custom factory rejection releases the runtime hold");
+		assert.equal(f.tui.hasOverlay(), false);
+		await assert.rejects(withEditorMountHold({} as ExtensionAPI, { hasUI: true, mode: "tui" } as ExtensionContext,
+			f.state, f.tree, () => { throw new Error("synchronous startup failed"); }), /synchronous startup failed/);
+		assert.equal(f.state.editorMountHold, undefined);
+		const other = await focusFixture();
+		try {
+			chooseVisual(other, 3);
+			assert.equal(f.state.editorMountHold, undefined);
+			assert.equal(other.state.editorMountHold?.count, 1);
+			other.send("\x1b"); await other.showing;
+			other.resolveSave(); await flushFocus();
+		} finally { other.cleanup(); }
+	} finally { f.cleanup(); }
+});
+
+void test("registered runtime modal wiring defers editor changes and shutdown cancels pending work", async (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const f = await focusFixture({ registered: true, underlyingOverlay: true });
+	try {
+		chooseVisual(f, 3);
+		assert.equal(f.writes.at(-1)?.editorMode, "simple");
+		assert.equal(f.replacements(), 0);
+		assert.match(f.text(), /Effective: extended/);
+		f.send("\x1b"); await f.showing;
+		assert.equal(f.other()?.isFocused(), true);
+		t.mock.timers.tick(150);
+		assert.equal(f.replacements(), 0);
+		f.shutdown();
+		f.other()?.hide();
+		t.mock.timers.tick(450);
+		f.rejectSave(); await flushFocus();
+		assert.equal(f.replacements(), 0, "shutdown invalidates pending watcher work");
+		assertEditorContinuity(f);
+		assert.deepEqual(f.notices, []);
+	} finally { f.cleanup(); }
+});
+
+void test("registered runtime session transition ignores the old modal finally and uses the new watcher", async (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const f = await focusFixture({ registered: true });
+	try {
+		chooseVisual(f, 3);
+		await f.transition();
+		assert.match(f.text(), /Effective: extended/, "session remount also reports the actual editor while queued");
+		assert.equal(f.replacements(), 0, "new session also respects any overlay");
+		f.send("\x1b"); await f.showing;
+		assert.equal(f.replacements(), 0, "old finally cannot remount after transition");
+		t.mock.timers.tick(150);
+		assert.equal(f.replacements(), 1, "new watcher reconciles the newly loaded auto choice");
+		f.rejectSave(); await flushFocus();
+		assert.equal(f.replacements(), 1);
+		assertEditorContinuity(f);
+		const showingAgain = f.reopen(); await flushFocus();
+		chooseVisual(f, 3);
+		assert.equal(f.replacements(), 1);
+		f.send("\x1b"); await showingAgain;
+		assert.equal(f.replacements(), 2, "repeated opens have fresh ownership");
+		f.resolveSave(); await flushFocus();
+		assertEditorContinuity(f);
+		assert.deepEqual(f.notices, []);
+	} finally { f.cleanup(); }
 });
 
 void test("registered legacy commands and osdyConfig share live values and existing persistence/notifications", async () => {
