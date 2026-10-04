@@ -38,6 +38,7 @@ void test("Agents read is inspection-only and describes the confirmed installati
 	const view = await service.read(); await service.read();
 	assert.match(view.summary, /gentle.*Joker.*not installed/i);
 	assert.equal(view.rows.length, 2);
+	assert.deepEqual(view.rows.map(row => row.label), ["Joker", "Gentle"]);
 	const details = view.rows[0]!.details!.join(" ");
 	assert.ok(details.includes(f.path));
 	assert.match(details, /Install npm:pi-subagents-j0k3r if absent/);
@@ -90,12 +91,36 @@ void test("Agents service guards idle, reentrancy and stale owner responses with
 void test("Agents omits ineligible Gentle and ignores status from an old session", async () => {
 	const f = fixture(); writeFileSync(f.path, JSON.stringify({ packages: ["npm:pi-subagents-j0k3r"] }));
 	const service = createControlCenterAgents(f.options);
-	assert.deepEqual((await service.read()).rows.map(row => row.label), ["Joker agents"]);
+	assert.deepEqual((await service.read()).rows.map(row => row.label), ["Joker"]);
 	const stale = createControlCenterAgents({ ...f.options, isCurrent: () => false });
 	assert.deepEqual((await stale.read()).rows, []);
 	const result = await service.apply({ kind: "agents-provider", mode: "gentle" });
 	assert.equal(result.kind, "rejected"); assert.match(result.message, /eligible personal Gentle/);
 	assert.equal(f.installs(), 0);
+});
+
+void test("Both Agent actions keep current/idle/busy guards and stale completions cannot reload", async () => {
+	for (const mode of ["gentle", "joker"] as const) {
+		const f = fixture(); const before = readFileSync(f.path, "utf8");
+		let current = true; let idle = false; let writes = 0; let finish = () => {};
+		const operation = () => {
+			writes++;
+			return new Promise<{ installed: boolean; changed: boolean; gentleCount: number }>(resolve => {
+				finish = () => resolve({ installed: false, changed: true, gentleCount: 1 });
+			});
+		};
+		const service = createControlCenterAgents({ ...f.options, isCurrent: () => current, isIdle: () => idle,
+			setup: operation, switchMode: operation });
+		const action = { kind: "agents-provider", mode } as const;
+		assert.equal((await service.apply(action)).kind, "rejected"); assert.equal(writes, 0);
+		idle = true; current = false;
+		assert.deepEqual((await service.read()).rows, []);
+		assert.equal((await service.apply(action)).kind, "rejected"); assert.equal(writes, 0);
+		current = true; const pending = service.apply(action);
+		assert.equal((await service.apply(action)).kind, "rejected"); assert.equal(writes, 1);
+		current = false; finish(); assert.equal((await pending).kind, "rejected");
+		assert.equal(f.installs(), 0); assert.equal(readFileSync(f.path, "utf8"), before);
+	}
 });
 
 void test("Agents owner errors retain honest failure and never request reload", async () => {

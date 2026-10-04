@@ -2,6 +2,7 @@ import {
 	matchesKey,
 	truncateToWidth,
 	visibleWidth,
+	wrapTextWithAnsi,
 	type Component,
 	type TUI,
 } from "@earendil-works/pi-tui";
@@ -60,7 +61,41 @@ function divider(theme: SimpleTheme, width: number): string {
 }
 
 export function formatRemainingPercent(usedPercent: number): string {
-	return `${Math.max(0, Math.round(100 - usedPercent))}% left`;
+	return Number.isFinite(usedPercent) ? `${Math.max(0, Math.min(100, Math.round(100 - usedPercent)))}% left` : "unknown";
+}
+
+/** Shared remaining-capacity presentation for the Control Center's cached snapshots. */
+export function renderControlCenterQuotaWindow(theme: SimpleTheme, window: CodexUsageWindow, width: number,
+	name: "Session" | "Weekly" = "Session", now = Date.now()): string[] {
+	const maximumWidth = Math.max(1, Math.floor(width));
+	const label = `${name} ${formatWindowDuration(window)} ${formatRemainingPercent(window.usedPercent)}`;
+	const barWidth = Math.min(28, maximumWidth - visibleWidth(label) - 1);
+	const bar = Number.isFinite(window.usedPercent) ? progress(theme, window, Math.max(1, barWidth), quotaTheme(name)) : "";
+	const heading = bar && barWidth > 0 ? `${label} ${bar}` : label;
+	return [
+		...wrapTextWithAnsi(heading, maximumWidth),
+		...(bar && barWidth <= 0 ? [progress(theme, window, Math.min(12, maximumWidth), quotaTheme(name))] : []),
+		...wrapTextWithAnsi(`Window: ${window.windowMinutes === undefined ? "unknown" : `${window.windowMinutes} minutes`} · Next reset: ${validReset(window.resetsAt) ? new Date(window.resetsAt * 1000).toLocaleString() : "unknown"}`, maximumWidth),
+		...(validReset(window.resetsAt) ? wrapTextWithAnsi(formatResetTiming(window.resetsAt, now) ?? "", maximumWidth) : []),
+	];
+}
+
+function validReset(value: number | undefined): value is number {
+	return value !== undefined && Number.isFinite(value) && !Number.isNaN(new Date(value * 1000).getTime());
+}
+
+export function renderControlCenterQuotaLines(theme: SimpleTheme, snapshot: CodexUsageSnapshot, width: number,
+	now = Date.now()): string[] {
+	const lines: string[] = [];
+	for (const bucket of snapshot.buckets) {
+		lines.push(...wrapTextWithAnsi(bucketDisplay(bucket).label, Math.max(1, width)));
+		for (const [name, window] of [["Session", bucket.primary], ["Weekly", bucket.secondary]] as const) {
+			if (window) lines.push(...renderControlCenterQuotaWindow(theme, window, width, name, now));
+		}
+		if (!bucket.primary && !bucket.secondary) lines.push("Quota and next reset: unknown");
+	}
+	return (lines.length ? lines : ["Quota and next reset: unknown (no quota windows returned)."])
+		.flatMap(line => wrapTextWithAnsi(line, Math.max(1, width)));
 }
 
 function remainingPercentTheme(
@@ -156,13 +191,14 @@ function borderBox(
 	titleTheme: "accent" | "mdLink" = "accent",
 ): string[] {
 	const innerWidth = Math.max(1, width - 2);
-	const heading = truncateToWidth(` ${title} `, innerWidth, "...", true);
+	const ellipsis = innerWidth >= 3 ? "..." : "";
+	const heading = truncateToWidth(` ${title} `, innerWidth, ellipsis, true);
 	const leftWidth = Math.floor(
 		Math.max(0, innerWidth - visibleWidth(heading)) / 2,
 	);
 	const rightWidth = Math.max(0, innerWidth - visibleWidth(heading) - leftWidth);
 	const pad = (line: string): string => {
-		const text = truncateToWidth(line, innerWidth, "...", true);
+		const text = truncateToWidth(line, innerWidth, ellipsis, true);
 		return `${text}${" ".repeat(Math.max(0, innerWidth - visibleWidth(text)))}`;
 	};
 	return [
@@ -323,7 +359,7 @@ function formatResetDetails(
 	resetAt: number | undefined,
 	now: number,
 ): string[] {
-	if (resetAt === undefined) return ["Reset: unavailable"];
+	if (!validReset(resetAt)) return ["Reset: unavailable"];
 	const date = new Date(resetAt * 1_000);
 	return [
 		`Reset: ${formatResetRelative(resetAt, now)}`,
@@ -389,7 +425,7 @@ function renderQuotaBucketSection(
 		divider(theme, width),
 	];
 	if (cards.length === 0) {
-		lines.push(theme.fg("muted", "No quota windows available"));
+		lines.push(...wrapToVisibleWidth("No quota windows available", width).map(line => theme.fg("muted", line)));
 		return lines;
 	}
 	const [primaryCard, secondaryCard] = cards;
@@ -414,6 +450,8 @@ function combineCards(left: string[], right: string[]): string[] {
 
 function wrapToVisibleWidth(text: string, width: number): string[] {
 	const maximumWidth = Math.max(1, Math.floor(width));
+	if (visibleWidth(text) <= maximumWidth) return [text];
+	if (text.includes(String.fromCharCode(27))) return wrapTextWithAnsi(text, maximumWidth);
 	const lines: string[] = [];
 	let line = "";
 	for (const character of Array.from(text)) {
@@ -434,7 +472,7 @@ function renderQuotaFooterLines(
 	presentation: CodexUsagePresentation,
 	width: number,
 ): string[] {
-	const lines = [theme.fg("accent", "Quotas + account"), divider(theme, width)];
+	const lines = [...wrapToVisibleWidth("Quotas + account", width).map(line => theme.fg("accent", line)), divider(theme, width)];
 	const quotaLines: string[] = [];
 	for (const bucket of snapshot.buckets) {
 		const { label } = bucketDisplay(bucket);
@@ -446,6 +484,10 @@ function renderQuotaFooterLines(
 			const prefix = `${label} ${name} `;
 			const themedLabel = `${theme.fg("muted", `${label} `)}${quotaLabel(theme, name, " ")}`;
 			const remaining = formatRemainingPercent(window.usedPercent);
+			if (!Number.isFinite(window.usedPercent)) {
+				quotaLines.push(...wrapToVisibleWidth(`${themedLabel}unknown`, width));
+				continue;
+			}
 			const suffix = ` ${remaining} · ${Math.round(window.usedPercent)}% used`;
 			const themedSuffix = `${theme.fg("muted", " ")}${themedRemainingPercent(theme, window.usedPercent)}${theme.fg("muted", ` · ${Math.round(window.usedPercent)}% used`)}`;
 			const compactThemedSuffix = `${themedRemainingPercent(theme, window.usedPercent)}${theme.fg("muted", ` · ${Math.round(window.usedPercent)}% used`)}`;
@@ -539,7 +581,8 @@ function controlHints(theme: SimpleTheme, width: number): string {
 	);
 }
 
-export function renderCodexUsageDashboardLines(
+/** Snapshot-only dashboard content; callers own controls and source-specific metadata. */
+export function renderCodexUsageDashboardContentLines(
 	theme: SimpleTheme,
 	snapshot: CodexUsageSnapshot,
 	presentation: CodexUsagePresentation = {},
@@ -551,8 +594,20 @@ export function renderCodexUsageDashboardLines(
 		lines.push(...renderQuotaBucketSection(theme, bucket, now, width));
 	lines.push(theme.fg("border", "─".repeat(Math.max(1, width))));
 	lines.push(...renderQuotaFooterLines(theme, snapshot, presentation, width));
-	lines.push(controlHints(theme, width));
-	return lines;
+	return width < 4 ? lines.map(line => truncateToWidth(line, Math.max(1, width), "")) : lines;
+}
+
+export function renderCodexUsageDashboardLines(
+	theme: SimpleTheme,
+	snapshot: CodexUsageSnapshot,
+	presentation: CodexUsagePresentation = {},
+	now = Date.now(),
+	width = 94,
+): string[] {
+	return [
+		...renderCodexUsageDashboardContentLines(theme, snapshot, presentation, now, width),
+		controlHints(theme, width),
+	];
 }
 
 export function renderCodexUsagePanelLines(

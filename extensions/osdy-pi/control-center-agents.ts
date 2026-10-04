@@ -28,7 +28,7 @@ export function createControlCenterAgents(options: Parameters<typeof setupJokerA
 					summary: `Agent mode: ${status.mode} | Joker: ${status.jokerInstalled ? "installed" : "not installed"} | Gentle entries: ${status.gentleCount}`,
 					note: "Configured provider, not proof of loaded tools. Opening this category never installs or switches agents.",
 					rows: (["joker", "gentle"] as const).filter(mode => mode === "joker" || status.gentleCount > 0).map(mode => ({
-						label: mode === "joker" ? "Joker agents" : "Gentle agents", current: status.mode === mode,
+						label: mode === "joker" ? "Joker" : "Gentle", current: status.mode === mode,
 						action: { kind: "agents-provider", mode },
 						details: [`Target: ${target}`, mode === "joker"
 							? "Select Joker: Install npm:pi-subagents-j0k3r if absent; enable ./index.ts and exclude only -extensions/gentle-agents.ts from eligible Gentle entries."

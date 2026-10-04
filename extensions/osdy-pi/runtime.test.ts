@@ -11,6 +11,8 @@ import ts from "typescript";
 import type { OsdyState, WorkingTreeState, WorkingWidgetState, GlobalEditorSettings } from "./types.js";
 import type { VisualPreferenceAction } from "./control-center-preferences.js";
 import type { ProfileCodexUsageResult } from "./profile-codex-usage.js";
+import type { CodexUsageRefreshClock, CodexUsageRefreshTimer } from "./codex-usage-refresh.js";
+import type { CodexUsageSnapshot } from "./codex-usage.js";
 import { Container, TuiMainScreen, type Component, type OverlayHandle, type Terminal, type TUI } from "@earendil-works/pi-tui";
 
 registerHooks({
@@ -71,7 +73,9 @@ void test("registered Account factory isolates profile preview from active quota
 			for (let i = 0; i < 16; i++) await Promise.resolve();
 			panel.handleInput("\x1b[C"); views.push(panel.render(140).join("\n"));
 			panel.handleInput("\r"); for (let i = 0; i < 16; i++) await Promise.resolve();
-			panel.handleInput("\r"); views.push(panel.render(140).join("\n"));
+			panel.handleInput("\r"); for (let i = 0; i < 16; i++) await Promise.resolve();
+			views.push(panel.render(140).join("\n"));
+			panel.handleInput("\x1b"); assert.equal(result, undefined, "Back does not finish custom UI");
 			panel.handleInput("\x1b"); return result;
 		},
 	} } as unknown as ExtensionCommandContext;
@@ -87,7 +91,7 @@ void test("registered Account factory isolates profile preview from active quota
 		const handler = commands.get("osdyConfig"); assert.ok(handler); await handler.handler("", ctx);
 		const before = renderCount; finish(); for (let i = 0; i < 16; i++) await Promise.resolve();
 		assert.equal(factoryCalls, 1); assert.equal(current?.(), true); assert.deepEqual(queries, ["work"]);
-		assert.match(views[0] ?? "", /View usage: work/); assert.match(views[1] ?? "", /Querying stored-profile Codex usage: work/);
+		assert.match(views[0] ?? "", /View usage/); assert.match(views[1] ?? "", /Querying stored-profile Codex usage: work/);
 		assert.equal(signal?.aborted, true); assert.equal(renderCount, before); assert.deepEqual(notices, []);
 	} finally {
 		if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
@@ -371,11 +375,13 @@ for (const closePending of [false, true]) {
 			for (let i = 0; i < 3; i++) f.send("\x1b[B");
 			await flushFocus(); await flushFocus();
 			f.send("\x1b[C"); f.send("\x1b[H");
-			// Each inactive profile has preview, switch and default rows: select work's preview.
-			for (let i = 0; i < 3; i++) f.send("\x1b[B");
-			assert.match(f.text(), /> View usage: work/);
+			// Select work's profile row; direct actions never add a second list.
+			f.send("\x1b[B");
+			assert.match(f.text(), /> work/);
+			assert.match(f.text(), /v View usage/);
+			assert.doesNotMatch(f.text(), /Actions \/ work/);
 			assert.deepEqual(queries, [], "navigation must not query quota");
-			f.send("\r"); await flushFocus(); f.send("\r"); await flushFocus();
+			f.send("v"); await flushFocus(); f.send("r"); f.send("\r"); await flushFocus();
 			assert.deepEqual(queries, ["work"], "duplicate Enter while pending must not fetch again");
 			assert.match(f.text(), /Querying stored-profile Codex usage: work/);
 			assert.equal(f.focused(), true); assert.equal(f.mountedEditor(), mounted);
@@ -384,12 +390,20 @@ for (const closePending of [false, true]) {
 				finish(result); await flushFocus(); await flushFocus();
 				const text = f.text();
 				assert.match(text, /Stored-profile Codex usage checked/);
-				assert.match(text, /Profile: work/); assert.match(text, /Codex \/ Session: 63% remaining/);
-				assert.ok(text.includes(`Next reset: ${new Date(resetsAt * 1000).toLocaleString()}`));
+				assert.match(text, /Profile: work/); assert.ok(text.includes(`Session${String.fromCharCode(27)}[22m · 5h`));
+				assert.match(text, /63% left · 37% used/);
+				assert.match(text, /█+░+/);
+				assert.ok(text.includes(`Local: ${new Date(resetsAt * 1000).toLocaleString()}`));
+				assert.match(text, /Reset: resets in|Reset: reset time passed/);
+				assert.match(text, /Refresh.*Back/);
 				assert.ok(text.includes(`Checked: ${new Date(checkedAt).toLocaleString()} (local time)`));
 				assert.doesNotMatch(text, /Confirm account action/);
 			}
 			f.lifecycle.length = 0;
+			f.send(closePending ? "b" : "\x1b");
+			assert.equal(f.closes(), 0, "quota Back keeps the overlay and editor hold");
+			assert.match(f.text(), /> work/);
+			assert.match(f.text(), /v View usage/);
 			f.send("\x1b"); await f.showing;
 			assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed", "editor-mount"]);
 			assert.equal(f.closes(), 1); assert.equal(f.replacements(), 1);
@@ -464,7 +478,7 @@ void test("registered Agents uses synthetic normal Pi and reloads only after SDK
 		f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r");
 		assert.match(f.text(), /> Cancel/); assert.ok(f.text().includes(path));
 		f.send("\r"); assert.equal(f.closes(), 0);
-		f.send("\r"); f.text(); f.send("\x1b[B"); f.send("\r");
+		f.send("g"); f.text(); f.send("\x1b[B"); f.send("\r");
 		await f.showing;
 		assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed", "editor-mount", "reload"]);
 		assert.equal(f.closes(), 1); assert.equal(f.tui.hasOverlay(), false); assert.deepEqual(f.notices, []);
@@ -486,7 +500,7 @@ void test("registered Agents isolated navigation exposes the owner block without
 	try {
 		f.send("\x1b[F"); await flushFocus();
 		assert.match(f.text(), /normal personal Pi.*override or isolated/);
-		f.send("\x1b[C"); f.send("\r"); await flushFocus();
+		f.send("\x1b[C"); f.send("g"); f.send("j"); f.send("\r"); await flushFocus();
 		assert.equal(readFileSync(path, "utf8"), before); assert.equal(f.closes(), 0);
 		f.send("\x1b"); await f.showing;
 		assert.ok(!f.lifecycle.includes("reload"));
@@ -1464,6 +1478,185 @@ void test("Codex usage refresh repaints the shared TUI with its ready quota snap
 
 	assert.deepEqual(renderedStates, ["loading", "ready"]);
 	assert.deepEqual(state.codexUsage, { kind: "ready", snapshot });
+});
+
+class IdleQuotaClock implements CodexUsageRefreshClock {
+	now = 0;
+	jobs = new Map<CodexUsageRefreshTimer, { at: number; run(): void }>();
+	setTimeout(run: () => void, delay: number): CodexUsageRefreshTimer {
+		const timer = { cancel: () => { this.jobs.delete(timer); } };
+		this.jobs.set(timer, { at: this.now + delay, run });
+		return timer;
+	}
+	async advance(ms: number): Promise<void> {
+		this.now += ms;
+		for (const [timer, job] of this.jobs) {
+			if (job.at <= this.now) { this.jobs.delete(timer); job.run(); }
+		}
+		for (let i = 0; i < 16; i++) await Promise.resolve();
+	}
+}
+
+async function idleQuotaFixture() {
+	const clock = new IdleQuotaClock();
+	const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
+	const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>();
+	const requests: Array<{ signal: AbortSignal; resolve(snapshot: CodexUsageSnapshot): void; reject(error: Error): void }> = [];
+	let enabled = true; let hasUI = true; let idle = true; let provider = "openai-codex"; let mode = "tui";
+	let session = 0; let authCalls = 0; let panel: Component | undefined;
+	const snapshot = (fetchedAt: number): CodexUsageSnapshot => ({ fetchedAt, planType: "plus", ordinaryUsageAllowed: true,
+		buckets: [], credits: undefined });
+	const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
+		on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => Promise<void> | void) => {
+			const list = handlers.get(name) ?? []; list.push(handler); handlers.set(name, list);
+		}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
+		events: { on: () => () => {} }, exec: () => { throw new Error("external execution forbidden"); },
+	} as unknown as ExtensionAPI;
+	const accessToken = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "fake-account" } })).toString("base64url")}.signature`;
+	const makeContext = () => ({ cwd: "/synthetic-idle-quota", get hasUI() { return hasUI; }, get mode() { return mode; },
+		get model() { return { provider, id: "fake-codex", name: `session-${session}` }; }, isIdle: () => idle,
+		getThinkingLevel: () => "off", modelRegistry: { getProviderAuth: () => {
+			authCalls++; return Promise.resolve({ auth: { apiKey: accessToken } });
+		} }, ui: { getEditorComponent: () => undefined, setEditorComponent: () => {}, setHeader: () => {}, setFooter: () => {},
+			setWidget: () => {}, setWorkingVisible: () => {}, notify: () => {},
+			custom: (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component) => {
+				panel = factory({ requestRender: () => {} }, { fg: (_color: string, text: string) => text }, undefined, () => {});
+				return Promise.resolve();
+			},
+		},
+	}) as unknown as ExtensionContext;
+	let ctx = makeContext();
+	const previousDir = process.env.PI_CODING_AGENT_DIR;
+	// A nonexistent synthetic directory prevents factory inspection of personal settings.
+	process.env.PI_CODING_AGENT_DIR = "/nonexistent-osdy-idle-quota-fixture";
+	try {
+		await registerOsdyPi(pi, { readActiveProfile: () => Promise.resolve(undefined), codexUsageClock: clock,
+			fetchCodexUsage: (_auth, { signal }) => new Promise((resolve, reject) => { requests.push({ signal, resolve, reject }); }),
+			editorSettingsStore: { path: "/unused", save: () => Promise.resolve(), load: () => Promise.resolve({
+				version: 1, enabled, editorMode: "simple", headerVariant: "osdy-theme", mascot: "current", workingTreeEnabled: false,
+			}) },
+		});
+	} finally {
+		if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
+	}
+	const lifecycle = async (name: string) => {
+		const handler = handlers.get(name)?.find(candidate => candidate.toString().includes(
+			name === "agent_settled" ? "refreshCurrentCodexUsage" : "idleUsageRefresh"));
+		assert.ok(handler, `runtime ${name} handler must be registered`);
+		await handler({}, ctx); await clock.advance(0);
+	};
+	return { clock, requests, snapshot, authCalls: () => authCalls,
+		start: () => lifecycle("session_start"), stop: () => lifecycle("session_shutdown"), settle: () => lifecycle("agent_settled"),
+		replace: async () => { session++; ctx = makeContext(); await lifecycle("session_start"); },
+		manual: async () => { await commands.get("usage")!.handler("", ctx as ExtensionCommandContext); await clock.advance(0); },
+		visual: async (action: "on" | "off") => { await commands.get("osdy-pi")!.handler(action, ctx as ExtensionCommandContext); },
+		panel: () => panel!.render(100).join("\n"),
+		set: (values: { enabled?: boolean; hasUI?: boolean; idle?: boolean; provider?: string; mode?: string }) => {
+			enabled = values.enabled ?? enabled; hasUI = values.hasUI ?? hasUI; idle = values.idle ?? idle;
+			provider = values.provider ?? provider; mode = values.mode ?? mode;
+		},
+		complete: async (index: number, at = index) => { requests[index]!.resolve(snapshot(at)); await clock.advance(0); },
+	};
+}
+
+void test("registered idle quota runtime respects timing, in-flight manual requests and settlement", async () => {
+	const f = await idleQuotaFixture();
+	try {
+		await f.start(); assert.equal(f.requests.length, 1);
+		await f.clock.advance(60_000); assert.equal(f.requests.length, 1, "startup still in flight");
+		await f.complete(0);
+		await f.clock.advance(59_999); assert.equal(f.requests.length, 1);
+		await f.clock.advance(1); assert.equal(f.requests.length, 2);
+		await f.manual(); assert.equal(f.requests.length, 3);
+		assert.equal(f.requests[1]?.signal.aborted, true, "manual refresh wins over idle query");
+		await f.complete(1); assert.match(f.panel(), /Refreshing|Loading|loading|refreshing/);
+		await f.clock.advance(60_000); assert.equal(f.requests.length, 3, "timer must not supersede manual query");
+		await f.settle(); assert.equal(f.requests.length, 4, "settlement remains a lifecycle refresh");
+		assert.equal(f.requests[2]?.signal.aborted, true);
+		await f.complete(2); await f.complete(3);
+		await f.clock.advance(60_000); assert.equal(f.requests.length, 5);
+		assert.equal(f.authCalls(), 5, "only active auth is queried");
+		assert.equal(f.clock.jobs.size, 0, "timer is suspended while idle query is pending");
+	} finally { await f.stop(); }
+});
+
+void test("registered idle quota runtime skips disabled UI, non-Codex and busy sessions", async () => {
+	const f = await idleQuotaFixture();
+	try {
+		await f.start(); await f.complete(0);
+		for (const values of [{ hasUI: false }, { hasUI: true, mode: "rpc" }, { mode: "tui", provider: "other" },
+			{ provider: "openai-codex", idle: false }]) {
+			f.set(values); await f.clock.advance(60_000); assert.equal(f.requests.length, 1);
+		}
+		f.set({ idle: true }); await f.clock.advance(60_000); assert.equal(f.requests.length, 2);
+		await f.complete(1);
+		await f.visual("off"); await f.clock.advance(60_000); assert.equal(Number(f.requests.length), 2);
+		await f.visual("on"); await f.clock.advance(60_000); assert.equal(Number(f.requests.length), 3);
+		await f.complete(2);
+		f.set({ enabled: false }); await f.replace();
+		const before = f.requests.length; await f.clock.advance(60_000); assert.equal(f.requests.length, before);
+		f.set({ enabled: true }); await f.replace(); await f.complete(before);
+		await f.clock.advance(60_000); assert.equal(f.requests.length, before + 2);
+	} finally { await f.stop(); }
+});
+
+void test("registered idle quota runtime backs off errors and recovers after a successful query", async () => {
+	const f = await idleQuotaFixture();
+	try {
+		await f.start(); await f.complete(0);
+		await f.clock.advance(60_000); f.requests[1]!.reject(new Error("offline")); await f.clock.advance(0);
+		await f.clock.advance(119_999); assert.equal(f.requests.length, 2);
+		await f.clock.advance(1); assert.equal(f.requests.length, 3);
+		await f.complete(2); await f.clock.advance(60_000); assert.equal(f.requests.length, 4);
+	} finally { await f.stop(); }
+});
+
+void test("registered idle quota runtime cleans pending timers and rejects old-session results", async () => {
+	const f = await idleQuotaFixture();
+	try {
+		await f.start(); await f.complete(0);
+		await f.stop(); assert.equal(f.clock.jobs.size, 0);
+		await f.clock.advance(60_000); assert.equal(f.requests.length, 1);
+		await f.start(); await f.replace();
+		assert.equal(f.requests[1]?.signal.aborted, true);
+		await f.complete(1); await f.complete(2);
+		await f.clock.advance(60_000); assert.equal(f.requests.length, 4);
+		await f.replace(); assert.equal(f.requests[3]?.signal.aborted, true);
+		await f.complete(3); assert.equal(f.clock.jobs.size, 1, "old completion cannot add a timer");
+		await f.manual(); await f.complete(4);
+		assert.match(f.panel(), /Refreshing|Loading|loading|refreshing/, "old session cannot publish quota");
+		await f.stop(); assert.equal(f.requests[5]?.signal.aborted, true);
+		await f.complete(5);
+		assert.equal(f.clock.jobs.size, 0);
+		await f.clock.advance(600_000); assert.equal(f.requests.length, 6);
+	} finally { await f.stop(); }
+});
+
+void test("aborted auth resolution cannot start a remote query or repaint stale state", async () => {
+	let finish: (value: { auth: { apiKey: string } }) => void = () => {};
+	let renders = 0; let queries = 0;
+	const state: Pick<OsdyState, "codexUsage" | "tui"> = { codexUsage: { kind: "idle" },
+		tui: { requestRender: () => { renders++; } } as unknown as TUI };
+	const abort = new AbortController();
+	const pending = refreshCodexUsage({ modelRegistry: { getProviderAuth: () => new Promise(resolve => { finish = resolve; }) } },
+		state, abort, () => { queries++; return Promise.reject(new Error("forbidden")); });
+	abort.abort(); state.codexUsage = { kind: "idle" }; finish({ auth: { apiKey: "synthetic" } });
+	assert.equal(await pending, undefined); assert.equal(queries, 0); assert.equal(renders, 1);
+	assert.deepEqual(state.codexUsage, { kind: "idle" });
+});
+
+void test("automatic Codex refresh retains the last snapshot on loading and failure", async () => {
+	const snapshot = { planType: undefined, ordinaryUsageAllowed: undefined, buckets: [], credits: undefined, fetchedAt: 123 };
+	const state: Pick<OsdyState, "codexUsage"> = { codexUsage: { kind: "ready", snapshot } };
+	let finish: (value: undefined) => void = () => {};
+	const pending = refreshCodexUsage({ modelRegistry: { getProviderAuth: () => new Promise(resolve => { finish = resolve; }) } },
+		state, new AbortController(), undefined, true);
+	assert.deepEqual(state.codexUsage, { kind: "loading", snapshot });
+	finish(undefined);
+	assert.equal(await pending, false);
+	assert.equal(state.codexUsage.kind, "error");
+	assert.ok("snapshot" in state.codexUsage);
+	assert.equal(state.codexUsage.snapshot, snapshot);
 });
 
 void test("Codex refresh discards prior usage snapshots and shutdown resets usage state", () => {

@@ -4,6 +4,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
+import { createCodexUsageRefresh, type CodexUsageRefreshClock } from "./codex-usage-refresh.js";
 import { createControlCenterTodo } from "./control-center-todo.js";
 import { createControlCenterAgents } from "./control-center-agents.js";
 import { showControlCenter, type ControlCenterResult } from "./control-center.js";
@@ -723,11 +724,16 @@ export async function refreshCodexUsage(
 	state: CodexUsageRefreshState,
 	abort: AbortController,
 	fetchUsage: CodexUsageFetcher = fetchCodexUsage,
-): Promise<void> {
-	state.codexUsage = { kind: "loading", snapshot: undefined };
+	preserveSnapshot = false,
+): Promise<boolean | undefined> {
+	if (abort.signal.aborted) return;
+	const snapshot = preserveSnapshot && "snapshot" in state.codexUsage ? state.codexUsage.snapshot : undefined;
+	if (preserveSnapshot) state.codexUsage = { kind: "loading", snapshot };
+	else state.codexUsage = { kind: "loading", snapshot: undefined };
 	state.tui?.requestRender();
 	try {
 		const providerAuth = await ctx.modelRegistry.getProviderAuth("openai-codex");
+		if (abort.signal.aborted) return;
 		const accessToken = providerAuth?.auth.apiKey;
 		if (!accessToken) throw new Error("Codex login is required");
 		const snapshot = await fetchUsage(
@@ -744,8 +750,12 @@ export async function refreshCodexUsage(
 				error instanceof Error ? error.message : "Codex usage is unavailable",
 			snapshot: undefined,
 		};
+		if (preserveSnapshot) state.codexUsage.snapshot = snapshot;
+		state.tui?.requestRender();
+		return false;
 	}
 	state.tui?.requestRender();
+	return true;
 }
 
 export function createActiveSessionRefresh<T>(
@@ -1074,6 +1084,8 @@ export async function registerOsdyPi(
 	pi: ExtensionAPI,
 	dependencies: {
 		readActiveProfile?: () => Promise<string | undefined>;
+		codexUsageClock?: CodexUsageRefreshClock;
+		fetchCodexUsage?: CodexUsageFetcher;
 		accountFactory?: typeof bindControlCenterAccount;
 		editorSettingsStore?: ReturnType<typeof createEditorSettingsStore>;
 	} = {},
@@ -1139,9 +1151,21 @@ export async function registerOsdyPi(
 		codexUsageAbort?.abort();
 		const abort = new AbortController();
 		codexUsageAbort = abort;
-		await refreshCodexUsage(ctx, state, abort);
+		await refreshCodexUsage(ctx, state, abort, dependencies.fetchCodexUsage);
 		if (codexUsageAbort === abort) codexUsageAbort = undefined;
 	};
+	const idleUsageRefresh = createCodexUsageRefresh(async () => {
+		const ctx = sessionContext;
+		if (!usageSettingsReady || !state.enabled || !ctx || !ctx.hasUI || ctx.mode !== "tui" ||
+			ctx.model?.provider !== "openai-codex" || !ctx.isIdle() || codexUsageAbort) return;
+		const abort = new AbortController();
+		codexUsageAbort = abort;
+		try {
+			return await refreshCodexUsage(ctx, state, abort, dependencies.fetchCodexUsage, true);
+		} finally {
+			if (codexUsageAbort === abort) codexUsageAbort = undefined;
+		}
+	}, dependencies.codexUsageClock);
 	registerAccountProfilesCommand(pi, {
 		requestRender: () => {
 			state.tui?.requestRender();
@@ -1213,6 +1237,7 @@ export async function registerOsdyPi(
 	});
 	pi.on("session_shutdown", () => {
 		usageSettingsReady = false;
+		idleUsageRefresh.stop();
 		runtimeGeneration++;
 		state.editorMountHold = undefined;
 		state.editorReconcilePending = false;
@@ -1228,6 +1253,10 @@ export async function registerOsdyPi(
 		sessionContext = undefined;
 	});
 	pi.on("session_start", async (_event, ctx) => {
+		idleUsageRefresh.stop();
+		codexUsageAbort?.abort();
+		codexUsageAbort = undefined;
+		state.codexUsage = { kind: "idle" };
 		usageSettingsReady = false;
 		runtimeGeneration++;
 		state.editorMountHold = undefined;
@@ -1257,6 +1286,7 @@ export async function registerOsdyPi(
 		state.fallbackEditorFactory = ctx.ui.getEditorComponent();
 		state.enabled = editorSettings.enabled;
 		usageSettingsReady = true;
+		idleUsageRefresh.start();
 		state.editorMode = editorSettings.editorMode;
 		state.workingTreeEnabled = editorSettings.workingTreeEnabled;
 		state.headerVariant = editorSettings.headerVariant;

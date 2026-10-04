@@ -22,7 +22,10 @@ void test("Usage reads cached quota and owner history, refresh is explicit", asy
 	});
 	const view = await service.read();
 	assert.equal(refreshes, 0);
-	assert.match(JSON.stringify(view), /25% used/);
+	assert.match(JSON.stringify(view), /Active Codex quota/);
+	assert.equal(view.rows.find(row => row.quota)?.quota?.usedPercent, 25);
+	assert.match(JSON.stringify(view), /75% left/);
+	assert.equal(view.rows.filter(row => row.action.kind === "usage-range").some(row => row.quota !== undefined), false);
 	assert.match(JSON.stringify(view), /No recorded turns/);
 	await service.apply({ kind: "usage-range", range: "week" });
 	assert.equal(refreshes, 0);
@@ -77,6 +80,29 @@ void test("Explicit refresh still updates local history when quota fails", async
 	await service.read();
 	assert.equal((await service.apply({ kind: "usage-refresh" })).failed, true);
 	assert.equal(reads, 2);
+});
+
+void test("Cached quota remains distinct from local filters during automatic loading or failure", async () => {
+	const snapshot = { fetchedAt: 1000, credits: undefined, planType: undefined, ordinaryUsageAllowed: undefined,
+		buckets: [{ id: "codex", label: undefined, primary: { usedPercent: 100, windowMinutes: 300, resetsAt: undefined },
+			secondary: { usedPercent: 0, windowMinutes: 10080, resetsAt: undefined } }] };
+	for (const kind of ["ready", "loading", "error"] as const) {
+		const service = createControlCenterUsage({ quota: () => kind === "error" ? { kind, snapshot, message: "private error" } : { kind, snapshot },
+			history: () => Promise.resolve({ records: [], warnings: [], limited: false, missing: true }),
+			refresh: () => { throw new Error("filter must not refresh"); }, active: () => "work" });
+		for (const range of ["day", "week", "month"] as const) {
+			await service.apply({ kind: "usage-range", range });
+			const view = await service.read();
+			assert.deepEqual(view.rows.filter(row => row.quota).map(row => row.quota?.usedPercent), [100, 0]);
+			assert.match(JSON.stringify(view), /0% left/);
+			assert.match(JSON.stringify(view), /100% left/);
+			assert.equal(view.rows.filter(row => row.action.kind === "usage-range").some(row => row.quota), false);
+			assert.doesNotMatch(JSON.stringify(view), /private error/);
+		}
+	}
+	const empty = createControlCenterUsage({ quota: () => ({ kind: "ready", snapshot: { ...snapshot, buckets: [] } }),
+		history: () => Promise.resolve({ records: [], warnings: [], limited: false, missing: true }), refresh: () => Promise.resolve(), active: () => undefined });
+	assert.match(JSON.stringify(await empty.read()), /Active Codex quota: unknown/);
 });
 
 void test("Usage reports unavailable sources without raw backend errors", async () => {

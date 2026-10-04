@@ -50,6 +50,8 @@ const {
 	formatCodexUsageWindow,
 	renderCompactCodexQuotaBars,
 	formatRemainingPercent,
+	renderControlCenterQuotaLines,
+	renderCodexUsageDashboardContentLines,
 	renderCodexUsageDashboardLines,
 	renderCodexUsagePanelLines,
 	renderCodexUsageReadyLines,
@@ -1134,6 +1136,64 @@ void test("repaints the modal after refresh synchronously enters loading and whe
 	await Promise.resolve();
 	assert.equal(observedStates.at(-1), "ready");
 	assert.deepEqual(state, { kind: "ready", snapshot: refreshedSnapshot });
+});
+
+void test("Control Center shared quota bars preserve extremes, unknowns, windows and ANSI width", () => {
+	const theme: SimpleTheme = { fg: (_color, text) => `\x1b[32m${text}\x1b[0m` };
+	const now = 1_900_000_000_000;
+	const snapshot: CodexUsageSnapshot = { fetchedAt: now, planType: undefined, credits: undefined, ordinaryUsageAllowed: undefined,
+		buckets: [
+			{ id: "codex", label: "Codex", primary: { usedPercent: 0, windowMinutes: 30, resetsAt: now / 1000 + 60 },
+				secondary: { usedPercent: 100, windowMinutes: 10080, resetsAt: undefined } },
+			{ id: "extra", label: "Extra\x1b[2J bucket", primary: { usedPercent: NaN, windowMinutes: undefined, resetsAt: NaN }, secondary: undefined },
+			{ id: "missing", label: undefined, primary: undefined, secondary: undefined },
+		] };
+	const text = stripSgr(renderControlCenterQuotaLines(theme, snapshot, 100, now).join("\n"));
+	assert.match(text, /Session 30m 100% left █+/);
+	assert.match(text, /Weekly 7d 0% left ░+/);
+	assert.match(text, /Session quota window unknown/);
+	assert.match(text, /resets in 1m/);
+	assert.ok(text.includes(`Next reset: ${new Date(now + 60000).toLocaleString()}`));
+	assert.match(text, /Quota and next reset: unknown/);
+	assert.doesNotMatch(text, /NaN/);
+	assert.equal(text.includes("\x1b[2J"), false);
+	for (const width of [1, 8, 24, 48, 100]) {
+		const lines = renderControlCenterQuotaLines(theme, snapshot, width, now);
+		assert.ok(lines.every(line => visibleWidth(line) <= width), `width ${width}`);
+	}
+	assert.equal(formatRemainingPercent(Infinity), "unknown");
+	assert.equal(formatRemainingPercent(-10), "100% left");
+	assert.equal(formatRemainingPercent(110), "0% left");
+	assert.match(renderControlCenterQuotaLines(theme, { ...snapshot, buckets: [] }, 100).join(" "), /unknown/);
+});
+
+void test("Pure dashboard content matches /usage groups while leaving caller controls and identity separate", () => {
+	const theme: SimpleTheme = { fg: (_color, text) => `${String.fromCharCode(27)}[32m${text}${String.fromCharCode(27)}[0m` };
+	const now = 1_900_000_000_000;
+	const snapshot: CodexUsageSnapshot = { fetchedAt: now, planType: "plus", ordinaryUsageAllowed: false,
+		credits: { hasCredits: true, unlimited: false, balance: "0", resetCreditCount: 0 },
+		buckets: [
+			{ id: "codex", label: "Codex", primary: { usedPercent: 0, windowMinutes: 300, resetsAt: now / 1000 + 60 },
+				secondary: { usedPercent: 100, windowMinutes: 10080, resetsAt: 0 } },
+			{ id: "extra", label: "Additional", primary: { usedPercent: NaN, windowMinutes: undefined, resetsAt: NaN }, secondary: undefined },
+			{ id: "missing", label: undefined, primary: undefined, secondary: undefined },
+		] };
+	for (let width = 1; width <= 120; width++) {
+		const presentation = { profile: "personal" };
+		const content = renderCodexUsageDashboardContentLines(theme, snapshot, presentation, now, width);
+		const dashboard = renderCodexUsageDashboardLines(theme, snapshot, presentation, now, width);
+		assert.deepEqual(content, dashboard.slice(0, -1), `shared content at width ${width}`);
+		assert.ok(content.every(line => visibleWidth(line) <= width), `ANSI width ${width}: ${JSON.stringify(content.filter(line => visibleWidth(line) > width).map(stripSgr))}`);
+		assert.doesNotMatch(stripSgr(content.join("\n")), /NaN|Invalid Date|esc\/q close/);
+	}
+	const text = stripSgr(renderCodexUsageDashboardContentLines(theme, snapshot, { profile: "personal" }, now, 120).join("\n"));
+	for (const field of ["Session", "Weekly", "100% left", "0% left", "Additional [extra]", "Quotas + account", "Profile: personal", "Plan: plus", "Availability: not allowed", "Credits: 0", "Credit resets: 0", "resets in 1m", "1970-01-01 00:00 UTC", "Reset: unavailable", "unknown", "No quota windows available"]) assert.ok(text.includes(field), field);
+	assert.doesNotMatch(text, /Profile: work|openai-codex\/|gpt-/);
+	const unlimited = { ...snapshot, credits: { hasCredits: false, unlimited: true, balance: undefined, resetCreditCount: undefined } };
+	assert.match(stripSgr(renderCodexUsageDashboardContentLines(theme, unlimited, {}, now, 100).join("\n")), /Credits: unlimited/);
+	const empty = { ...snapshot, buckets: [], credits: undefined, planType: undefined, ordinaryUsageAllowed: undefined };
+	const absent = stripSgr(renderCodexUsageDashboardContentLines(theme, empty, {}, now, 100).join("\n"));
+	assert.match(absent, /Quotas \+ account/); assert.doesNotMatch(absent, /Credits:|Plan:|Availability:|0% left/);
 });
 
 void test("keeps Codex quota out of the editor top border layout", () => {

@@ -31,15 +31,21 @@ void test("Profile preview is explicit, independently selected and never activat
 	});
 	const initial = await service.read();
 	assert.deepEqual(requests, []);
-	assert.equal(initial.rows[0]?.label, "View usage: work");
-	assert.ok(initial.rows.findIndex(row => row.label === "View usage: personal") < initial.rows.findIndex(row => row.label === "Switch to personal"));
+	assert.equal(initial.rows.length, 2);
+	assert.equal(initial.rows[0]?.label, "work · Active");
+	assert.equal(initial.rows[1]?.action.kind, "account-select");
+	assert.equal(initial.rows[1]?.actions?.[0]?.label, "View usage");
 	for (const profile of ["work", "personal"]) {
 		assert.equal((await service.apply({ kind: "account-usage", profile })).failed, false);
-		const row = (await service.read()).rows.find(row => row.label === `View usage: ${profile}`);
-		assert.match(row?.details?.join(" ") ?? "", /75% remaining/);
-		assert.match(row?.details?.join(" ") ?? "", /Weekly: 20% remaining.*Next reset: unknown/);
-		assert.match(row?.details?.join(" ") ?? "", /Extra bucket.*90% remaining.*Next reset: unknown/);
+		const row = { details: service.quotaDetails?.(profile) };
+		assert.match(row?.details?.join(" ") ?? "", /75% left/);
+		assert.match(row?.details?.join(" ") ?? "", /Weekly 7d 20% left.*Next reset: unknown/);
+		assert.match(row?.details?.join(" ") ?? "", /Extra bucket.*90% left.*Next reset: unknown/);
 		assert.ok(row?.details?.includes(`Profile: ${profile}`));
+		assert.equal(service.quotaSnapshot("personal"), profile === "personal" ? service.quotaSnapshot(profile) : undefined);
+		assert.equal(service.quotaSnapshot(profile)?.buckets.length, 2);
+		assert.ok(row?.details?.some(line => line.startsWith("Window: 300 minutes")));
+		assert.ok(row?.details?.some(line => line.startsWith("Window: unknown")));
 		assert.ok(row?.details?.includes(`Checked: ${new Date(1000).toLocaleString()} (local time)`));
 		assert.ok(row?.details?.some(line => line.endsWith(`Next reset: ${new Date(2000 * 1000).toLocaleString()}`)));
 	}
@@ -61,13 +67,13 @@ void test("Profile preview preserves timestamp units and marks missing or invali
 						secondary: { usedPercent: 80, windowMinutes: 10080, resetsAt } }] } }),
 		});
 		await service.apply({ kind: "account-usage", profile: "work" });
-		const details = (await service.read()).rows[0]?.details ?? [];
+		const details = service.quotaDetails?.("work") ?? [];
 		assert.ok(details.includes(`Checked: ${new Date(checkedAt).toLocaleString()} (local time)`));
 		const expectedReset = resetsAt === 1_780_000_000 || resetsAt === 0
 			? new Date(resetsAt * 1000).toLocaleString() : "unknown";
-		for (const label of ["Session: 75", "Weekly: 20"]) {
-			assert.ok(details.includes(`codex / ${label}% remaining · Next reset: ${expectedReset}`));
-		}
+		assert.match(details.join(" "), /Session 5h 75% left/);
+		assert.match(details.join(" "), /Weekly 7d 20% left/);
+		assert.equal(details.filter(line => line.endsWith(`Next reset: ${expectedReset}`)).length, 2);
 	}
 });
 
@@ -81,7 +87,7 @@ void test("Account projects validated metadata, never output or credential field
 	assert.match(view.summary, /Current: work.*Default: personal/);
 	assert.equal(JSON.stringify(view).includes("secret"), false);
 	assert.equal(JSON.stringify(view).includes("auth.json"), false);
-	assert.equal(view.rows.some(row => row.label === "Switch to personal"), true);
+	assert.equal(view.rows.some(row => row.actions?.some(action => action.label === "Switch to personal")), true);
 });
 
 void test("Account revalidates membership and uses real switch/default adapters", async () => {
@@ -144,13 +150,13 @@ void test("Bound Account validates live external active names without rendering 
 			else process.env.OSDY_PI_PROFILE_NAME = value;
 			const view = await service.read();
 			assert.match(view.summary, /Current: unmanaged/);
-			assert.equal(view.rows.some(row => row.label === "Switch to work"), true);
+			assert.equal(view.rows.some(row => row.actions?.some(action => action.label === "Switch to work")), true);
 			assert.equal(JSON.stringify(view).includes("token-secret"), false);
 			assert.equal(JSON.stringify(view).includes("auth.json"), false);
 		}
 		process.env.OSDY_PI_PROFILE_NAME = "Work";
 		assert.match((await service.read()).summary, /Current: Work/);
-		assert.equal((await service.read()).rows.some(row => row.label === "Switch to work"), false);
+		assert.equal((await service.read()).rows.some(row => row.actions?.some(action => action.label === "Switch to work")), false);
 	} finally {
 		if (previous === undefined) delete process.env.OSDY_PI_PROFILE_NAME;
 		else process.env.OSDY_PI_PROFILE_NAME = previous;
@@ -195,15 +201,15 @@ void test("Profile preview cancellation, supersession and stale runtime discard 
 	requests[1]?.finish({ status: "unavailable", profile: "personal", checkedAt: 1000, reason: "remote-usage-unavailable" });
 	await second;
 	requests[0]?.finish({ status: "unavailable", profile: "work", checkedAt: 1000, reason: "stored-credentials-unavailable" }); await first;
-	assert.match(JSON.stringify(await service.read()), /Remote Codex usage unavailable/);
-	assert.doesNotMatch(JSON.stringify(await service.read()), /Stored credentials unavailable \(missing/);
+	assert.match(JSON.stringify(service.quotaDetails?.("personal")), /Remote Codex usage unavailable/);
+	assert.doesNotMatch(JSON.stringify(service.quotaDetails?.("personal")), /Stored credentials unavailable \(missing/);
 	const third = service.apply({ kind: "account-usage", profile: "work" }); await flush();
 	service.cancelUsage?.(); assert.equal(requests[2]?.signal.aborted, true);
 	requests[2]?.finish({ status: "unavailable", profile: "work", checkedAt: 1000, reason: "stored-credentials-unavailable" }); await third;
-	assert.doesNotMatch(JSON.stringify(await service.read()), /Checked:/);
+	assert.doesNotMatch(JSON.stringify(service.quotaDetails?.("work")), /Checked: .*local time/);
 	const fourth = service.apply({ kind: "account-usage", profile: "work" }); await flush(); current = false;
 	requests[3]?.finish({ status: "unavailable", profile: "work", checkedAt: 1000, reason: "stored-credentials-unavailable" }); await fourth;
-	assert.doesNotMatch(JSON.stringify(await service.read()), /Checked:/);
+	assert.doesNotMatch(JSON.stringify(service.quotaDetails?.("work")), /Checked: .*local time/);
 	assert.equal((await service.apply({ kind: "account-switch", profile: "personal" })).failed, true);
 });
 
@@ -220,10 +226,21 @@ void test("Unavailable, cancelled, absent quota and unexpected errors never fabr
 			},
 		});
 		await service.apply({ kind: "account-usage", profile: "work" });
-		const text = JSON.stringify(await service.read());
+		const text = JSON.stringify(service.quotaDetails?.("work"));
 		assert.doesNotMatch(text, /0%|token-secret|private\/auth/);
 		assert.match(text, outcome === "empty" ? /unknown/ : /unavailable|cancelled/);
 	}
+});
+
+void test("A mismatched profile result cannot publish another profile's quota snapshot", async () => {
+	const service = createControlCenterAccount({ profiles: () => Promise.resolve(["work", "personal"]), active: () => "work",
+		defaultProfile: () => Promise.resolve(undefined), switch: () => Promise.resolve(true), setDefault: () => Promise.resolve(true),
+		usage: () => Promise.resolve({ status: "ready", profile: "work", checkedAt: 1000,
+			quotaSnapshot: { fetchedAt: 1000, buckets: [], credits: undefined, planType: undefined, ordinaryUsageAllowed: undefined } }),
+	});
+	assert.equal((await service.apply({ kind: "account-usage", profile: "personal" })).failed, true);
+	assert.equal(service.quotaSnapshot("personal"), undefined);
+	assert.doesNotMatch(service.quotaDetails("personal").join(" "), /local time/);
 });
 
 void test("Bound preview uses injected service independently of active refresh and queued stale activation", async () => {
