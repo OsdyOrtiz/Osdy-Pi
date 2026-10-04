@@ -7,12 +7,29 @@ import {
 	availableProfiles,
 	manageAccountProfile,
 	manageAccountProfiles,
+	narrowStoredProfileCodexCredential,
+	readStoredProfileCodexCredential,
 	parseDefaultAccountResult,
 	sharedAgentDir,
 	switchAccountInPlace,
 	// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 	// @ts-ignore Node's native TypeScript runner resolves test-only TypeScript source imports.
 } from "./account-profiles.ts";
+
+void test("stored credential adapter narrows unknown data and conceals reader paths", async () => {
+	const credential = { profile: "Work", access: "synthetic", expires: 2_000_000_000_000 };
+	assert.deepEqual(narrowStoredProfileCodexCredential({ ...credential, refresh: "SECRET", raw: "SECRET" }), credential);
+	for (const value of [null, [], {}, { ...credential, profile: "../Work" }, { ...credential, expires: NaN }, { ...credential, accountId: null }]) {
+		assert.equal(narrowStoredProfileCodexCredential(value), undefined);
+	}
+	const root = await mkdtemp(join(tmpdir(), "osdy-quota-adapter-SECRET-"));
+	await assert.rejects(readStoredProfileCodexCredential(root, "Work"), (error: unknown) => {
+		assert(error instanceof Error);
+		assert.equal(error.message, "Stored profile credentials are unavailable.");
+		assert.doesNotMatch(JSON.stringify(error), /SECRET|auth.json/);
+		return true;
+	});
+});
 
 void test("uses the account resolver for split-agent roots and explicit overrides", async () => {
 	const candidate = await mkdtemp(join(tmpdir(), "osdy-pi-extension-agent-test-"));

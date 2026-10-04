@@ -70,6 +70,50 @@ export async function availableProfiles(baseDir: string): Promise<string[]> {
 	return profiles.listProfiles(baseDir);
 }
 
+export type StoredProfileCodexCredential = {
+	profile: string;
+	access: string;
+	expires: number;
+	accountId?: string;
+};
+
+/** Narrow the local owner module's unknown result without exposing raw auth. */
+export function narrowStoredProfileCodexCredential(value: unknown): StoredProfileCodexCredential | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value) ||
+		!("profile" in value) || typeof value.profile !== "string" || !isProfileName(value.profile) ||
+		!("access" in value) || typeof value.access !== "string" || !value.access ||
+		!("expires" in value) || typeof value.expires !== "number" || !Number.isFinite(value.expires) ||
+		("accountId" in value && (typeof value.accountId !== "string" || !value.accountId))) return undefined;
+	return {
+		profile: value.profile,
+		access: value.access,
+		expires: value.expires,
+		...("accountId" in value && typeof value.accountId === "string" ? { accountId: value.accountId } : {}),
+	};
+}
+
+// The JavaScript owner accepts root/name strings; its return remains unknown until narrowed.
+function isStoredCredentialOwner(value: unknown): value is {
+	readStoredProfileCodexCredential(baseDir: string, profile: string): Promise<unknown>;
+} {
+	return !!value && typeof value === "object" && "readStoredProfileCodexCredential" in value &&
+		typeof value.readStoredProfileCodexCredential === "function";
+}
+
+export async function readStoredProfileCodexCredential(baseDir: string, profile: string): Promise<StoredProfileCodexCredential> {
+	try {
+		const moduleUrl = new URL("../../scripts/osdy-pi-account-profiles.mjs", import.meta.url).href;
+		const owner: unknown = await import(moduleUrl);
+		if (!isStoredCredentialOwner(owner)) throw new Error("Unavailable owner.");
+		const raw: unknown = await owner.readStoredProfileCodexCredential(baseDir, profile);
+		const credential = narrowStoredProfileCodexCredential(raw);
+		if (!credential || !sameProfile(credential.profile, profile)) throw new Error("Invalid snapshot.");
+		return credential;
+	} catch {
+		throw new Error("Stored profile credentials are unavailable.");
+	}
+}
+
 export async function switchAccountInPlace(
 	ctx: AccountContext,
 	profile: string,

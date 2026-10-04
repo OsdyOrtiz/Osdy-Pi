@@ -525,6 +525,46 @@ async function captureOptionalAuth(path) {
 	}
 }
 
+/** Read only a validated profile's stored OAuth snapshot; never canonical/active auth. */
+export async function readStoredProfileCodexCredential(sharedAgentDir, name) {
+	try {
+		const root = resolve(sharedAgentDir);
+		const rootStat = await lstat(root);
+		if (!rootStat.isDirectory()) throw new Error("Invalid profile root.");
+		const layout = await validateExistingProfile(root, name);
+		const directories = [root, join(root, "osdy-pi"), layout.profilesDir, layout.profileDir];
+		const before = await Promise.all(directories.map((path) => lstat(path)));
+		if (before.some((stat) => !stat.isDirectory()) || before[0].dev !== rootStat.dev || before[0].ino !== rootStat.ino)
+			throw new Error("Invalid profile hierarchy.");
+		const contents = await captureOptionalAuth(layout.authPath);
+		const after = await Promise.all(directories.map((path) => lstat(path)));
+		if (after.some((stat, index) =>
+			!stat.isDirectory() || stat.dev !== before[index].dev || stat.ino !== before[index].ino,
+		))
+			throw new Error("Profile hierarchy changed.");
+		if (contents === undefined) throw new Error("Missing stored auth.");
+		const parsed = JSON.parse(contents.toString("utf8"));
+		const credential = parsed && !Array.isArray(parsed) && parsed["openai-codex"];
+		if (
+			!credential || typeof credential !== "object" || Array.isArray(credential) ||
+			credential.type !== "oauth" || typeof credential.access !== "string" || !credential.access ||
+			typeof credential.refresh !== "string" ||
+			typeof credential.expires !== "number" || !Number.isFinite(credential.expires) ||
+			("accountId" in credential && (typeof credential.accountId !== "string" || !credential.accountId))
+		)
+			throw new Error("Unsupported stored auth.");
+		return {
+			profile: layout.name,
+			access: credential.access,
+			expires: credential.expires,
+			...(credential.accountId === undefined ? {} : { accountId: credential.accountId }),
+		};
+	} catch {
+		// Never expose filesystem errors, raw JSON, other providers or refresh tokens.
+		throw new Error("Stored profile credentials are unavailable.");
+	}
+}
+
 async function restoreOptionalAuth(path, contents) {
 	if (contents === undefined) {
 		await unlink(path).catch((error) => {

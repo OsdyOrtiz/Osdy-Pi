@@ -213,6 +213,8 @@ For a project-local installation, run `pi remove -l npm:@juicesharp/rpiv-todo` i
 
 ## OpenAI account profiles
 
+**Stored-profile quota service (no panel wiring yet):** the independent read-only service can request live remote Codex quota using only the selected validated profile's stored OAuth snapshot. It does not activate profiles, borrow active credentials, refresh tokens, write auth, or change models/session state. Missing, malformed, expired or remotely rejected snapshots are unavailable—not zero quota. Even the current profile's stored snapshot may be stale: log in and save through the normal account workflow outside preview. Profile labels and decoded JWT claims do not verify human identity or server validity. Stored credentials are not a quota cache; local history remains token/cost estimates, not subscription quota. Explicit **View usage → Activate** panel wiring follows separately.
+
 Osdy Pi can keep multiple ChatGPT Plus/Pro accounts authenticated and let you choose which one starts Pi. `personal` and `work` are only examples—you can create as many named profiles as you need.
 
 ### Create and use profiles

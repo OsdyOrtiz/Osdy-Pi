@@ -26,6 +26,7 @@ import {
 	planPiLaunch,
 	readActiveAccount,
 	readDefaultAccount,
+	readStoredProfileCodexCredential,
 	setActiveAccount,
 	setDefaultAccount,
 	switchAccountAuth,
@@ -34,6 +35,76 @@ import {
 	renameProfile,
 	removeProfile,
 } from "./osdy-pi-account-profiles.mjs";
+
+test("stored quota credential reader is bounded, read-only and rejects unsafe hierarchy and auth shapes", async () => {
+	const make = async (contents) => {
+		const root = await mkdtemp(join(tmpdir(), "osdy-stored-quota-test-"));
+		const dir = join(root, "osdy-pi", "profiles", "Work");
+		await mkdir(dir, { recursive: true });
+		if (contents !== undefined) await writeFile(join(dir, "auth.json"), contents);
+		return { root, dir };
+	};
+	const oauth = {
+		type: "oauth",
+		access: "synthetic-access",
+		refresh: "SECRET-refresh",
+		expires: 2_000_000_000_000,
+		accountId: "acct_fixture",
+	};
+	const good = await make(JSON.stringify({ "openai-codex": oauth, other: { key: "SECRET-other" } }));
+	assert.deepEqual(await readStoredProfileCodexCredential(good.root, "work"), {
+		profile: "Work", access: oauth.access, expires: oauth.expires, accountId: oauth.accountId,
+	});
+	for (const name of ["../Work", "default", "Profiles", "missing"])
+		await assert.rejects(readStoredProfileCodexCredential(good.root, name));
+	const malformedOAuth = [
+		{ ...oauth, type: "api_key" },
+		{ ...oauth, refresh: undefined },
+		{ ...oauth, access: 1 },
+		{ ...oauth, expires: undefined },
+		{ ...oauth, expires: "later" },
+		{ ...oauth, accountId: null },
+	].map((value) => JSON.stringify({ "openai-codex": value }));
+	for (const contents of [
+		undefined, "broken-json", "[]", "null", "{}",
+		JSON.stringify({ other: oauth }),
+		...malformedOAuth,
+		"x".repeat(4 * 1024 * 1024 + 1),
+	]) {
+		const fixture = await make(contents);
+		await assert.rejects(readStoredProfileCodexCredential(fixture.root, "Work"));
+	}
+	const linkedAuth = await make(undefined);
+	await symlink(join(good.dir, "auth.json"), join(linkedAuth.dir, "auth.json"));
+	await assert.rejects(readStoredProfileCodexCredential(linkedAuth.root, "Work"));
+	await symlink(good.dir, join(good.root, "osdy-pi", "profiles", "Linked"));
+	await assert.rejects(readStoredProfileCodexCredential(good.root, "Linked"));
+	for (const level of ["profiles", "osdy-pi", "root"]) {
+		const root = await mkdtemp(join(tmpdir(), "osdy-quota-hierarchy-"));
+		let requestedRoot = root;
+		if (level === "profiles") {
+			await mkdir(join(root, "osdy-pi"));
+			await symlink(join(good.root, "osdy-pi", "profiles"), join(root, "osdy-pi", "profiles"));
+		} else if (level === "osdy-pi") {
+			await symlink(join(good.root, "osdy-pi"), join(root, "osdy-pi"));
+		} else {
+			requestedRoot = join(root, "linked-root");
+			await symlink(good.root, requestedRoot);
+		}
+		await assert.rejects(readStoredProfileCodexCredential(requestedRoot, "Work"));
+	}
+	const directoryAuth = await make(undefined);
+	await mkdir(join(directoryAuth.dir, "auth.json"));
+	await assert.rejects(readStoredProfileCodexCredential(directoryAuth.root, "Work"));
+	try {
+		await mkdir(join(good.root, "osdy-pi", "profiles", "WORK"));
+	} catch (error) {
+		// Case-insensitive filesystems cannot represent the ambiguous fixture.
+		assert.equal(error.code, "EEXIST");
+		return;
+	}
+	await assert.rejects(readStoredProfileCodexCredential(good.root, "Work"));
+});
 
 test("validates portable profile names and rejects traversal or reserved names", () => {
 	assert.equal(validateProfileName("work-codex"), "work-codex");
