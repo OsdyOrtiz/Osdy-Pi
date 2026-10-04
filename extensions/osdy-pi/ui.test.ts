@@ -1,12 +1,192 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { registerHooks } from "node:module";
+import { fileURLToPath } from "node:url";
+import { visibleWidth } from "@earendil-works/pi-tui";
+import ts from "typescript";
 import test from "node:test";
 // @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
 import * as profileLabel from "./profile-label.ts";
 // @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
-import { HEADER_VARIANTS, MASCOTS, mascotForChoice, scaleHeader } from "./constants.ts";
+import { HEADER_VARIANTS, MASCOTS, MASCOT_GAP, STACKED_CONTENT_MAX_ROWS, headerWidth, mascotForChoice, mascotWidthForRows, scaleHeader, scaleMascot } from "./constants.ts";
 // @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
 import { shouldShowFooterMetadata } from "./types.ts";
+
+registerHooks({
+	resolve(specifier, context, nextResolve) {
+		if (specifier.startsWith(".") && specifier.endsWith(".js") && context.parentURL?.endsWith(".ts")) {
+			const url = new URL(`${specifier.slice(0, -3)}.ts`, context.parentURL);
+			if (existsSync(fileURLToPath(url))) return { shortCircuit: true, url: url.href };
+		}
+		return nextResolve(specifier, context);
+	},
+	load(url, context, nextLoad) {
+		if (url.endsWith(".ts")) return {
+			format: "module",
+			shortCircuit: true,
+			source: ts.transpileModule(readFileSync(fileURLToPath(url), "utf8"), {
+				compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+			}).outputText,
+		};
+		return nextLoad(url, context);
+	},
+});
+
+const ui = await import("./ui.js");
+const { compactMascotWidthBudget, composeSideBySide } = await import("./utils.js");
+
+void test("header version occupies a blank leading row at the right edge without moving art", () => {
+	const art = ["\u001b[31m    \u001b[0m", "  mascot logo  "];
+	const result = ui.decorateHeaderVersion(art, 40, "2.3.4");
+	assert.equal(result.length, art.length);
+	assert.equal(result[0], `${" ".repeat(26)}osdy-pi v2.3.4`);
+	assert.equal(visibleWidth(result[0] ?? ""), 40);
+	assert.equal(result[1], art[1]);
+	assert.deepEqual(art, ["\u001b[31m    \u001b[0m", "  mascot logo  "]);
+});
+
+void test("header version follows the active accent on each render without changing visible alignment", () => {
+	const art = ["", "  mascot logo  "];
+	let accent = "\u001b[31m";
+	const calls: string[] = [];
+	const theme = {
+		fg(color: string, text: string): string {
+			calls.push(color);
+			return `${accent}${text}\u001b[0m`;
+		},
+	};
+	const render = () => ui.decorateHeaderVersion(art, 40, "2.3.4", theme);
+	const first = render();
+	assert.equal(first[0], `${" ".repeat(26)}\u001b[31mosdy-pi v2.3.4\u001b[0m`);
+	accent = "\u001b[34m";
+	const second = render();
+	assert.equal(second[0], `${" ".repeat(26)}\u001b[34mosdy-pi v2.3.4\u001b[0m`);
+	for (const result of [first, second]) {
+		assert.equal(visibleWidth(result[0] ?? ""), 40);
+		assert.equal(result[1], art[1]);
+	}
+	assert.deepEqual(ui.decorateHeaderVersion(art, 12, "2.3.4", theme), art);
+	assert.deepEqual(ui.decorateHeaderVersion(art, 40, undefined, theme), art);
+	assert.deepEqual(calls, ["accent", "accent"]);
+	assert.deepEqual(art, ["", "  mascot logo  "]);
+});
+
+void test("header version gets a separate row when art starts immediately", () => {
+	const art = ["  logo  ", " mascot "];
+	const result = ui.decorateHeaderVersion(art, 14, "2.3.4");
+	assert.deepEqual(result, ["osdy-pi v2.3.4", ...art]);
+	assert.deepEqual(ui.decorateHeaderVersion([], 14, "2.3.4"), ["osdy-pi v2.3.4"]);
+});
+
+void test("header version is omitted at narrow widths or without a version", () => {
+	const art = ["", "art"];
+	for (const width of [0, 1, 12, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+		assert.deepEqual(ui.decorateHeaderVersion(art, width, "2.3.4"), art);
+	}
+	assert.deepEqual(ui.decorateHeaderVersion(art, 80, undefined), art);
+	assert.equal(visibleWidth(ui.decorateHeaderVersion(art, 40, "1.2.3-beta.1+build.7")[0] ?? ""), 40);
+});
+
+void test("installed version comes from the module-relative package manifest", () => {
+	const manifestUrl = new URL("../../package.json", new URL("./ui.ts", import.meta.url));
+	const manifest: unknown = JSON.parse(readFileSync(manifestUrl, "utf8"));
+	assert.ok(typeof manifest === "object" && manifest !== null && "version" in manifest);
+	assert.equal(ui.loadInstalledPackageVersion(), manifest.version);
+	assert.equal(ui.loadInstalledPackageVersion((url) => {
+		assert.equal(url.href, manifestUrl.href);
+		return '{"name":"osdy-pi","version":"9.8.7-rc.1+build.2"}';
+	}), "9.8.7-rc.1+build.2");
+});
+
+void test("missing and untrusted manifests never throw or inject terminal content", () => {
+	assert.equal(ui.loadInstalledPackageVersion(() => { throw new Error("missing"); }), undefined);
+	for (const text of ["{", "null", "[]", "{}", '{"version":123}', '{"name":"pi","version":"1.2.3"}',
+		...['', '1.2', '1x2x3', '01.2.3', '1.2.3-01', '1.2.3\n', '\u001b[31m1.2.3', '1.2.3 bad', '1.2.3+', 'x'.repeat(200)].map((version) => JSON.stringify({ name: "osdy-pi", version }))]) {
+		assert.equal(ui.loadInstalledPackageVersion(() => text), undefined, text);
+	}
+});
+
+void test("version decoration is wired only to the artwork header, not the editor", () => {
+	const source = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
+	const header = source.slice(source.indexOf("export function createHeaderComponent"), source.indexOf("export function createFooterComponent"));
+	assert.match(header, /const installedVersion = loadInstalledPackageVersion\(\);/);
+	assert.match(header, /return decorateHeaderVersion\(lines, width, installedVersion, theme\);/);
+	assert.doesNotMatch(source.slice(source.indexOf("export function createEditorComponent")), /installedVersion|decorateHeaderVersion/);
+});
+
+function plainHeader(lines: readonly string[]): string[] {
+	return lines.map((line) => line.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g"), ""));
+}
+
+function renderHeader(
+	headerVariant: keyof typeof HEADER_VARIANTS,
+	mascot: keyof typeof MASCOTS,
+	width: number,
+	rows: number,
+	columns = width,
+): string[] {
+	type Factory = ReturnType<typeof ui.createHeaderComponent>;
+	const component = ui.createHeaderComponent(
+		{} as Parameters<typeof ui.createHeaderComponent>[0],
+		{} as Parameters<typeof ui.createHeaderComponent>[1],
+		{ headerVariant, mascot } as Parameters<typeof ui.createHeaderComponent>[2],
+	)(
+		{ terminal: { columns, rows }, requestRender() {} } as unknown as Parameters<Factory>[0],
+		{ fg: (_color: string, text: string) => text },
+	);
+	try {
+		return plainHeader(component.render(width));
+	} finally {
+		component.dispose();
+	}
+}
+
+for (const headerVariant of Object.keys(HEADER_VARIANTS) as (keyof typeof HEADER_VARIANTS)[]) {
+	for (const mascot of Object.keys(MASCOTS) as (keyof typeof MASCOTS)[]) {
+		const variant = HEADER_VARIANTS[headerVariant];
+		const art = MASCOTS[mascot].art;
+		const fullWidth = (rows: number) => headerWidth(headerVariant) + MASCOT_GAP + mascotWidthForRows(art, rows);
+		const decorated = (lines: string[], width: number) => plainHeader(
+			ui.decorateHeaderVersion(lines, width, ui.loadInstalledPackageVersion()),
+		);
+
+		void test(`${headerVariant}/${mascot}: full layout at exact width and height boundaries`, () => {
+			for (const rows of [40, variant.header.length]) {
+				const width = fullWidth(rows);
+				const scaled = scaleMascot(art, width - headerWidth(headerVariant) - MASCOT_GAP, rows);
+				const expected = composeSideBySide(
+					[...scaled.mascot], Math.max(...scaled.mascot.map(visibleWidth)),
+					[...variant.header], width, headerWidth(headerVariant),
+				);
+				assert.deepEqual(renderHeader(headerVariant, mascot, width, rows), decorated(expected, width));
+			}
+		});
+
+		for (const [scenario, width, rows, columns] of [
+			["former intermediate width", 100, 40, 100],
+			["narrow width", 40, 40, 40],
+			["minimum width", 1, 1, 1],
+			["below former logo threshold", 71, 40, 71],
+			["one column below full fit", fullWidth(40) - 1, 40, fullWidth(40) - 1],
+			["one row below full fit", fullWidth(variant.header.length - 1), variant.header.length - 1, 300],
+			["capped content rows", 100, 100, 300],
+			["render width narrower than terminal", fullWidth(12) - 1, 12, 300],
+		] as const) {
+			void test(`${headerVariant}/${mascot}: ${scenario} renders only a centered bounded mascot`, () => {
+				const rowBudget = Math.min(rows, STACKED_CONTENT_MAX_ROWS);
+				const widthBudget = compactMascotWidthBudget(width);
+				const scaled = scaleMascot(art, widthBudget, rowBudget);
+				const centered = scaled.mascot.map((line) => `${" ".repeat(Math.floor((width - visibleWidth(line)) / 2))}${line}`);
+				const actual = renderHeader(headerVariant, mascot, width, rows, columns);
+				// Exact artwork equality excludes any extra stacked or scaled logo rows.
+				assert.deepEqual(actual, decorated(centered, width));
+				assert.ok(scaled.mascot.length <= rowBudget);
+				assert.ok(scaled.mascot.every((line) => visibleWidth(line) <= widthBudget));
+				assert.ok(actual.every((line) => visibleWidth(line) <= width));
+			});
+		}
+	}
+}
 
 void test("footer metadata is shown only when the native editor is effective", () => {
 	assert.equal(shouldShowFooterMetadata(false), true);

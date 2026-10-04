@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
 	CustomEditor,
 	type ExtensionAPI,
@@ -25,20 +26,15 @@ import {
 } from "./codex-usage-ui.js";
 import {
 	ANIMATION_INTERVAL_MS,
-	COMPACT_HEADER_HIDDEN_COLUMNS,
 	headerWidth,
 	HEADER_VARIANTS,
 	INTRO_ANIMATION_FRAMES,
 	MASCOT_GAP,
 	mascotForChoice,
 	mascotWidthForRows,
-	scaleHeader,
 	scaleMascot,
 	STACKED_CONTENT_MAX_ROWS,
-	STACKED_HEADER_MAX_ROWS,
-	STACKED_HEADER_MIN_ROWS,
 	type MascotConfig,
-	type ScaledHeaderArt,
 } from "./constants.js";
 import { formatPath } from "./format.js";
 import { renderWorkingWidget } from "./working-animation.js";
@@ -75,15 +71,51 @@ const THINKING_THEME_TOKENS = {
 
 const PI_LENS_STATUS_KEY = "pi-lens-lsp";
 
-function stackedHeaderRowBudget(terminalRows: number): number {
-	const contentRows = Math.min(terminalRows, STACKED_CONTENT_MAX_ROWS);
-	return Math.min(STACKED_HEADER_MAX_ROWS, Math.floor(contentRows / 3));
+/** Read only this installed package, never the workspace or Pi host manifest. */
+export function loadInstalledPackageVersion(
+	readManifest: (url: URL) => string = (url) => readFileSync(url, "utf8"),
+): string | undefined {
+	try {
+		const manifest: unknown = JSON.parse(
+			readManifest(new URL("../../package.json", import.meta.url)),
+		);
+		if (typeof manifest !== "object" || manifest === null ||
+			!("name" in manifest) || manifest.name !== "osdy-pi" ||
+			!("version" in manifest) || typeof manifest.version !== "string") return undefined;
+		const version = manifest.version;
+		// SemVer's ASCII grammar also excludes terminal controls and whitespace.
+		const numeric = "(?:0|[1-9][0-9]*)";
+		const prerelease = `(?:${numeric}|[0-9]*[A-Za-z-][0-9A-Za-z-]*)`;
+		const semver = new RegExp(`^${numeric}\\.${numeric}\\.${numeric}(?:-${prerelease}(?:\\.${prerelease})*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$`);
+		return version.length <= 128 && semver.test(version) && !/\s/u.test(version)
+			? version : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Decorate only empty space; the centered artwork remains byte-for-byte intact. */
+export function decorateHeaderVersion(
+	lines: readonly string[],
+	width: number,
+	version: string | undefined,
+	theme?: Pick<SimpleTheme, "fg">,
+): string[] {
+	if (!version || !Number.isFinite(width)) return [...lines];
+	const label = `osdy-pi v${version}`;
+	const padding = Math.floor(width) - visibleWidth(label);
+	if (padding < 0) return [...lines];
+	const row = `${" ".repeat(padding)}${theme ? theme.fg("accent", label) : label}`;
+	const firstRow = (lines[0] ?? "").replace(
+		new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, "g"), "",
+	);
+	return lines.length > 0 && firstRow.trim() === ""
+		? [row, ...lines.slice(1)] : [row, ...lines];
 }
 
 type HeaderLayout = {
 	canUseFullHeader: boolean;
 	hasMascot: boolean;
-	compactHeader: ScaledHeaderArt | undefined;
 	fullHeaderWidth: number;
 	mascotRowBudget: number;
 	mascotWidthBudget: number;
@@ -97,7 +129,6 @@ function calculateHeaderLayout(
 	variant: HeaderConfig,
 	mascot: MascotConfig,
 	width: number,
-	terminalColumns: number,
 	terminalRows: number,
 ): HeaderLayout {
 	const renderWidth = Math.max(1, width);
@@ -111,24 +142,14 @@ function calculateHeaderLayout(
 		hasMascot &&
 		renderWidth >= fullHeaderWidth + MASCOT_GAP + heightLimitedMascotWidth &&
 		terminalRows >= variant.header.length;
-	const canShowCompactHeader =
-		!canUseFullHeader &&
-		terminalColumns >= COMPACT_HEADER_HIDDEN_COLUMNS &&
-		renderWidth >= COMPACT_HEADER_HIDDEN_COLUMNS;
-	const compactHeaderRows = stackedHeaderRowBudget(terminalRows);
-	const compactHeader =
-		canShowCompactHeader && compactHeaderRows >= STACKED_HEADER_MIN_ROWS
-			? scaleHeader(variantName, renderWidth, compactHeaderRows)
-			: undefined;
 	const contentRowBudget = Math.min(terminalRows, STACKED_CONTENT_MAX_ROWS);
 	return {
 		canUseFullHeader,
 		hasMascot,
-		compactHeader,
 		fullHeaderWidth,
 		mascotRowBudget: canUseFullHeader
 			? terminalRows
-			: Math.max(1, contentRowBudget - (compactHeader?.header.length ?? 0)),
+			: Math.max(1, contentRowBudget),
 		mascotWidthBudget: canUseFullHeader
 			? Math.max(1, renderWidth - fullHeaderWidth - MASCOT_GAP)
 			: compactMascotWidthBudget(renderWidth),
@@ -209,7 +230,6 @@ function renderHeaderLines(
 function renderResponsiveHeader(
 	state: OsdyState,
 	width: number,
-	terminalColumns: number,
 	terminalRows: number,
 	frame: number,
 	theme: SimpleTheme,
@@ -222,7 +242,6 @@ function renderResponsiveHeader(
 		variant,
 		mascot,
 		width,
-		terminalColumns,
 		terminalRows,
 	);
 	const mascotArt = layout.hasMascot
@@ -235,34 +254,18 @@ function renderResponsiveHeader(
 		theme,
 		animationStyle,
 	);
-	if (!layout.canUseFullHeader && !layout.compactHeader) {
+	if (!layout.canUseFullHeader) {
 		return mascotLines.map((line) => fitCenterVisible(line, layout.renderWidth));
 	}
-	const headerArt = layout.compactHeader;
-	const logoLines = layout.canUseFullHeader
-		? renderHeaderLines(
-				variant,
-				variant.header,
-				variant.headerMap,
-				variant.header.map((_line, index) => index),
-				frame,
-				theme,
-				animationStyle,
-			)
-		: renderHeaderLines(
-				variant,
-				headerArt?.header ?? [],
-				headerArt?.toneMap,
-				headerArt?.sourceIndexes ?? [],
-				frame,
-				theme,
-				animationStyle,
-			);
-	if (!layout.canUseFullHeader) {
-		return [...mascotLines, ...logoLines].map((line) =>
-			fitCenterVisible(line, layout.renderWidth),
-		);
-	}
+	const logoLines = renderHeaderLines(
+		variant,
+		variant.header,
+		variant.headerMap,
+		variant.header.map((_line, index) => index),
+		frame,
+		theme,
+		animationStyle,
+	);
 	const scaledMascotWidth = mascotArt.mascot.reduce(
 		(maximum, line) => Math.max(maximum, visibleWidth(line)),
 		0,
@@ -376,6 +379,7 @@ export function createHeaderComponent(
 ) {
 	return (_tui: TUI, theme: SimpleTheme) => {
 		state.tui = _tui;
+		const installedVersion = loadInstalledPackageVersion();
 		let frame = 0;
 		let animationComplete = false;
 		const animationMode = asciiAnimationMode();
@@ -394,15 +398,15 @@ export function createHeaderComponent(
 			render(width: number): string[] {
 				const animationStyle =
 					animateAscii && !animationComplete ? "animated" : "static";
-				return renderResponsiveHeader(
+				const lines = renderResponsiveHeader(
 					state,
 					width,
-					Math.max(1, _tui.terminal.columns),
 					Math.max(1, _tui.terminal.rows),
 					frame,
 					theme,
 					animationStyle,
 				);
+				return decorateHeaderVersion(lines, width, installedVersion, theme);
 			},
 			invalidate() {},
 			dispose() {

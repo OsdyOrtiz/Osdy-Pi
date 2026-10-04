@@ -10,6 +10,9 @@ function localTime(value: number | undefined): string {
 	return value !== undefined && Number.isFinite(value) && !Number.isNaN(new Date(value).getTime())
 		? new Date(value).toLocaleString() : "unknown";
 }
+function localResetTime(unixSeconds: number | undefined): string {
+	return localTime(unixSeconds === undefined ? undefined : unixSeconds * 1000);
+}
 function usageDetails(profile: string, result: ProfileCodexUsageResult): string[] {
 	const lines = [`Profile: ${profile}`, `Checked: ${localTime(result.checkedAt)} (local time)`];
 	if (result.status !== "ready") return [...lines, result.status === "cancelled" ? "Query cancelled." :
@@ -17,7 +20,7 @@ function usageDetails(profile: string, result: ProfileCodexUsageResult): string[
 	for (const bucket of result.quotaSnapshot.buckets) {
 		if (!bucket.primary && !bucket.secondary) lines.push(`${bucket.label ?? bucket.id}: quota and next reset unknown.`);
 		for (const [label, window] of [["Session", bucket.primary], ["Weekly", bucket.secondary]] as const) {
-			if (window) lines.push(`${bucket.label ?? bucket.id} / ${label}: ${100 - window.usedPercent}% remaining · Next reset: ${localTime(window.resetsAt)}`);
+			if (window) lines.push(`${bucket.label ?? bucket.id} / ${label}: ${100 - window.usedPercent}% remaining · Next reset: ${localResetTime(window.resetsAt)}`);
 		}
 	}
 	if (lines.length === 2) lines.push("Quota and next reset: unknown (no quota windows returned).");

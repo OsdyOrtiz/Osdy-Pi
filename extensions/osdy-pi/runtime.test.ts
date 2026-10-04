@@ -337,7 +337,7 @@ for (const closePending of [false, true]) {
 		let signal: AbortSignal | undefined;
 		let finish: (result: ProfileCodexUsageResult) => void = () => {};
 		let factoryCalls = 0; let renders = 0; let activations = 0; let activeRefreshes = 0;
-		const checkedAt = 1_900_000_000_000; const resetsAt = checkedAt + 3_600_000;
+		const checkedAt = 1_900_000_000_000; const resetsAt = checkedAt / 1000 + 3600;
 		const result: ProfileCodexUsageResult = {
 			status: "ready", profile: "work", checkedAt,
 			quotaSnapshot: { fetchedAt: checkedAt, planType: "plus", ordinaryUsageAllowed: true, credits: undefined,
@@ -379,7 +379,7 @@ for (const closePending of [false, true]) {
 				const text = f.text();
 				assert.match(text, /Stored-profile Codex usage checked/);
 				assert.match(text, /Profile: work/); assert.match(text, /Codex \/ Session: 63% remaining/);
-				assert.ok(text.includes(`Next reset: ${new Date(resetsAt).toLocaleString()}`));
+				assert.ok(text.includes(`Next reset: ${new Date(resetsAt * 1000).toLocaleString()}`));
 				assert.ok(text.includes(`Checked: ${new Date(checkedAt).toLocaleString()} (local time)`));
 				assert.doesNotMatch(text, /Confirm account action/);
 			}

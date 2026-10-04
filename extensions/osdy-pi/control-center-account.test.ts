@@ -41,9 +41,34 @@ void test("Profile preview is explicit, independently selected and never activat
 		assert.match(row?.details?.join(" ") ?? "", /Extra bucket.*90% remaining.*Next reset: unknown/);
 		assert.ok(row?.details?.includes(`Profile: ${profile}`));
 		assert.ok(row?.details?.includes(`Checked: ${new Date(1000).toLocaleString()} (local time)`));
-		assert.ok(row?.details?.some(line => line.endsWith(`Next reset: ${new Date(2000).toLocaleString()}`)));
+		assert.ok(row?.details?.some(line => line.endsWith(`Next reset: ${new Date(2000 * 1000).toLocaleString()}`)));
 	}
 	assert.deepEqual(requests, ["work", "personal"]);
+});
+
+void test("Profile preview preserves timestamp units and marks missing or invalid resets unknown", async () => {
+	const checkedAt = 1_780_000_000_123;
+	for (const resetsAt of [1_780_000_000, 0, undefined, NaN, Infinity, -Infinity, Number.MAX_VALUE]) {
+		const service = createControlCenterAccount({
+			profiles: () => Promise.resolve(["work"]), active: () => "work",
+			defaultProfile: () => Promise.resolve(undefined),
+			switch: () => { throw new Error("activation forbidden"); },
+			setDefault: () => { throw new Error("write forbidden"); },
+			usage: profile => Promise.resolve({ status: "ready", profile, checkedAt,
+				quotaSnapshot: { fetchedAt: checkedAt, planType: undefined, ordinaryUsageAllowed: undefined, credits: undefined,
+					buckets: [{ id: "codex", label: undefined,
+						primary: { usedPercent: 25, windowMinutes: 300, resetsAt },
+						secondary: { usedPercent: 80, windowMinutes: 10080, resetsAt } }] } }),
+		});
+		await service.apply({ kind: "account-usage", profile: "work" });
+		const details = (await service.read()).rows[0]?.details ?? [];
+		assert.ok(details.includes(`Checked: ${new Date(checkedAt).toLocaleString()} (local time)`));
+		const expectedReset = resetsAt === 1_780_000_000 || resetsAt === 0
+			? new Date(resetsAt * 1000).toLocaleString() : "unknown";
+		for (const label of ["Session: 75", "Weekly: 20"]) {
+			assert.ok(details.includes(`codex / ${label}% remaining · Next reset: ${expectedReset}`));
+		}
+	}
 });
 
 void test("Account projects validated metadata, never output or credential fields", async () => {

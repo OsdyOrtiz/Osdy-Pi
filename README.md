@@ -6,16 +6,19 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 ## Release highlights
 
+**The Control Center consolidates Osdy controls in `/osdyConfig`**: ten categories cover appearance, Git, sounds, accounts, usage, and TODO/Agents provider settings. Account quota previews query a selected stored Codex profile without switching it. The header shows the installed Osdy package version when it fits; constrained layouts show only the centered mascot. See [Control Center in Pi](#control-center-in-pi) for confirmation and persistence boundaries.
+
 **1.11.0 adds three Spider-Man-inspired dark palettes**, bringing the bundle to **23 themes**. It retains the four-page local usage analytics introduced in 1.10.0, with shared period and profile/provider/model filters, keyboard navigation, and metadata-only history. These version introductions are historical, not a fixed latest-version claim. After npm Trusted Publishing is configured, pushes to main (including direct pushes) run checks and attempt to publish an automatically allocated patch to npm. Failed checks publish nothing; authentication or registry failures can also stop publication. Verify the resolved npm version before installing. Maintainers: [automatic npm publishing setup](https://github.com/OsdyOrtiz/Osdy-Pi/blob/main/docs/npm-publishing.md).
 
 | Area | What ships |
 | --- | --- |
+| Control Center | `/osdyConfig` opens ten categories, including confirmed TODO/Agents provider selection and explicit per-profile Codex quota previews. |
 | Local analytics (1.10.0) | `/osdy-usage` opens Summary, Profiles, Models, and History pages for recorded tokens and estimated cost—not billing or subscription quota. |
 | Themes introduced in 1.11.0 | Spider-Man Classic, Miles Morales, and Spider-Verse add three distinct dark palettes. |
 | Themes introduced in 1.9.0 | Halloween and Halloween Killer add two dark palettes. |
 | Themes introduced in 1.8.0 | Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute. |
 | Message cards | Pi-native colored user cards without emojis and plain assistant Markdown preceded by a separate `🦝` transcript row. |
-| Header and mascot | A theme-aware `neon` header and selectable `bts` mascot, both responsive and persisted independently. |
+| Header and mascot | Independent header/mascot choices, an installed-package version label, and mascot-only fallback when full artwork cannot fit. |
 | Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
 | Quota | `/usage` and compact bars emphasize remaining Codex quota at warning (40% or less) and error (15% or less) thresholds. |
 | TODO (starting in 1.5.0, opt-in) | Default-off first-party `todo` snapshots track the Pi session branch; `/todos` reads them without editing. ODD Markdown remains separate. |
@@ -54,7 +57,7 @@ Osdy Pi's own extension and themes are bundled—do not install them separately.
 
 ### Control Center in Pi
 
-Run **`/osdyConfig`** in interactive Pi to open the Osdy Control Center. **Theme, Header, Mascot, Editor, Git, Sounds, Account, Usage, TODO, and Agents** provide inline controls or data in the same modal. Existing commands remain available.
+Run **`/osdyConfig`** in interactive Pi to open the Osdy Control Center. The ten categories—**Theme, Header, Mascot, Editor, Git, Sounds, Account, Usage, TODO, and Agents**—provide inline controls or data in the same modal. Existing commands remain available.
 
 - Use **↑/↓**, **Home/End**, or **Page Up/Down** to navigate; **Tab** or **←/→** switches between categories and details. **Enter** selects.
 - TODO shows configured selection, current eligibility, and actually loaded SDK registration separately. Opt-in/out requires an idle session and a Cancel-first inline confirmation naming the target, owned Gentle filter effects, and reload. Successful selection closes/disposes the panel and releases its editor hold before reloading once; restart Pi if reload fails. Rejections stay in the panel. No installs or task-history changes occur; legacy `/osdy-pi todo on|off|status` remains available.
@@ -280,7 +283,7 @@ To resume a specific session directly from the terminal:
 osdy-pi account use work -- --session /absolute/path/to/session.jsonl
 ```
 
-> **Privacy:** each profile keeps a private `auth.json`; Pi runs against its canonical shared `auth.json`. Osdy Pi atomically copies opaque auth files between those private locations only to activate or preserve an account; it never parses, prints, logs, or passes OAuth credentials. Session history, settings, installed packages, and extension resources are shared, so every profile can access that local state. It keeps Pi's canonical `openai-codex` provider and delegates authentication to Pi's built-in `/login` flow.
+> **Privacy:** each profile keeps a private `auth.json`; Pi runs against its canonical shared `auth.json`. Account activation/preservation atomically copies opaque auth files. The separate explicit **View usage: profile** preview reads a bounded stored auth snapshot, parses its Codex OAuth fields and unverified JWT claims, and sends the access token/account ID only to the fixed HTTPS Codex usage endpoint. It never refreshes tokens, logs in, switches accounts, writes auth, or queries automatically; it does not print or log credentials. Session history, settings, installed packages, and extension resources are shared, so every profile can access that local state. It keeps Pi's canonical `openai-codex` provider and delegates authentication to Pi's built-in `/login` flow.
 
 Account switching is serialized in-process and protected by a private cross-process lock. Osdy Pi accepts only bounded regular auth files, refuses symlink-based auth sources, writes replacements with private permissions, and restores the previous canonical auth and account metadata when activation fails. A separate namespace lock protects concurrent profile creation, rename, and removal. Launchers activate the selected auth before starting Pi while continuing to use the shared agent directory; existing managed-directory links from earlier profile layouts are resolved for compatibility.
 
@@ -367,7 +370,9 @@ Header and mascot choices are independent:
 
 Both commands update the UI immediately. Add `status` instead of a choice to inspect the current selection. Choices persist in the global Osdy Pi settings across reloads and sessions. The old top-level style commands and `classic` header aliases are no longer registered.
 
-In normal mode, the selected header and mascot render side by side. The Neon header derives its highlights from the active theme rather than using one fixed palette. Each mascot keeps its own tone map while its animated edge glow can resolve through theme colors. Header and mascot scaling remain independent, so any combination follows the same responsive layout rules.
+The header also shows **`osdy-pi v<version>`** at the top right in the theme's accent color, read from the installed Osdy package—not Pi's host version or the workspace manifest. It uses an empty first row or adds a row without overwriting artwork; invalid/unreadable versions or labels wider than the terminal are omitted.
+
+In normal mode, the selected header and mascot render side by side when both fit. The Neon header derives its highlights from the active theme rather than using one fixed palette. Each mascot keeps its own tone map while its animated edge glow can resolve through theme colors. Header and mascot scaling remain independent, so any combination follows the same responsive layout rules.
 
 Animation is enabled by default with an intro animation. Configure it through `OSDY_PI_ANIMATION`:
 
@@ -382,12 +387,12 @@ Animation is enabled by default with an intro animation. Configure it through `O
 | Terminal mode | Header and mascot | Editor and Git | Footer |
 | --- | --- | --- | --- |
 | Normal | Full selected header and mascot side by side | Auto mode shows the framed editor by default; simple selects Pi's native editor and extended selects the framed editor; Git summary when enabled | Native editor: model/thinking, usage, path/branch, then statuses; framed editor: path/branch then statuses |
-| Compact (72+ columns) | Proportionally scaled mascot above a readable header, reduced only when needed | Selected editor mode and Git behavior | Same editor-aware footer behavior as normal/small modes |
+| Compact (72+ columns, full artwork does not fit) | Centered mascot only; art and tone map scale proportionally | Selected editor mode and Git behavior | Same editor-aware footer behavior as normal/small modes |
 | Small (<72 columns) | Mascot only; art and tone map scale proportionally | Pi native editor for every editor mode; Git summary hidden | Model + styled thinking level, usage, path/branch, then dynamic extension statuses (except Pi Lens) |
 
 In the extended framed editor, the active thinking level is rendered in bold in the top-right model metadata so it remains easy to scan.
 
-Small and compact modes trim only fully empty mascot-art and tone-map margins before applying one proportional width-and-height scale; mascot width starts near four-fifths of the available width. The header moves below the mascot as soon as side-by-side width would force the mascot into an additional width-limited reduction. Compact headers retain their source art when it fits and reduce proportionally only when a width or row bound requires it. Compact headers and mascots share a bounded terminal-row budget, so the header is omitted rather than collapsed into an unreadable one-row logo when there is not enough vertical space. The small-mode footer places the model and styled bare thinking level above usage, path/branch, and dynamic extension statuses. Pi Lens's footer status is hidden in small mode, but Pi Lens continues running. Usage includes input/output/cache-read/cache-write tokens, cost, and context. Extension statuses are supplied dynamically by Pi/extensions and may include Osdy Pi, MCP, or LSP; they are not hardcoded.
+The full header and mascot render side by side only when the available width and height permit it without an additional width-limited mascot reduction. Otherwise, only the centered mascot renders—there is no scaled or stacked logo. Small and compact modes trim only fully empty mascot-art and tone-map margins before applying one proportional width-and-height scale; mascot width starts near four-fifths of the available width. The fallback mascot uses the available terminal rows, capped at 32 content rows, without reserving rows for a logo. The small-mode footer places the model and styled bare thinking level above usage, path/branch, and dynamic extension statuses. Pi Lens's footer status is hidden in small mode, but Pi Lens continues running. Usage includes input/output/cache-read/cache-write tokens, cost, and context. Extension statuses are supplied dynamically by Pi/extensions and may include Osdy Pi, MCP, or LSP; they are not hardcoded.
 
 The enabled state, editor mode, working-tree visibility preference, header, and mascot persist globally across Pi reloads and sessions, shared by all projects. They are saved in `$PI_CODING_AGENT_DIR/extensions/osdy-pi/settings.json`, or `~/.pi/agent/extensions/osdy-pi/settings.json` when `PI_CODING_AGENT_DIR` is unset. Existing settings without the new visual fields safely default to `osdy-theme` and `current`; the former `raccoon` mascot value migrates to `bts`. The selected editor mode and working-tree placement are restored when the terminal moves normal → small → normal.
 
@@ -395,6 +400,7 @@ The enabled state, editor mode, working-tree visibility preference, header, and 
 
 | Group | Command |
 | --- | --- |
+| Control Center | `/osdyConfig` (interactive terminal UI) |
 | Main | `/osdy-pi` |
 | Main | `/osdy-pi enable\|disable\|on\|off\|status` |
 | Accounts | `/osdy-account` |
@@ -425,7 +431,7 @@ At wide widths, the modal pairs the Session and Weekly detail cards. Below 72 co
 
 Usage loads once when the session starts and refreshes when the modal opens or `r` is pressed; it does not poll. A refresh clears the previous snapshot before authentication resolves, and shutdown clears state, so quota data cannot cross account or profile boundaries.
 
-> **Privacy:** OAuth is resolved only through Pi's `modelRegistry`. Osdy Pi does not read `auth.json`, persist or log credentials, or display account IDs, tokens, response bodies, or endpoint internals in the UI. Requests use a fixed HTTPS endpoint with bounded timeout, response size, and redirects.
+> **Privacy:** this active-account `/usage` path resolves OAuth through Pi's `modelRegistry`, rather than directly reading auth files. The separate Control Center **View usage: profile** path reads the selected profile's bounded stored credentials snapshot; it never borrows active credentials or refreshes tokens, logs in, switches accounts, writes auth, or queries automatically. Both paths transmit the access token/account ID only to the fixed HTTPS Codex usage endpoint, reject redirects, and bound timeout and response size. Quota previews do not persist or log credentials or display account IDs, tokens, raw response bodies, or endpoint internals.
 
 ### Local usage analytics (starting in 1.10.0)
 
@@ -597,7 +603,8 @@ npm run pi:dev
 ## Limits and troubleshooting
 
 - The custom UI requires a Pi session with a UI; otherwise it does not mount.
-- A compact terminal stacks a scaled mascot over a source-size header when it fits, reducing the header only when needed; below 72 columns it switches to mascot-only, native editor, and no Git summary until space returns.
+- When the full side-by-side header and mascot cannot fit, only the centered, responsively scaled mascot renders; below 72 columns, Pi also uses the native editor and hides the Git summary until space returns.
+- Fullscreen mascot scrolling remains under investigation; the responsive header changes do not establish that this issue is fixed.
 - The Git summary reports unavailable when Git commands cannot read a working tree.
 - Diff patches depend on readable repository files; a file whose patch cannot load shows the reported error in the panel.
 - Audio playback is limited to macOS and Windows and to readable `.mp3`/`.wav` files.
