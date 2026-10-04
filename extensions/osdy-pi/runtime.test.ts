@@ -139,7 +139,7 @@ void test("shared visual actions apply immediately, save the complete settings, 
 const { isSmallResponsiveMode } = await import("./utils.js");
 const { createResponsiveCoordinator, reconcileResponsiveUi, disableOsdyPi } = await import("./runtime-helpers.js");
 
-async function focusFixture(options: { boundary?: boolean; throwApply?: boolean; synchronousThrow?: boolean; underlyingOverlay?: boolean; startupFailure?: boolean; registered?: boolean } = {}) {
+async function focusFixture(options: { boundary?: boolean; throwApply?: boolean; synchronousThrow?: boolean; underlyingOverlay?: boolean; startupFailure?: boolean; registered?: boolean; todoDir?: string; reloadFails?: boolean } = {}) {
 	let input: (data: string) => void = () => {};
 	const columns = options.boundary
 		? Array.from({ length: 300 }, (_, i) => i + 1).find(width =>
@@ -186,7 +186,10 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 	let closes = 0;
 	const notices: string[] = [];
 	const theme = { name: "dark", appearance: "dark" as const, fg: (_color: string, text: string) => text };
-	const ctx = { hasUI: true, mode: "tui", modelRegistry: { getProviderAuth: () => Promise.resolve(undefined) }, ui: {
+	const lifecycle: string[] = [];
+	const ctx = { cwd: options.todoDir ?? "/synthetic", isIdle: () => true,
+		reload: () => { lifecycle.push("reload"); return options.reloadFails ? Promise.reject(new Error("reload failed")) : Promise.resolve(); },
+		hasUI: true, mode: "tui", modelRegistry: { getProviderAuth: () => Promise.resolve(undefined) }, ui: {
 		theme, getAllThemes: () => [{ name: "dark", path: undefined }],
 		setTheme: () => { theme.name = "light"; panel.invalidate(); return { success: true }; },
 		notify: (message: string) => { notices.push(message); },
@@ -196,6 +199,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 		}, setFooter: () => {}, setWidget: () => {}, setWorkingVisible: () => {},
 		getEditorComponent: () => fallback,
 		setEditorComponent: (factory?: unknown) => {
+			lifecycle.push("editor-mount");
 			editorFactories.push(factory);
 			replacements++;
 			const replacement = makeEditor();
@@ -208,7 +212,10 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 			if (options.startupFailure) throw new Error("factory failed");
 			return new Promise<T>((resolve) => {
 				// SDK done hides the top overlay BEFORE disposal. Manual handle.hide is not cancellation.
-				const finish = (result: unknown) => { closes++; tui.hideOverlay(); resolve(result as T); panel.dispose?.(); };
+				const finish = (result: unknown) => {
+					lifecycle.push("done"); closes++; tui.hideOverlay(); lifecycle.push("hidden");
+					resolve(result as T); panel.dispose?.(); lifecycle.push("disposed");
+				};
 				complete = () => finish(undefined);
 				panel = factory(tui, theme as Theme, undefined as never, finish) as typeof panel;
 				const overlayOptions = customOptions?.overlayOptions;
@@ -221,7 +228,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 	const runtimeCtx = ctx as unknown as ExtensionContext;
 	const coordinator = createResponsiveCoordinator({} as ExtensionAPI, runtimeCtx, state, tree);
 	coordinator.start();
-	const showDirect = () => withEditorMountHold({} as ExtensionAPI, runtimeCtx, state, tree, () => showControlCenter(runtimeCtx, {
+	const showDirect = () => withEditorMountHold({} as ExtensionAPI, runtimeCtx, state, tree, async () => { await showControlCenter(runtimeCtx, {
 		snapshot: () => state,
 		apply: action => {
 			if (options.synchronousThrow) {
@@ -230,7 +237,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 			if (options.throwApply) return Promise.reject(new Error("UI apply failed"));
 			return applyVisualPreference(action, {} as ExtensionAPI, runtimeCtx, state, working, tree, store);
 		},
-	}), () => current);
+	}); }, () => current);
 	let shutdown = () => {};
 	let transition = () => Promise.resolve();
 	let reopen = showDirect;
@@ -264,7 +271,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 	if (options.underlyingOverlay) otherHandle = tui.showOverlay({ render: () => ["Other overlay"], invalidate: () => {} });
 	const showing = reopen();
 	await Promise.resolve();
-	return { tui, showing, state, tree, notices, writes, editorFactories, fallback, shutdown, transition, reopen, resize: (columns: number) => { width = columns; }, headerMounts: () => headerMounts,
+	return { tui, showing, state, tree, notices, writes, lifecycle, editorFactories, fallback, shutdown, transition, reopen, resize: (columns: number) => { width = columns; }, headerMounts: () => headerMounts,
 		failFactory: () => withEditorMountHold({} as ExtensionAPI, runtimeCtx, state, tree,
 			() => ctx.ui.custom(() => { throw new Error("factory callback failed"); }, { overlay: true })),
 		invalidateRuntime: () => { current = false; state.editorMountHold = undefined; state.editorReconcilePending = false; coordinator.stop(); },
@@ -275,6 +282,39 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 		editors, mountedEditor: () => editors.find(candidate => editorArea.children.includes(candidate))!,
 		other: () => otherHandle, cleanup: () => { shutdown(); coordinator.stop(); panel?.dispose?.(); handle?.hide(); otherHandle?.hide(); tui.stop(); } };
 }
+void test("registered TODO reload follows public done, SDK hide/dispose and deferred editor mount release", async () => {
+	for (const reloadFails of [false, true]) {
+		const previousDir = process.env.PI_CODING_AGENT_DIR;
+		const agentDir = mkdtempSync(join(tmpdir(), "osdy-cc07-runtime-"));
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		const f = await focusFixture({ registered: true, todoDir: agentDir, reloadFails });
+		try {
+			f.lifecycle.length = 0;
+			// Queue simple editor while this real overlay still owns input.
+			for (let i = 0; i < 3; i++) f.send("\x1b[B");
+			f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r");
+			f.resolveSave(); await Promise.resolve(); await Promise.resolve();
+			assert.equal(f.replacements(), 0);
+			f.send("\x1b[D"); f.send("\x1b[F");
+			await Promise.resolve(); await Promise.resolve();
+			assert.match(f.text(), /Configured: off.*Loaded registration: off/);
+			f.send("\x1b[C"); f.send("\x1b[H"); f.send("\r");
+			assert.match(f.text(), /> Cancel/);
+			assert.match(f.text(), /Reload follows/);
+			f.send("\x1b[B"); f.send("\r");
+			await f.showing;
+			assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed", "editor-mount", "reload"]);
+			assert.equal(f.closes(), 1);
+			assert.equal(f.tui.hasOverlay(), false);
+			assert.deepEqual(f.notices, [], "no stale-context notification even after reload rejection");
+			assert.match(readFileSync(join(agentDir, "settings.json"), "utf8"), /"enabled": true/);
+		} finally {
+			f.cleanup();
+			if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
+		}
+	}
+});
+
 void test("deferred editor policy keeps the mounted editor while Header saves live through real TUI", async () => {
 	const f = await focusFixture({ boundary: true });
 	try {
@@ -656,6 +696,7 @@ void test("registered legacy commands and osdyConfig share live values and exist
 			for (let i = 0; i < 64; i++) await Promise.resolve();
 			assert.match(panel.render(100).join("\n"), /enabled.*current/);
 			panel.handleInput("\x1b"); panel.dispose();
+			return { kind: "closed" };
 		},
 	} } as unknown as ExtensionCommandContext;
 	try {

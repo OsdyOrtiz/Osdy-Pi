@@ -18,8 +18,61 @@ registerHooks({
 });
 const { ControlCenter } = await import("./control-center.js");
 
+void test("TODO confirmation is Cancel-first, blocks navigation while saving, and completes with typed reload", async () => {
+	let calls = 0;
+	let complete: (result: { kind: "reload"; message: string }) => void = () => {};
+	let result: unknown;
+	const panel = new ControlCenter({
+		theme: () => ({ name: "dark", appearance: "dark", fg: (_color, text) => text }),
+		readThemes: () => [], applyTheme: () => ({ success: true }), requestRender: () => {}, height: () => 24,
+		close: () => {}, reload: value => { result = value; },
+		todo: { read: () => Promise.resolve({ summary: "TODO status", note: "inspection", rows: [
+			{ label: "Opt in", current: false, action: { kind: "todo-provider", mode: "on" }, details: ["Owned filters only. Reload follows."] },
+		] }), apply: () => { calls++; return new Promise(resolve => { complete = resolve; }); } },
+	});
+	panel.handleInput("\x1b[F"); await Promise.resolve();
+	panel.handleInput(right); panel.handleInput("\r");
+	assert.match(panel.render(100).join("\n"), /> Cancel/);
+	assert.match(panel.render(100).join("\n"), /Owned filters only.*Reload/);
+	panel.handleInput("\r"); assert.equal(calls, 0);
+	panel.handleInput("\r"); panel.render(100); panel.handleInput(down); panel.handleInput("\r");
+	assert.equal(calls, 1);
+	panel.handleInput(left); panel.handleInput(up); panel.handleInput("\r");
+	assert.match(panel.render(100).join("\n"), /TODO/);
+	assert.equal(calls, 1);
+	complete({ kind: "reload", message: "saved" }); await Promise.resolve();
+	assert.deepEqual(result, { kind: "reload" });
+	panel.dispose();
+});
+
+void test("TODO failure stays in-panel and disposed completions never close or reload", async () => {
+	for (const disposed of [false, true]) {
+		for (const rejects of [false, true]) {
+			let resolve: (value: { kind: "rejected"; message: string }) => void = () => {};
+			let reject: (error: Error) => void = () => {};
+			let reloads = 0;
+			const f = fixture(undefined, undefined, { todo: {
+				read: () => Promise.resolve({ summary: "TODO", note: "", rows: [
+					{ label: "on", current: false, action: { kind: "todo-provider", mode: "on" }, details: ["Reload follows"] },
+				] }), apply: () => new Promise((success, fail) => { resolve = success; reject = fail; }),
+			} }, () => { reloads++; });
+			f.panel.handleInput("\x1b[F"); await Promise.resolve();
+			f.panel.handleInput(right); f.panel.handleInput("\r"); f.panel.render(100);
+			f.panel.handleInput(down); f.panel.handleInput("\r");
+			if (disposed) f.dispose();
+			const renders = f.renders();
+			if (rejects) reject(new Error("save rejected")); else resolve({ kind: "rejected", message: "save rejected" });
+			await Promise.resolve();
+			assert.equal(reloads, 0); assert.equal(f.closes(), 0);
+			if (disposed) assert.equal(f.renders(), renders);
+			else assert.match(f.panel.render(100).join("\n"), /save rejected/);
+		}
+	}
+});
+
 function fixture(names = ["dark", "light"], preferences?: ControlCenterPreferences,
-	services?: Pick<ControlCenterDependencies, "git" | "sounds" | "account" | "usage">) {
+	services?: Pick<ControlCenterDependencies, "git" | "sounds" | "account" | "usage" | "todo">,
+	reload?: ControlCenterDependencies["reload"]) {
 	let current = "dark";
 	let appearance: "dark" | "light" = "dark";
 	let failure: string | undefined;
@@ -34,6 +87,7 @@ function fixture(names = ["dark", "light"], preferences?: ControlCenterPreferenc
 			fg: (_color, text) => `\x1b[${appearance === "dark" ? 31 : 32}m${text}\x1b[0m`,
 		}),
 		preferences,
+		...(reload ? { reload } : {}),
 		...services,
 		readThemes: () => names.map((name) => ({ name, path: undefined })),
 		applyTheme: (name) => {
@@ -207,7 +261,7 @@ void test("empty feedback preserves the current theme summary on short terminals
 
 void test("empty feedback preserves focus and position with ANSI colors", () => {
 	const f = fixture();
-	assert.match(f.panel.render(80).join("\n"), /categories: 1\/8/);
+	assert.match(f.panel.render(80).join("\n"), /categories: 1\/9/);
 	f.panel.handleInput(right);
 	assert.match(f.panel.render(80).join("\n"), /detail: 1\/2/);
 	f.panel.handleInput(down);

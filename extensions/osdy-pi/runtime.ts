@@ -4,7 +4,8 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
-import { showControlCenter } from "./control-center.js";
+import { createControlCenterTodo } from "./control-center-todo.js";
+import { showControlCenter, type ControlCenterResult } from "./control-center.js";
 import { bindControlCenterAccount } from "./control-center-account.js";
 import { readActiveProfileName } from "./account-profiles.js";
 import { createControlCenterUsage } from "./control-center-usage.js";
@@ -882,29 +883,39 @@ function registerCommand(
 	captureCurrentRuntime: () => () => boolean,
 ): void {
 	pi.registerCommand("osdyConfig", {
-		description: "Open Osdy Control Center (preferences, Git, Sounds, Account and Usage).",
+		description: "Open Osdy Control Center (preferences, Git, Sounds, Account, Usage and TODO).",
 		handler: async (_args, ctx) => {
 			const isCurrent = captureCurrentRuntime();
-			await withEditorMountHold(pi, ctx, state, workingTreeState, () => showControlCenter(ctx, {
-			snapshot: () => state,
-			apply: (action) => isCurrent()
-				? applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore)
-				: Promise.resolve(false),
-		}, {
-			git: createControlCenterGit({
-				snapshot: () => ({ enabled: state.workingTreeEnabled, placement: state.workingTreePlacement }),
-				exec: async (args) => {
-					const result = await pi.exec("git", args, { cwd: ctx.cwd, timeout: 5000 });
-					if (result.code !== 0 || result.killed) throw new Error("Git inspection failed");
-					return result.stdout;
-				},
-				applyEnabled: (value) => applyWorkingTreeEnabled(value, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
-			}),
-			sounds: bindControlCenterSounds(pi, ctx, settingsStore, createAudioPlaybackAdapter()),
-			account: bindControlCenterAccount(ctx, refreshUsage, () => state.tui?.requestRender()),
-			usage: createControlCenterUsage({ quota: () => state.codexUsage, history: readUsageHistory,
-				refresh: refreshUsage, active: readActiveProfileName }),
-			}), isCurrent);
+			const completion: { result: ControlCenterResult } = { result: { kind: "closed" } };
+			await withEditorMountHold(pi, ctx, state, workingTreeState, async () => {
+				completion.result = await showControlCenter(ctx, {
+					snapshot: () => state,
+					apply: (action) => isCurrent()
+						? applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore)
+						: Promise.resolve(false),
+				}, {
+					git: createControlCenterGit({
+						snapshot: () => ({ enabled: state.workingTreeEnabled, placement: state.workingTreePlacement }),
+						exec: async (args) => {
+							const result = await pi.exec("git", args, { cwd: ctx.cwd, timeout: 5000 });
+							if (result.code !== 0 || result.killed) throw new Error("Git inspection failed");
+							return result.stdout;
+						},
+						applyEnabled: (value) => applyWorkingTreeEnabled(value, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
+					}),
+					sounds: bindControlCenterSounds(pi, ctx, settingsStore, createAudioPlaybackAdapter()),
+					account: bindControlCenterAccount(ctx, refreshUsage, () => state.tui?.requestRender()),
+					usage: createControlCenterUsage({ quota: () => state.codexUsage, history: readUsageHistory,
+						refresh: refreshUsage, active: readActiveProfileName }),
+					todo: createControlCenterTodo({ agentDir: todoAgentDir(), cwd: ctx.cwd,
+						loaded: todoActive, isIdle: () => ctx.isIdle(), isCurrent }),
+				});
+			}, isCurrent);
+			if (completion.result.kind === "reload" && isCurrent()) {
+				// Disposal and CC06 hold release precede reload; old context is unusable afterward.
+				try { await ctx.reload(); } catch { return; }
+				return;
+			}
 		},
 	});
 	pi.registerCommand("osdy-pi", {
