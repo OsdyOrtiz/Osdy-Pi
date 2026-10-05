@@ -150,16 +150,18 @@ void test("agent/session disposal clears child progress and rejects late updates
 	}
 });
 
-void test("assignments appear at start and survive unavailable or terminal live progress", (t) => {
+void test("agent fallback appears at start and resets after unavailable, malformed or terminal live progress", (t) => {
 	t.mock.timers.enable({ apis: ["setInterval"] });
 	const { working, controller: c } = fixture();
 	c.onToolStart("subagent_run", "a", { agent: "explore", label: "map footer data", task: "SECRET TASK", prompt: "SECRET PROMPT" });
-	assert.equal(working.label, "explore · Task: map footer data");
+	assert.equal(working.label, "explore · Working...");
 	c.onToolUpdate("subagent_run", "a", childProgress("explore"));
 	assert.equal(working.label, "explore · read");
 	for (const update of [undefined, {}, { details: { tasks: null } }, { details: { tasks: [{ agent: "explore", status: "running" }] } }, childProgress("explore", "read", "completed")]) {
+		c.onToolUpdate("subagent_run", "a", childProgress("explore"));
+		assert.equal(working.label, "explore · read");
 		c.onToolUpdate("subagent_run", "a", update);
-		assert.equal(working.label, "explore · Task: map footer data");
+		assert.equal(working.label, "explore · Working...");
 	}
 	c.onToolEnd("a"); assert.equal(working.label, "Thinking...");
 });
@@ -168,28 +170,28 @@ void test("continuations use generic identity without guessing and preserve call
 	t.mock.timers.enable({ apis: ["setInterval"] });
 	const { working, controller: c } = fixture();
 	c.onToolStart("subagent_run", "a", { agent: "scout" });
-	assert.equal(working.label, "scout · Task assigned");
+	assert.equal(working.label, "scout · Working...");
 	c.onToolStart("subagent_continue", "b", { id: "a", label: "check footer" });
-	assert.equal(working.label, "Subagent · Task: check footer");
+	assert.equal(working.label, "Subagent · Working...");
 	c.onToolStart("subagent_continue", "a", { agent: "wrong", label: "wrong" });
 	c.onToolUpdate("subagent_run", "b", childProgress("wrong"));
 	c.onToolUpdate("subagent_continue", "missing", childProgress("wrong"));
-	assert.equal(working.label, "Subagent · Task: check footer");
+	assert.equal(working.label, "Subagent · Working...");
 	c.onToolUpdate("subagent_continue", "b", childProgress("writer", "edit"));
 	assert.equal(working.label, "writer · edit");
 	c.onToolUpdate("subagent_run", "a", childProgress("scout"));
 	assert.equal(working.label, "writer · edit");
 	c.onToolUpdate("subagent_continue", "b", {});
-	assert.equal(working.label, "Subagent · Task: check footer");
+	assert.equal(working.label, "Subagent · Working...");
 	c.onToolEnd("b"); assert.equal(working.label, "scout · read");
 	c.onToolUpdate("subagent_continue", "b", childProgress("late"));
-	c.onToolUpdate("subagent_run", "a", {}); assert.equal(working.label, "scout · Task assigned");
+	c.onToolUpdate("subagent_run", "a", {}); assert.equal(working.label, "scout · Working...");
 	c.onToolEnd("a");
 	c.onToolStart("subagent_continue", "c", { agent: "writer", label: "finish" });
-	assert.equal(working.label, "writer · Task: finish");
+	assert.equal(working.label, "writer · Working...");
 	c.onToolEnd("c");
 	c.onToolStart("subagent_continue", "d", { id: "c", task: "SECRET" });
-	assert.equal(working.label, "Subagent · Task assigned");
+	assert.equal(working.label, "Subagent · Working...");
 	c.onToolEnd("d");
 });
 
@@ -198,7 +200,7 @@ void test("assignment metadata is cleared on agent and session cleanup", (t) => 
 	const { working, controller: c } = fixture();
 	for (const cleanup of [() => c.onAgentEnd(), () => c.onShutdown()]) {
 		c.onToolStart("subagent_run", "a", { agent: "scout", label: "map" });
-		assert.equal(working.label, "scout · Task: map");
+		assert.equal(working.label, "scout · Working...");
 		cleanup(); c.onToolUpdate("subagent_run", "a", childProgress("late"));
 		c.refreshWorking(); assert.equal(working.label, "Thinking...");
 		assert.equal(working.active, false); assert.equal(working.timer, undefined);

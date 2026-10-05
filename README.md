@@ -488,18 +488,18 @@ While work is active, Osdy Pi centers an activity label and compact animated gly
 | `Delegating...` | ✧ ✦ ✧ | Subagent handoffs. |
 | `Executing...` | ◴ ◷ ◶ ◵ | Unknown or ambiguous tools. |
 
-**Subagent assignment is not live activity.** While a `subagent_run` or `subagent_continue` parent call is active, the indicator distinguishes the two:
+**Subagent fallback is not live activity.** While a `subagent_run` or `subagent_continue` parent call is active, the indicator distinguishes the two:
 
 | Source | Example | Meaning |
 | --- | --- | --- |
-| Validated public `agent` and optional `label` arguments | `explore · Task: map footer data` | Submitted assignment, not a claimed tool operation. This provider-neutral fallback works with Gentle Agents, which currently emits no live child progress. |
-| Public foreground progress from Joker (`pi-subagents-j0k3r`) | `scout · read` | Observable child activity; takes precedence over assignment copy. |
+| Validated public `agent` argument | `explore · Working...` | Generic fallback, not measured progress or a claimed editing operation. This provider-neutral fallback works with Gentle Agents, which currently emits no live child progress. |
+| Public foreground progress from Joker (`pi-subagents-j0k3r`) | `scout · read` | Observable child activity; takes precedence over generic fallback copy. |
 
-Without a usable label, assignment copy is `Task assigned`; continuations without agent identity use `Subagent`, never an inferred identity. Full tasks, prompts and context are never read or displayed. Model activity uses fixed `Waiting on model` / `Responding` labels, never reasoning or response text.
+The fallback is `<agent> · Working...` regardless of optional `label` metadata; continuations without agent identity use `Subagent`, never an inferred identity. Full tasks, prompts and context are never read or displayed. Model activity uses fixed `Waiting on model` / `Responding` labels, never reasoning or response text.
 
-For multiple running children, the indicator uses the first child in snapshot order with a compact additional-child count. Missing, malformed or no-running-child progress restores the assignment, or ordinary parent activity when assignment metadata is unavailable. Labels are bounded, control-safe and clipped to terminal width. Matching tool end, agent/session end and reload cleanup discard per-call state.
+For multiple running children, the indicator uses the first child in snapshot order with a compact additional-child count. Missing, malformed or no-running-child progress restores the agent's generic fallback, or ordinary parent activity when validated agent identity is unavailable. Labels are bounded, control-safe and clipped to terminal width. Matching tool end, agent/session end and reload cleanup discard per-call state.
 
-**Background limitation:** assignments appear only while their parent call is active. There is no persistent background live feed, polling or task cache.
+**Background limitation:** agent fallbacks appear only while their parent call is active. There is no persistent background live feed, polling or task cache.
 
 When tools overlap, the latest remaining tool owns the display. All glyphs share a brightness pulse through the active theme's `mdQuoteBorder`, `thinkingHigh`, `accent`, and `borderAccent` colors; the animation signals activity, not measured percentage progress. Glyphs and labels use a single 80 ms timer, with no new controls or settings.
 

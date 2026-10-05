@@ -9,21 +9,22 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 } });
 const { childActivityLabel, childAssignmentLabel: assignment } = await import("./working-child-activity.js");
 
-void test("assignment uses only validated public agent and label metadata", () => {
-	assert.equal(assignment("subagent_run", { agent: "explore", label: "map footer data" }), "explore · Task: map footer data");
+void test("fallback uses only validated public agent identity regardless of optional label", () => {
+	assert.equal(assignment("subagent_run", { agent: "explore", label: "map footer data" }), "explore · Working...");
 	for (const args of [undefined, null, [], "scout", {}, { agent: 1 }, { agent: "\u0000\n" }, { agent: "a".repeat(4097) }, { label: "secret" }])
 		assert.equal(assignment("subagent_run", args), undefined);
 	for (const label of [undefined, null, 1, [], "", "\u0000", "x".repeat(4097)])
-		assert.equal(assignment("subagent_run", { agent: "scout", label, task: "SECRET", prompt: "SECRET", context: "SECRET" }), "scout · Task assigned");
+		assert.equal(assignment("subagent_run", { agent: "scout", label, task: "SECRET", prompt: "SECRET", context: "SECRET" }), "scout · Working...");
 	const metadata = { agent: "scout", get task() { throw new Error("task must not be read"); },
 		get prompt() { throw new Error("prompt must not be read"); }, get context() { throw new Error("context must not be read"); } };
-	assert.equal(assignment("subagent_run", metadata), "scout · Task assigned");
+	assert.equal(assignment("subagent_run", metadata), "scout · Working...");
+	assert.equal(assignment("subagent_run", { agent: "scout" }), "scout · Working...");
 	assert.equal(assignment("read", { agent: "scout", label: "map" }), undefined);
-	assert.equal(assignment("subagent_continue", { id: "scout", label: "resume" }), "Subagent · Task: resume");
+	assert.equal(assignment("subagent_continue", { id: "scout", label: "resume" }), "Subagent · Working...");
 	assert.equal(assignment("subagent_continue", { agent: 42, label: "resume" }), undefined);
-	assert.equal(assignment("subagent_run", { agent: "\u001b[31m探索\u001b[0m\n\u202eagent", label: "\u001b]0;title\u0007map\t👩‍💻 footer\u0000" }), "探索 agent · Task: map 👩‍💻 footer");
+	assert.equal(assignment("subagent_run", { agent: "\u001b[31m探索\u001b[0m\n\u202eagent", label: "\u001b]0;title\u0007map\t👩‍💻 footer\u0000" }), "探索 agent · Working...");
 	const bounded = assignment("subagent_run", { agent: "🙂".repeat(1000), label: "界".repeat(1000) });
-	assert.equal(Array.from(bounded ?? "").length, 32 + " · Task: ".length + 80);
+	assert.equal(Array.from(bounded ?? "").length, 32 + " · Working...".length);
 });
 
 function task(agent = "scout", kind = "tool_running", label = "Reading files", tool_names: unknown = ["read"]) {

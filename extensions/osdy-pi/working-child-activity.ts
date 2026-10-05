@@ -19,8 +19,7 @@ export function childAssignmentLabel(toolName: string, args: unknown): string | 
 	if (!record(args)) return undefined;
 	const agent = args.agent === undefined && toolName === "subagent_continue" ? "Subagent" : safeLabel(args.agent, 32);
 	if (!agent) return undefined;
-	const label = safeLabel(args.label, 80);
-	return `${agent} · ${label ? `Task: ${label}` : "Task assigned"}`;
+	return `${agent} · Working...`;
 }
 
 function observableActivity(value: unknown): string | undefined {
