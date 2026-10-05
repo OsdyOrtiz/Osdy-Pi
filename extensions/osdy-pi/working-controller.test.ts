@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
-import type { WorkingWidgetState } from "./types.js";
+import type { WorkingActivity, WorkingWidgetState } from "./types.js";
 
 registerHooks({ resolve(specifier, context, nextResolve) {
 	if (specifier.startsWith(".") && specifier.endsWith(".js") && context.parentURL?.endsWith(".ts"))
@@ -9,6 +9,17 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 	return nextResolve(specifier, context);
 } });
 const { createWorkingController } = await import("./working-controller.js");
+const { renderWorkingWidget } = await import("./working-animation.js");
+const { WORKING_ACTIVITY_FRAMES } = await import("./constants.js");
+
+function assertDisplay(working: WorkingWidgetState, activity: WorkingActivity, label: string): void {
+	assert.equal(working.activity, activity);
+	assert.equal(working.label, label);
+	for (let frame = 0; frame < WORKING_ACTIVITY_FRAMES[activity].length; frame++) {
+		const line = renderWorkingWidget({ ...working, frame }, { fg: (_color, text) => text }, 100)[0];
+		assert.equal(line?.trim(), `${WORKING_ACTIVITY_FRAMES[activity][frame]} ${label}`);
+	}
+}
 
 function fixture() {
 	const state = { enabled: true };
@@ -107,26 +118,48 @@ const childProgress = (agent: string, tool = "read", status = "running") => ({ d
 	{ agent, status, live_activity: { current: { kind: "tool_running", label: "Reading", tool_names: [tool] } } },
 ] } });
 
+void test("child states select matching text and every existing glyph frame", (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const { working, controller: c } = fixture();
+	c.onToolStart("subagent_run", "child", { agent: "scout" });
+	assertDisplay(working, "working", "scout · Working...");
+	const cases: Array<[string, string | undefined, WorkingActivity, string]> = [
+		["thinking", undefined, "thinking", "Thinking..."],
+		["streaming_response", undefined, "thinking", "Thinking..."],
+		["tool_running", "read", "exploring", "Exploring..."],
+		["tool_completed", "lens_diagnostics", "verifying", "Verifying..."],
+		["tool_failed", "write", "working", "Working..."],
+		["tool_running", "subagent_run", "delegating", "Delegating..."],
+		["tool_running", "unknown", "executing", "Executing..."],
+	];
+	for (const [kind, tool, activity, label] of cases) {
+		c.onToolUpdate("subagent_run", "child", { details: { tasks: [{ agent: "scout", status: "running",
+			live_activity: { current: { kind, label: "IGNORED", tool_names: tool ? [tool] : undefined } } }] } });
+		assertDisplay(working, activity, `scout · ${label}`);
+	}
+	c.onShutdown();
+});
+
 void test("child updates respect tool identity and latest remaining tool ownership", (t) => {
 	t.mock.timers.enable({ apis: ["setInterval"] });
 	const { working, controller: c } = fixture();
 	c.onToolStart("subagent_run", "a");
 	c.onToolUpdate("subagent_run", "a", childProgress("scout"));
-	assert.equal(working.label, "scout · read");
+	assertDisplay(working, "exploring", "scout · Exploring...");
 	c.onToolStart("subagent_run", "b");
 	c.onToolUpdate("subagent_run", "b", childProgress("writer", "edit"));
 	c.onToolUpdate("subagent_run", "a", childProgress("scout", "grep"));
 	c.onToolUpdate("read", "b", childProgress("wrong"));
 	c.onToolUpdate("subagent_run", "missing", childProgress("late"));
 	c.onToolEnd("missing");
-	assert.equal(working.label, "writer · edit");
+	assertDisplay(working, "working", "writer · Working...");
 	c.onToolStart("read", "ordinary");
 	c.onToolUpdate("subagent_run", "ordinary", childProgress("wrong"));
 	assert.equal(working.label, "Exploring...");
-	c.onToolEnd("ordinary"); assert.equal(working.label, "writer · edit");
-	c.onToolEnd("b"); assert.equal(working.label, "scout · grep");
+	c.onToolEnd("ordinary"); assertDisplay(working, "working", "writer · Working...");
+	c.onToolEnd("b"); assertDisplay(working, "exploring", "scout · Exploring...");
 	c.onToolUpdate("subagent_run", "b", childProgress("late"));
-	assert.equal(working.label, "scout · grep");
+	assertDisplay(working, "exploring", "scout · Exploring...");
 	c.onToolUpdate("subagent_run", "a", childProgress("scout", "read", "completed"));
 	assert.equal(working.label, "Delegating...");
 	c.onToolUpdate("subagent_run", "a", childProgress("scout"));
@@ -154,14 +187,16 @@ void test("agent fallback appears at start and resets after unavailable, malform
 	t.mock.timers.enable({ apis: ["setInterval"] });
 	const { working, controller: c } = fixture();
 	c.onToolStart("subagent_run", "a", { agent: "explore", label: "map footer data", task: "SECRET TASK", prompt: "SECRET PROMPT" });
-	assert.equal(working.label, "explore · Working...");
+	assertDisplay(working, "working", "explore · Working...");
 	c.onToolUpdate("subagent_run", "a", childProgress("explore"));
-	assert.equal(working.label, "explore · read");
-	for (const update of [undefined, {}, { details: { tasks: null } }, { details: { tasks: [{ agent: "explore", status: "running" }] } }, childProgress("explore", "read", "completed")]) {
+	assertDisplay(working, "exploring", "explore · Exploring...");
+	for (const update of [undefined, {}, { details: { tasks: null } }, { details: { tasks: [{ agent: "explore", status: "running" }] } }, childProgress("explore", "read", "completed"), childProgress("explore", ""),
+		{ details: { tasks: [{ agent: "explore", status: "running", live_activity: { current: { kind: "tool_running", tool_names: [] } } }] } },
+		{ details: { tasks: [{ agent: "explore", status: "running", live_activity: { current: { kind: "tool_running" } } }] } }]) {
 		c.onToolUpdate("subagent_run", "a", childProgress("explore"));
-		assert.equal(working.label, "explore · read");
+		assertDisplay(working, "exploring", "explore · Exploring...");
 		c.onToolUpdate("subagent_run", "a", update);
-		assert.equal(working.label, "explore · Working...");
+		assertDisplay(working, "working", "explore · Working...");
 	}
 	c.onToolEnd("a"); assert.equal(working.label, "Thinking...");
 });
@@ -178,12 +213,12 @@ void test("continuations use generic identity without guessing and preserve call
 	c.onToolUpdate("subagent_continue", "missing", childProgress("wrong"));
 	assert.equal(working.label, "Subagent · Working...");
 	c.onToolUpdate("subagent_continue", "b", childProgress("writer", "edit"));
-	assert.equal(working.label, "writer · edit");
+	assertDisplay(working, "working", "writer · Working...");
 	c.onToolUpdate("subagent_run", "a", childProgress("scout"));
-	assert.equal(working.label, "writer · edit");
+	assertDisplay(working, "working", "writer · Working...");
 	c.onToolUpdate("subagent_continue", "b", {});
 	assert.equal(working.label, "Subagent · Working...");
-	c.onToolEnd("b"); assert.equal(working.label, "scout · read");
+	c.onToolEnd("b"); assertDisplay(working, "exploring", "scout · Exploring...");
 	c.onToolUpdate("subagent_continue", "b", childProgress("late"));
 	c.onToolUpdate("subagent_run", "a", {}); assert.equal(working.label, "scout · Working...");
 	c.onToolEnd("a");
@@ -193,6 +228,36 @@ void test("continuations use generic identity without guessing and preserve call
 	c.onToolStart("subagent_continue", "d", { id: "c", task: "SECRET" });
 	assert.equal(working.label, "Subagent · Working...");
 	c.onToolEnd("d");
+});
+
+void test("identity failures stay parent-owned and live snapshots retain validated public identity", (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const { working, controller: c } = fixture();
+	for (const args of [undefined, {}, { agent: null }, { agent: "" }]) {
+		c.onToolStart("subagent_run", "run", args);
+		assertDisplay(working, "delegating", "Delegating...");
+		c.onToolUpdate("subagent_run", "run", childProgress("public"));
+		assertDisplay(working, "exploring", "public · Exploring...");
+		c.onToolUpdate("subagent_run", "run", {});
+		assertDisplay(working, "delegating", "Delegating...");
+		c.onToolEnd("run");
+	}
+	c.onToolStart("subagent_continue", "continue", { agent: null });
+	assertDisplay(working, "executing", "Executing...");
+	c.onToolEnd("continue");
+	c.onToolStart("subagent_continue", "continue", {});
+	assertDisplay(working, "working", "Subagent · Working...");
+	c.onToolUpdate("subagent_continue", "continue", { details: { tasks: [
+		{ agent: "first", status: "running", live_activity: { current: { kind: "tool_running", tool_names: ["read"] } } },
+		{ agent: "second", status: "running", live_activity: { current: { kind: "thinking" } } },
+	] } });
+	assertDisplay(working, "exploring", "first · Exploring... (+1)");
+	c.onToolStart("subagent_run", "continue", { agent: "wrong" });
+	c.onToolUpdate("subagent_run", "continue", childProgress("wrong"));
+	assertDisplay(working, "exploring", "first · Exploring... (+1)");
+	c.onToolUpdate("subagent_continue", "continue", {});
+	assertDisplay(working, "working", "Subagent · Working...");
+	c.onShutdown();
 });
 
 void test("assignment metadata is cleared on agent and session cleanup", (t) => {
