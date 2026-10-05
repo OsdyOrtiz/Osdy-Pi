@@ -44,7 +44,7 @@ export const HEADER_VARIANT_CHOICES = ["osdy-theme", "neon"] as const;
 
 export type HeaderVariant = (typeof HEADER_VARIANT_CHOICES)[number];
 
-export const MASCOT_CHOICES = ["current", "bts"] as const;
+export const MASCOT_CHOICES = ["current", "bts", "osdy-halloween"] as const;
 
 export type MascotChoice = (typeof MASCOT_CHOICES)[number];
 

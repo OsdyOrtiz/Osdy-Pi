@@ -152,6 +152,7 @@ void test("shared visual actions apply immediately, save the complete settings, 
 	for (const enabled of [true, false]) {
 		for (const action of [
 			{ kind: "header", value: "neon" }, { kind: "mascot", value: "bts" },
+			{ kind: "mascot", value: "osdy-halloween" },
 			{ kind: "editor", value: "simple" }, { kind: "editor", value: "extended" },
 			{ kind: "editor", value: "auto" },
 		] as const satisfies readonly VisualPreferenceAction[]) {
@@ -903,6 +904,7 @@ void test("registered legacy commands and osdyConfig share live values and exist
 		for (const [args, expected, field, value] of [
 			["header neon", "osdy-pi header: neon", "headerVariant", "neon"],
 			["mascot bts", "osdy-pi mascot: Bts", "mascot", "bts"],
+			["mascot osdy-halloween", "osdy-pi mascot: Osdy-Halloween", "mascot", "osdy-halloween"],
 			["editor off", "osdy-pi editor mode: simple", "editorMode", "simple"],
 			["editor on", "osdy-pi editor mode: extended", "editorMode", "extended"],
 			["editor toggle", "osdy-pi editor mode: simple", "editorMode", "simple"],
@@ -916,7 +918,9 @@ void test("registered legacy commands and osdyConfig share live values and exist
 		assert.equal(writes.at(-1)?.workingTreeEnabled, false);
 		assert.equal(notices.at(-1)?.message, "osdy-pi working tree disabled");
 		const before = writes.length;
-		for (const args of ["working-tree status", "header status", "mascot status", "editor status", "header invalid", "mascot bts extra", "editor simple extra"]) await legacy.handler(args, ctx);
+		await legacy.handler("mascot status", ctx);
+		assert.deepEqual(notices.at(-1), { message: "osdy-pi mascot: Osdy-Halloween", level: "info" });
+		for (const args of ["working-tree status", "header status", "mascot status", "editor status", "header invalid", "mascot bts extra", "mascot osdy-halloween extra", "mascot invalid", "editor simple extra"]) await legacy.handler(args, ctx);
 		assert.equal(writes.length, before, "status and invalid inputs never save");
 		const beforeModalGitCalls = gitCalls.length;
 		const beforeModalNotices = notices.length;
@@ -1348,14 +1352,18 @@ void test("uninstall command is offered and wired through guarded Pi CLI removal
  assert.match(source, /pi\.exec\("pi", \["remove", source/);
 });
 
-void test("mascot command completes current, Bts, and status while persisting with immediate refresh", () => {
+void test("mascot command completes all three choices and status while persisting with immediate refresh", () => {
 	assert.deepEqual(getOsdyCommandCompletions("mascot"), [
 		{ value: "mascot current", label: "mascot current" },
 		{ value: "mascot bts", label: "mascot bts" },
+		{ value: "mascot osdy-halloween", label: "mascot osdy-halloween" },
 		{ value: "mascot status", label: "mascot status" },
 	]);
 	assert.deepEqual(getOsdyCommandCompletions("mascot b"), [
 		{ value: "mascot bts", label: "mascot bts" },
+	]);
+	assert.deepEqual(getOsdyCommandCompletions("mascot o"), [
+		{ value: "mascot osdy-halloween", label: "mascot osdy-halloween" },
 	]);
 	assert.deepEqual(getOsdyCommandCompletions("mascot d"), []);
 

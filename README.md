@@ -63,7 +63,7 @@ Run **`/osdyConfig`** in interactive Pi to open the Osdy Control Center. The ten
 - TODO shows configured selection, current eligibility, and actually loaded SDK registration separately. Opt-in/out requires an idle session and a Cancel-first inline confirmation naming the target, owned Gentle filter effects, and reload. Successful selection closes/disposes the panel and releases its editor hold before reloading once; restart Pi if reload fails. Rejections stay in the panel. No installs or task-history changes occur; legacy `/osdy-pi todo on|off|status` remains available.
 - Agents shows concise **Joker / Gentle** choices without activating anything. With detail focus, visible lowercase-only **j Joker / g Gentle** letters open the existing confirmation directly; only available, unambiguous rows get shortcuts. **↑/↓ + Enter** remains the fallback. Profile and Agent selections survive category navigation; unavailable choices fall back to the current row. Letters never bypass category focus, confirmation, path input, loading, querying, or saving. Selection is idle-only and Cancel-first confirmed, naming the real target, possible Joker installation, owned agent filters, and preserved unrelated resources. Normal personal Pi only: `pi:dev` and isolated/override sessions are blocked, never redirected to personal settings. Success closes/disposes the panel and releases its editor hold before reloading once; restart Pi if reload fails. Legacy `/osdy-pi agents setup|on|off|status` is unchanged.
 - Theme lists Pi's available themes and marks the current theme. Explicit **Page x/N** pages contain at most **8 themes**, fewer in short viewports or with expanded help. **Page Up/Down** changes pages, **Home/End** reaches the first/last theme, and arrows cross page boundaries. Selection survives category navigation and resizing; resizing adjusts the page around the selected theme. A successful selection applies live and saves globally in the active Pi agent directory; project settings can override it at startup. Failures appear in the modal.
-- Header offers **osdy-theme / neon**; Mascot offers **current / Bts**; Editor offers **auto / extended / simple**, with the current preference marked. Editor also shows the effective mode: small terminals stay simple/native even with extended selected.
+- Header offers **osdy-theme / neon**; Mascot offers **current / Bts / Osdy-Halloween**; Editor offers **auto / extended / simple**, with the current preference marked. Editor also shows the effective mode: small terminals stay simple/native even with extended selected.
 - Preferences save immediately through the same runtime and global Osdy settings store as `/osdy-pi` commands (`<agent-dir>/extensions/osdy-pi/settings.json`). Header/Mascot apply live without closing the panel. Editor replacement waits until all overlays close; if another overlay remains, the next existing responsive watcher tick applies the latest choice. The effective mode reports the actually mounted editor while queued. Opening a category only reads values; while Osdy is disabled, choices save for later without enabling it.
 - A selection shows **Saving** until persistence finishes and **Saved globally** only on success. Failed saves retain the live preference but report **could not be saved**; select again to retry. Application errors report **Not saved**, without claiming the runtime change succeeded. Duplicate selections are ignored while saving.
 - **Git** shows the current branch (or detached HEAD), changed-entry count/clean status, and the current widget position as a read-only session detail. Working-tree enablement applies and saves through the same owner as `/osdy-pi working-tree`; Git inspection never writes Git. `/osdy-pi diff` and position commands are unchanged.
@@ -300,7 +300,7 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 | Area | Included behavior |
 | --- | --- |
 | Themes | 23 built-in themes, including Osdy, Kanagawa, Dracula, Gruvbox, Nord, Rosé Pine, Daniela Cute, Halloween, Halloween Killer, Catppuccin, Matrix, Lucent Orange, and three Spider-Man-inspired palettes |
-| Header and mascot | Independently selectable `osdy-theme`/`neon` headers and `current`/`bts` mascots |
+| Header and mascot | Independently selectable `osdy-theme`/`neon` headers and `current`/`bts`/`osdy-halloween` mascots |
 | Messages | Native colored user cards without emojis and plain assistant Markdown with a separate assistant `🦝` row |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
 | Status | Six activity labels with compact per-state glyphs and a shared theme-color pulse, responsive footer metrics, dynamic extension statuses, and Codex subscription quota with low-capacity emphasis |
@@ -366,9 +366,11 @@ Header and mascot choices are independent:
 | Element | Choices | Command |
 | --- | --- | --- |
 | Header | `osdy-theme` (default), `neon` | `/osdy-pi header osdy-theme|neon` |
-| Mascot | `current` (default), `bts` | `/osdy-pi mascot current|bts` |
+| Mascot | `current` (default), `bts`, `osdy-halloween` | `/osdy-pi mascot current\|bts\|osdy-halloween` |
 
 Both commands update the UI immediately. Add `status` instead of a choice to inspect the current selection. Choices persist in the global Osdy Pi settings across reloads and sessions. The old top-level style commands and `classic` header aliases are no longer registered.
+
+Choose **Osdy-Halloween** in `/osdyConfig` → **Mascot**, or run `/osdy-pi mascot osdy-halloween`. It dresses the same Current raccoon in ivory fangs and a high-collared dark/crimson vampire cape. Its glow follows the active theme's `accent`, `mdHeading`, and `mdLink` colors; no Halloween theme is required. Current remains the default, and Current/Bts artwork and version-1 settings compatibility are unchanged.
 
 The header also shows **`osdy-pi v<version>`** at the top right in the theme's accent color, read from the installed Osdy package—not Pi's host version or the workspace manifest. It uses an empty first row or adds a row without overwriting artwork; invalid/unreadable versions or labels wider than the terminal are omitted.
 
@@ -407,7 +409,7 @@ The enabled state, editor mode, working-tree visibility preference, header, and 
 | TODO selection | `/osdy-pi todo on\|off\|status` |
 | Session TODO (opt-in, starting in 1.5.0) | `/todos` (read-only) |
 | Header | `/osdy-pi header osdy-theme\|neon\|status` |
-| Mascot | `/osdy-pi mascot current\|bts\|status` |
+| Mascot | `/osdy-pi mascot current\|bts\|osdy-halloween\|status` |
 | Editor | `/osdy-pi editor auto\|extended\|simple\|on\|off\|toggle\|status` |
 | Working tree | `/osdy-pi working-tree on\|off\|toggle\|status` |
 | Working tree | `/osdy-pi working-tree position top\|bottom\|status` |

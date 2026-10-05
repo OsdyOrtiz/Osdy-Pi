@@ -336,7 +336,7 @@ void test("inline preferences show all supported values and live current/effecti
 	const f = preferenceFixture();
 	for (const [category, choices, current] of [
 		["Header", ["osdy-theme", "neon"], "osdy-theme"],
-		["Mascot", ["current", "Bts"], "current"],
+		["Mascot", ["current", "Bts", "Osdy-Halloween"], "current"],
 		["Editor", ["auto", "extended", "simple"], "auto"],
 	] as const) {
 		f.panel.handleInput(down);
@@ -348,6 +348,20 @@ void test("inline preferences show all supported values and live current/effecti
 		if (category === "Editor") assert.match(text, /effective: simple\/native.*small terminal/i);
 	}
 	assert.deepEqual(f.applied, []);
+});
+
+void test("Mascot selects Osdy-Halloween and reports its exact saved label", async () => {
+	const f = preferenceFixture();
+	f.panel.handleInput(down);
+	f.panel.handleInput(down);
+	f.panel.handleInput(right);
+	f.panel.handleInput("\x1b[F");
+	f.panel.handleInput("\r");
+	assert.deepEqual(f.applied, [{ kind: "mascot", value: "osdy-halloween" }]);
+	assert.match(f.panel.render(100).join("\n"), /Saving.*Osdy-Halloween/);
+	f.complete(true);
+	await Promise.resolve();
+	assert.match(f.panel.render(100).join("\n"), /Saved globally: Osdy-Halloween/);
 });
 
 void test("changing categories resets selection to their current row, even after a longer theme list", () => {
@@ -427,7 +441,7 @@ void test("inline preference rendering stays bounded at narrow widths and differ
 		f.panel.handleInput(down);
 		f.panel.handleInput(right);
 		f.panel.handleInput("\x1b[F");
-		assert.match(f.panel.render(48).join("\n"), new RegExp(`> ${["neon", "Bts", "simple"][category]}`));
+		assert.match(f.panel.render(48).join("\n"), new RegExp(`> ${["neon", "Osdy-Halloween", "simple"][category]}`));
 		for (const height of [1, 4, 7, 9, 18]) {
 			f.resize(height);
 			for (const width of [1, 8, 24, 48, 80]) {

@@ -457,6 +457,52 @@ function addRightEdgeGlow(art: MascotArt): MascotArt {
   };
 }
 
+// Transparent overlay at Current's mouth/shoulders (row 17 onward).
+// ▓ = dark cape, ▒ = crimson lining, █/▼ = ivory fangs. Keep the face and tail.
+const VAMPIRE_COSTUME = [
+  "        ▓                                     ▓",
+  "         ▓▒▓          █          █         ▓▒▒▓",
+  "          ▓▒▒▒▓       ▼          ▼      ▓▒▒▒▒▓",
+  "           ▓▒▒▒▒▒▒▓                 ▓▒▒▒▒▒▒▓",
+  "            ▓▓▒▒▒▒▒▓▓             ▓▓▒▒▒▒▒▓▓",
+  "            ▓▓▓▒▒▒▓▓             ▓▓▒▒▒▓▓▓",
+  "           ▓▓▓▒▒▒▓▓               ▓▓▒▒▓▓▓",
+  "          ▓▓▓▒▒▒▓▓                ▓▓▒▒▒▓▓",
+  "         ▓▓▓▒▒▒▓▓                  ▓▓▒▒▓▓",
+  "        ▓▓▓▒▒▒▓▓                   ▓▓▒▒▓▓",
+  "       ▓▓▓▒▒▒▓▓                     ▓▓▒▒▓▓",
+  "      ▓▓▓▒▒▒▓▓                      ▓▓▒▒▓▓",
+  "     ▓▓▓▒▒▒▓▓                        ▓▓▒▒▓▓",
+  "    ▓▓▓▓▒▒▓▓                         ▓▓▒▒▓▓",
+  "   ▓▓▓▓▒▒▓▓                           ▓▓▒▓▓",
+  "    ▓▓▓▓▓▓                             ▓▓▓",
+] as const;
+
+function addVampireCostume(art: MascotArt): MascotArt {
+  const rows = art.mascot.map((line, row) => {
+    const glyphs = Array.from(line);
+    // Reserve b for lining; retain the few original eye glints in ivory h.
+    const tones = Array.from((art.toneMap[row] ?? "").replaceAll("b", "h"));
+    for (const [column, glyph] of Array.from(VAMPIRE_COSTUME[row - 17] ?? "").entries()) {
+      if (glyph === " ") continue;
+      glyphs[column] = glyph;
+      if (glyph === "▓") tones[column] = "d";
+      else if (glyph === "▒") tones[column] = "b";
+      else tones[column] = "h";
+    }
+    return { mascot: glyphs.join(""), toneMap: tones.join("") };
+  });
+  return { mascot: rows.map((row) => row.mascot), toneMap: rows.map((row) => row.toneMap) };
+}
+
+const HALLOWEEN_MASCOT_TONES: MascotTonePalette = {
+  ...HTML_MASCOT_TONES,
+  b: "#9F2342",
+};
+const HALLOWEEN_MASCOT = addRightEdgeGlow(addVampireCostume({
+  mascot: HTML_MASCOT,
+  toneMap: HTML_MASCOT_MAP,
+}));
 const ROSE_MASCOT = addRightEdgeGlow({
   mascot: HTML_MASCOT,
   toneMap: HTML_MASCOT_MAP,
@@ -468,6 +514,7 @@ const BTS_MASCOT_ART = addRightEdgeGlow({
 for (const [art, palette] of [
   [ROSE_MASCOT, HTML_MASCOT_TONES],
   [BTS_MASCOT_ART, BTS_MASCOT_TONES],
+  [HALLOWEEN_MASCOT, HALLOWEEN_MASCOT_TONES],
 ] as const) {
   assertRawHexPalette(palette);
   assertMascotStructure(art, palette);
@@ -481,6 +528,7 @@ export type MascotConfig = {
 export const MASCOTS: Record<MascotChoice, MascotConfig> = {
   current: { art: ROSE_MASCOT, tonePalette: HTML_MASCOT_TONES },
   bts: { art: BTS_MASCOT_ART, tonePalette: BTS_MASCOT_TONES },
+  "osdy-halloween": { art: HALLOWEEN_MASCOT, tonePalette: HALLOWEEN_MASCOT_TONES },
 };
 
 export function mascotForChoice(choice: MascotChoice): MascotConfig {

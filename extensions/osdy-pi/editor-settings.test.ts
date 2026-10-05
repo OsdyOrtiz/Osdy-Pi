@@ -97,7 +97,7 @@ void test("editor settings normalize only supported versioned modes", () => {
 });
 
 void test("mascot choices preserve the version-one current default, migrate raccoon to Bts, and persist Bts", async () => {
-	assert.deepEqual(MASCOT_CHOICES, ["current", "bts"]);
+	assert.deepEqual(MASCOT_CHOICES, ["current", "bts", "osdy-halloween"]);
 	assert.equal(
 		normalizeEditorSettings({ version: 1, mascot: "invalid" }).mascot,
 		"current",
@@ -127,6 +127,18 @@ void test("mascot choices preserve the version-one current default, migrate racc
 		mascot: "bts",
 	});
 	assert.equal((await store.load()).mascot, "bts");
+});
+
+void test("Osdy-Halloween round-trips through a fresh version-one settings store", async () => {
+	const fileSystem = new MemoryEditorSettingsFileSystem();
+	const path = "/agent/extensions/osdy-pi/settings.json";
+	const settings = normalizeEditorSettings({ version: 1, mascot: "osdy-halloween" });
+	assert.equal(settings.mascot, "osdy-halloween");
+	await createEditorSettingsStore(path, fileSystem).save(settings);
+	const persisted: unknown = JSON.parse(fileSystem.content ?? "{}");
+	assert.deepEqual(persisted, { ...settings, version: 1 });
+	assert.deepEqual(await createEditorSettingsStore(path, fileSystem).load(), settings);
+	assert.equal(normalizeEditorSettings({ version: 2, mascot: "osdy-halloween" }).mascot, "current");
 });
 
 void test("enabled defaults safely and persists globally", async () => {

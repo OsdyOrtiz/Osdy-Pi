@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
 // @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
-import { HEADER_VARIANTS } from "./constants.ts";
+import { HEADER_VARIANTS, mascotForChoice } from "./constants.ts";
 import type { SimpleTheme } from "./types.js";
 
 registerHooks({
@@ -19,7 +19,7 @@ registerHooks({
 });
 
 // @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
-const { colorAsciiCharacter } = await import("./animation.ts");
+const { colorAsciiCharacter, animateAsciiLineWithToneMap } = await import("./animation.ts");
 
 class RecordingTheme implements SimpleTheme {
 	readonly calls: Array<{ name: string; text: string }> = [];
@@ -72,6 +72,33 @@ void test("Neon renders main and dark pink through bounded accent styling", () =
 		{ name: "accent", text: "D2" },
 	]);
 	assert.equal(`${main}${dark.join("")}`.includes("\u001B[48;"), false);
+});
+
+void test("Osdy-Halloween resolves edge glow against the live theme in static and animated frames", () => {
+	const { art, tonePalette } = mascotForChoice("osdy-halloween");
+	assert.deepEqual([tonePalette.p, tonePalette.c, tonePalette.v], ["accent", "mdHeading", "mdLink"]);
+	let themeId = "first";
+	const calls: string[] = [];
+	const theme: SimpleTheme = { fg(name, text) { calls.push(name); return `<${themeId}:${name}:${text}>`; } };
+	for (const style of ["static", "animated"] as const) {
+		for (const frame of [0, 7, 28]) {
+			const render = () => art.mascot.map((line, row) =>
+				animateAsciiLineWithToneMap(line, art.toneMap[row] ?? "", row, frame, theme, tonePalette, style)).join("\n");
+			themeId = "first";
+			const first = render();
+			themeId = "second";
+			const second = render();
+			assert.notEqual(first, second);
+			assert.equal(first.replaceAll("first:", "second:"), second, "only theme-resolved colors change");
+			assert.ok(second.includes("\u001B[38;2;"), "fixed body/costume foreground colors remain");
+			assert.ok(!second.includes("\u001B[48;"), "transparent background");
+		}
+	}
+	assert.deepEqual([...new Set(calls)].sort(), ["accent", "mdHeading", "mdLink"].sort());
+	for (let row = 0; row < art.mascot.length; row++) {
+		const occupied = Array.from(art.mascot[row] ?? "").flatMap((glyph, column) => glyph === " " ? [] : [column]);
+		assert.deepEqual(occupied.slice(-3).reverse().map((column) => art.toneMap[row]?.[column]), ["p", "c", "v"].slice(0, occupied.length));
+	}
 });
 
 void test("Neon never maps a tone to mdHeading or mdLink", () => {

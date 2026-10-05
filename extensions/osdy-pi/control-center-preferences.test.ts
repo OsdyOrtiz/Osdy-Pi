@@ -21,7 +21,7 @@ const snapshot: VisualPreferenceSnapshot = { enabled: true, headerVariant: "osdy
 void test("preference rows expose every catalog value and exactly one current indicator", () => {
 	for (const [category, field, values] of [
 		["Header", "headerVariant", ["osdy-theme", "neon"]],
-		["Mascot", "mascot", ["current", "bts"]],
+		["Mascot", "mascot", ["current", "bts", "osdy-halloween"]],
 		["Editor", "editorMode", ["auto", "extended", "simple"]],
 	] as const) {
 		for (const value of values) {
@@ -30,7 +30,9 @@ void test("preference rows expose every catalog value and exactly one current in
 			assert.deepEqual(detail.rows.map((row) => "value" in row.action ? row.action.value : undefined), values);
 			assert.equal(detail.rows.filter((row) => row.current).length, 1);
 			assert.equal(detail.rows.find((row) => row.current)?.action.kind, category.toLowerCase());
-			assert.match(detail.summary, new RegExp(`Current: ${value === "bts" ? "Bts" : value}`));
+			const label = value === "bts" ? "Bts" : value === "osdy-halloween" ? "Osdy-Halloween" : value;
+			assert.match(detail.summary, new RegExp(`Current: ${label}`));
+			assert.equal(detail.rows.find((row) => row.current)?.label, label);
 		}
 	}
 });

@@ -17,7 +17,11 @@ export interface ControlCenterPreferences {
 }
 
 export function visualPreferenceLabel(action: VisualPreferenceAction): string {
-	return action.kind === "mascot" && action.value === "bts" ? "Bts" : action.value;
+	if (action.kind === "mascot") {
+		if (action.value === "bts") return "Bts";
+		if (action.value === "osdy-halloween") return "Osdy-Halloween";
+	}
+	return action.value;
 }
 
 /** Explicit view adaptation only; application and persistence belong to runtime. */

@@ -128,6 +128,7 @@ function isMascotChoice(value: string): value is MascotChoice {
 }
 
 function mascotLabel(mascot: MascotChoice): string {
+	if (mascot === "osdy-halloween") return "Osdy-Halloween";
 	return mascot === "bts" ? "Bts" : mascot;
 }
 
