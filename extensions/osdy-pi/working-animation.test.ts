@@ -204,6 +204,14 @@ void test("combining marks and ZWJ emoji remain whole graphemes in the traveling
 	}
 });
 
+void test("compact child labels with wide characters fit the existing renderer", () => {
+	for (const width of [1, 2, 5, 12, 40, 100]) {
+		const current = { ...state("探索👩‍💻 · read (+2)"), activity: "delegating" as const };
+		const line = renderWorkingWidget(current, palette, width)[0] ?? "";
+		assert.ok(visibleWidth(line) <= width, `child label width ${width}`);
+	}
+});
+
 void test("inactive widget renders nothing; narrow output fits and full output stays centered", () => {
 	assert.deepEqual(renderWorkingWidget(state("Working...", 18, false), palette, 20), []);
 	for (const activity of activities) {

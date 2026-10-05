@@ -1222,6 +1222,9 @@ export async function registerOsdyPi(
 	pi.on("tool_execution_start", (event) =>
 		controller.onToolStart(event.toolName, event.toolCallId, event.args),
 	);
+	pi.on("tool_execution_update", (event) =>
+		controller.onToolUpdate(event.toolName, event.toolCallId, event.partialResult),
+	);
 	pi.on("tool_execution_end", (event, ctx) => {
 		controller.onToolEnd(event.toolCallId);
 		audioRouter.onToolExecutionEnd(event.isError === true, ctx);
@@ -1253,6 +1256,7 @@ export async function registerOsdyPi(
 		sessionContext = undefined;
 	});
 	pi.on("session_start", async (_event, ctx) => {
+		controller.onShutdown();
 		idleUsageRefresh.stop();
 		codexUsageAbort?.abort();
 		codexUsageAbort = undefined;

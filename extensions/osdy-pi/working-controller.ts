@@ -1,10 +1,12 @@
 import type { OsdyState, WorkingActivity, WorkingWidgetState } from "./types.js";
 import { classifyWorkingActivity, WORKING_ACTIVITY_LABELS } from "./working-activity.js";
+import { childActivityLabel, childAssignmentLabel } from "./working-child-activity.js";
 
 export type WorkingController = {
 	onAgentStart(): void;
 	onAgentEnd(): void;
 	onToolStart(toolName: string, toolCallId: string, args?: unknown): void;
+	onToolUpdate(toolName: string, toolCallId: string, partialResult: unknown): void;
 	onToolEnd(toolCallId: string): void;
 	onShutdown(): void;
 	refreshWorking(): void;
@@ -17,7 +19,8 @@ export function createWorkingController(
 ): WorkingController {
 	let activeAgent = false;
 	// Map insertion order is start order; duplicate starts must not reorder it.
-	const activeTools = new Map<string, WorkingActivity>();
+	type ActiveTool = { activity: WorkingActivity; toolName: string; childLabel: string | undefined; assignmentLabel: string | undefined };
+	const activeTools = new Map<string, ActiveTool>();
 
 	const requestWorkingRender = () => workingState.tui?.requestRender();
 	const clearWorkingTimer = () => {
@@ -42,9 +45,11 @@ export function createWorkingController(
 		requestWorkingRender();
 	};
 	const refreshWorking = () => {
-		let activity: WorkingActivity = "thinking";
-		for (const remaining of activeTools.values()) activity = remaining;
-		setActivity(activity);
+		let current: ActiveTool | undefined;
+		for (const remaining of activeTools.values()) current = remaining;
+		setActivity(current?.activity ?? "thinking");
+		const label = current?.childLabel ?? current?.assignmentLabel;
+		if (label) workingState.label = label;
 		if (!state.enabled || (!activeAgent && activeTools.size === 0)) {
 			stopWorking();
 			return;
@@ -70,7 +75,14 @@ export function createWorkingController(
 		},
 		onToolStart(toolName: string, toolCallId: string, args?: unknown): void {
 			if (activeTools.has(toolCallId)) return;
-			activeTools.set(toolCallId, classifyWorkingActivity(toolName, args));
+			activeTools.set(toolCallId, { activity: classifyWorkingActivity(toolName, args), toolName,
+				childLabel: undefined, assignmentLabel: childAssignmentLabel(toolName, args) });
+			refreshWorking();
+		},
+		onToolUpdate(toolName: string, toolCallId: string, partialResult: unknown): void {
+			const tool = activeTools.get(toolCallId);
+			if ((toolName !== "subagent_run" && toolName !== "subagent_continue") || tool?.toolName !== toolName) return;
+			tool.childLabel = childActivityLabel(partialResult);
 			refreshWorking();
 		},
 		onToolEnd(toolCallId: string): void {

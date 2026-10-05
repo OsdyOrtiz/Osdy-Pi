@@ -103,6 +103,108 @@ void test("MCP wrappers explore only exact Context7 documentation selectors", (t
 	c.onToolEnd("case");
 });
 
+const childProgress = (agent: string, tool = "read", status = "running") => ({ details: { tasks: [
+	{ agent, status, live_activity: { current: { kind: "tool_running", label: "Reading", tool_names: [tool] } } },
+] } });
+
+void test("child updates respect tool identity and latest remaining tool ownership", (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const { working, controller: c } = fixture();
+	c.onToolStart("subagent_run", "a");
+	c.onToolUpdate("subagent_run", "a", childProgress("scout"));
+	assert.equal(working.label, "scout · read");
+	c.onToolStart("subagent_run", "b");
+	c.onToolUpdate("subagent_run", "b", childProgress("writer", "edit"));
+	c.onToolUpdate("subagent_run", "a", childProgress("scout", "grep"));
+	c.onToolUpdate("read", "b", childProgress("wrong"));
+	c.onToolUpdate("subagent_run", "missing", childProgress("late"));
+	c.onToolEnd("missing");
+	assert.equal(working.label, "writer · edit");
+	c.onToolStart("read", "ordinary");
+	c.onToolUpdate("subagent_run", "ordinary", childProgress("wrong"));
+	assert.equal(working.label, "Exploring...");
+	c.onToolEnd("ordinary"); assert.equal(working.label, "writer · edit");
+	c.onToolEnd("b"); assert.equal(working.label, "scout · grep");
+	c.onToolUpdate("subagent_run", "b", childProgress("late"));
+	assert.equal(working.label, "scout · grep");
+	c.onToolUpdate("subagent_run", "a", childProgress("scout", "read", "completed"));
+	assert.equal(working.label, "Delegating...");
+	c.onToolUpdate("subagent_run", "a", childProgress("scout"));
+	c.onToolUpdate("subagent_run", "a", { details: { tasks: null } });
+	assert.equal(working.label, "Delegating...");
+	c.onToolEnd("a"); assert.equal(working.active, false);
+});
+
+void test("agent/session disposal clears child progress and rejects late updates", (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const { working, controller: c } = fixture();
+	for (const cleanup of [() => c.onAgentEnd(), () => c.onShutdown()]) {
+		c.onToolStart("subagent_run", "a");
+		c.onToolUpdate("subagent_run", "a", childProgress("scout"));
+		cleanup();
+		c.onToolUpdate("subagent_run", "a", childProgress("late"));
+		assert.equal(working.active, false); assert.equal(working.label, "Thinking...");
+		assert.equal(working.timer, undefined);
+		c.onAgentStart(); assert.equal(working.label, "Thinking...");
+		c.onAgentEnd();
+	}
+});
+
+void test("assignments appear at start and survive unavailable or terminal live progress", (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const { working, controller: c } = fixture();
+	c.onToolStart("subagent_run", "a", { agent: "explore", label: "map footer data", task: "SECRET TASK", prompt: "SECRET PROMPT" });
+	assert.equal(working.label, "explore · Task: map footer data");
+	c.onToolUpdate("subagent_run", "a", childProgress("explore"));
+	assert.equal(working.label, "explore · read");
+	for (const update of [undefined, {}, { details: { tasks: null } }, { details: { tasks: [{ agent: "explore", status: "running" }] } }, childProgress("explore", "read", "completed")]) {
+		c.onToolUpdate("subagent_run", "a", update);
+		assert.equal(working.label, "explore · Task: map footer data");
+	}
+	c.onToolEnd("a"); assert.equal(working.label, "Thinking...");
+});
+
+void test("continuations use generic identity without guessing and preserve call ownership", (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const { working, controller: c } = fixture();
+	c.onToolStart("subagent_run", "a", { agent: "scout" });
+	assert.equal(working.label, "scout · Task assigned");
+	c.onToolStart("subagent_continue", "b", { id: "a", label: "check footer" });
+	assert.equal(working.label, "Subagent · Task: check footer");
+	c.onToolStart("subagent_continue", "a", { agent: "wrong", label: "wrong" });
+	c.onToolUpdate("subagent_run", "b", childProgress("wrong"));
+	c.onToolUpdate("subagent_continue", "missing", childProgress("wrong"));
+	assert.equal(working.label, "Subagent · Task: check footer");
+	c.onToolUpdate("subagent_continue", "b", childProgress("writer", "edit"));
+	assert.equal(working.label, "writer · edit");
+	c.onToolUpdate("subagent_run", "a", childProgress("scout"));
+	assert.equal(working.label, "writer · edit");
+	c.onToolUpdate("subagent_continue", "b", {});
+	assert.equal(working.label, "Subagent · Task: check footer");
+	c.onToolEnd("b"); assert.equal(working.label, "scout · read");
+	c.onToolUpdate("subagent_continue", "b", childProgress("late"));
+	c.onToolUpdate("subagent_run", "a", {}); assert.equal(working.label, "scout · Task assigned");
+	c.onToolEnd("a");
+	c.onToolStart("subagent_continue", "c", { agent: "writer", label: "finish" });
+	assert.equal(working.label, "writer · Task: finish");
+	c.onToolEnd("c");
+	c.onToolStart("subagent_continue", "d", { id: "c", task: "SECRET" });
+	assert.equal(working.label, "Subagent · Task assigned");
+	c.onToolEnd("d");
+});
+
+void test("assignment metadata is cleared on agent and session cleanup", (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const { working, controller: c } = fixture();
+	for (const cleanup of [() => c.onAgentEnd(), () => c.onShutdown()]) {
+		c.onToolStart("subagent_run", "a", { agent: "scout", label: "map" });
+		assert.equal(working.label, "scout · Task: map");
+		cleanup(); c.onToolUpdate("subagent_run", "a", childProgress("late"));
+		c.refreshWorking(); assert.equal(working.label, "Thinking...");
+		assert.equal(working.active, false); assert.equal(working.timer, undefined);
+	}
+});
+
 void test("bash accepts only simple anchored explicit check commands", (t) => {
 	t.mock.timers.enable({ apis: ["setInterval"] });
 	const { working, controller: c } = fixture();
