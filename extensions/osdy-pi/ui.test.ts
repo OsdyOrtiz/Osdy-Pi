@@ -260,7 +260,7 @@ void test("Current and Bts retain their original glyphs, tone maps, and palettes
 	}
 });
 
-void test("Osdy-Halloween preserves Current's face and tail beneath a bounded vampire costume", () => {
+void test("Osdy-Halloween preserves Current's muzzle and tail beneath a fang-free cape", () => {
 	const { art, tonePalette } = mascotForChoice("osdy-halloween");
 	const current = MASCOTS.current.art;
 	assert.deepEqual(art.mascot.slice(0, 17), current.mascot.slice(0, 17), "same ears, mask, eyes and snout");
@@ -268,13 +268,18 @@ void test("Osdy-Halloween preserves Current's face and tail beneath a bounded va
 		assert.equal(art.mascot[row]?.slice(44), current.mascot[row]?.slice(44), "original striped tail");
 	}
 	assert.notDeepEqual(art.mascot.slice(17), current.mascot.slice(17));
-	const fangs = art.mascot.slice(17, 20).join("\n");
-	assert.match(fangs, /▼[^▼\n]+▼/, "two ivory fang tips separated by the original muzzle");
-	assert.equal([...fangs].filter((glyph) => glyph === "▼").length, 2, "one-column fang tips");
-	assert.equal([...fangs].filter((glyph) => glyph === "█").length, 2, "one-column stems keep fangs two rows tall");
+	assert.doesNotMatch(art.mascot.join("\n"), /▼/, "no fang tips");
+	assert.doesNotMatch(art.mascot.slice(17, 20).join("\n"), /█/, "no fang stems on the muzzle");
+	for (const row of [18, 19]) {
+		for (const column of [22, 33]) {
+			assert.equal(art.mascot[row]?.[column], current.mascot[row]?.[column], "original muzzle at removed fang positions");
+		}
+	}
 	assert.equal(art.mascot.length, current.mascot.length);
 	assert.deepEqual(art.mascot.map((row) => row.length), current.mascot.map((row) => row.length));
+	assert.equal(art.mascot[17]?.[8], "▓", "raised collar stays in place");
 	assert.equal(art.toneMap[17]?.[8], "d", "raised collar has a dark outer edge");
+	assert.equal(art.mascot[20]?.[12], "▒", "collar lining stays in place");
 	assert.equal(art.toneMap[20]?.[12], "b", "collar has crimson lining");
 	assert.equal(tonePalette.b, "#9F2342");
 	assert.equal(tonePalette.d, MASCOTS.current.tonePalette.d);
@@ -282,7 +287,11 @@ void test("Osdy-Halloween preserves Current's face and tail beneath a bounded va
 		const scaled = scaleMascot(art, width, rows);
 		assert.ok(scaled.mascot.length <= rows);
 		assert.equal(scaled.mascot.length, scaled.toneMap.length);
-		if (width >= 32) assert.match(scaled.mascot.join("\n"), /▼+[^▼\n]+▼+/, "both fangs survive responsive sampling");
+		assert.doesNotMatch(scaled.mascot.join("\n"), /▼/, "responsive art has no fang tips");
+		if (width >= 32) {
+			assert.ok(scaled.mascot.some((line, row) => [...line].some((glyph, column) => glyph === "▓" && scaled.toneMap[row]?.[column] === "d")), "dark cape survives responsive sampling");
+			assert.ok(scaled.mascot.some((line, row) => [...line].some((glyph, column) => glyph === "▒" && scaled.toneMap[row]?.[column] === "b")), "crimson lining survives responsive sampling");
+		}
 		for (let row = 0; row < scaled.mascot.length; row++) {
 			const glyphs = Array.from(scaled.mascot[row] ?? "");
 			const tones = Array.from(scaled.toneMap[row] ?? "");
@@ -290,7 +299,7 @@ void test("Osdy-Halloween preserves Current's face and tail beneath a bounded va
 			assert.equal(glyphs.length, tones.length);
 			for (let column = 0; column < glyphs.length; column++) {
 				if (glyphs[column] !== " ") assert.ok(Object.keys(tonePalette).includes(tones[column] ?? ""));
-				if (glyphs[column] === "▼") assert.equal(tones[column], "h", "fangs retain ivory rather than glow/lining tones");
+
 			}
 		}
 	}

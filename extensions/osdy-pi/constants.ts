@@ -458,11 +458,11 @@ function addRightEdgeGlow(art: MascotArt): MascotArt {
 }
 
 // Transparent overlay at Current's mouth/shoulders (row 17 onward).
-// ▓ = dark cape, ▒ = crimson lining, █/▼ = ivory fangs. Keep the face and tail.
+// ▓ = dark cape, ▒ = crimson lining. Keep the face and tail.
 const VAMPIRE_COSTUME = [
   "        ▓                                     ▓",
-  "         ▓▒▓          █          █         ▓▒▒▓",
-  "          ▓▒▒▒▓       ▼          ▼      ▓▒▒▒▒▓",
+  "         ▓▒▓                               ▓▒▒▓",
+  "          ▓▒▒▒▓                        ▓▒▒▒▒▓",
   "           ▓▒▒▒▒▒▒▓                 ▓▒▒▒▒▒▒▓",
   "            ▓▓▒▒▒▒▒▓▓             ▓▓▒▒▒▒▒▓▓",
   "            ▓▓▓▒▒▒▓▓             ▓▓▒▒▒▓▓▓",
