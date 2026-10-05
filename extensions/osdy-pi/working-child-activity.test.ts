@@ -9,24 +9,24 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 	return nextResolve(specifier, context);
 } });
 const { childActivityState: activity, childAssignmentState: assignment } = await import("./working-child-activity.js");
-const working = (agent: string) => ({ activity: "working", label: `${agent} · Working...` });
+const working = () => ({ activity: "working", label: "Working..." });
 
 void test("fallback uses only validated public agent identity regardless of optional label", () => {
-	assert.deepEqual(assignment("subagent_run", { agent: "explore", label: "map footer data" }), working("explore"));
+	assert.deepEqual(assignment("subagent_run", { agent: "explore", label: "map footer data" }), working());
 	for (const args of [undefined, null, [], "scout", {}, { agent: 1 }, { agent: "\u0000\n" }, { agent: "a".repeat(4097) }, { label: "secret" }])
 		assert.equal(assignment("subagent_run", args), undefined);
 	for (const label of [undefined, null, 1, [], "", "\u0000", "x".repeat(4097)])
-		assert.deepEqual(assignment("subagent_run", { agent: "scout", label, task: "SECRET", prompt: "SECRET", context: "SECRET" }), working("scout"));
+		assert.deepEqual(assignment("subagent_run", { agent: "scout", label, task: "SECRET", prompt: "SECRET", context: "SECRET" }), working());
 	const metadata = { agent: "scout", get label() { throw new Error("label must not be read"); },
 		get task() { throw new Error("task must not be read"); }, get prompt() { throw new Error("prompt must not be read"); },
 		get context() { throw new Error("context must not be read"); } };
-	assert.deepEqual(assignment("subagent_run", metadata), working("scout"));
+	assert.deepEqual(assignment("subagent_run", metadata), working());
 	assert.equal(assignment("read", { agent: "scout" }), undefined);
-	assert.deepEqual(assignment("subagent_continue", { id: "scout" }), working("Subagent"));
+	assert.deepEqual(assignment("subagent_continue", { id: "scout" }), working());
 	for (const agent of [42, null, "", "\u0000"])
 		assert.equal(assignment("subagent_continue", { agent }), undefined);
-	assert.deepEqual(assignment("subagent_run", { agent: "\u001b[31m探索\u001b[0m\n\u202eagent" }), working("探索 agent"));
-	assert.deepEqual(assignment("subagent_run", { agent: "🙂".repeat(1000) }), working("🙂".repeat(32)));
+	assert.deepEqual(assignment("subagent_run", { agent: "\u001b[31m探索\u001b[0m\n\u202eagent" }), working());
+	assert.deepEqual(assignment("subagent_run", { agent: "🙂".repeat(1000) }), working());
 });
 
 function task(agent = "scout", kind = "tool_running", tool_names: unknown = ["read"]) {
@@ -54,18 +54,18 @@ void test("public operations return structured six-state activity and label", ()
 	];
 	for (const kind of ["tool_running", "tool_completed", "tool_failed"])
 		for (const [tool, state, label] of cases)
-			assert.deepEqual(activity(progress(task("scout", kind, [tool]))), { activity: state, label: `scout · ${label}` });
+			assert.deepEqual(activity(progress(task("scout", kind, [tool]))), { activity: state, label });
 	for (const kind of ["thinking", "streaming_response"])
-		assert.deepEqual(activity(progress(task("scout", kind))), { activity: "thinking", label: "scout · Thinking..." });
+		assert.deepEqual(activity(progress(task("scout", kind))), { activity: "thinking", label: "Thinking..." });
 });
 
 void test("multiple children select first running snapshot child and validate all children", () => {
 	assert.deepEqual(activity(progress({ agent: "old", status: "completed" }, task("first"), task("second"), task("third"))),
-		{ activity: "exploring", label: "first · Exploring... (+2)" });
-	assert.deepEqual(activity(progress(task("first", "tool_running", ["read", "write"]))), { activity: "exploring", label: "first · Exploring..." });
+		{ activity: "exploring", label: "Exploring... (+2)" });
+	assert.deepEqual(activity(progress(task("first", "tool_running", ["read", "write"]))), { activity: "exploring", label: "Exploring..." });
 	assert.equal(activity(progress(task(), task("bad", "tool_running", ["read", 1]))), undefined);
 	assert.equal(activity(progress(...Array.from({ length: 65 }, () => task()))), undefined);
-	assert.equal(activity(progress(...Array.from({ length: 64 }, () => task())))?.label, "scout · Exploring... (+63)");
+	assert.equal(activity(progress(...Array.from({ length: 64 }, () => task())))?.label, "Exploring... (+63)");
 });
 
 void test("terminal, missing, malformed and unsupported progress has no usable activity", () => {
@@ -90,16 +90,16 @@ void test("oversized snapshot agent is rejected despite otherwise valid live act
 	assert.equal(activity(progress(task("a".repeat(4097)))), undefined);
 });
 
-void test("snapshot agent at the input bound remains valid and is truncated for display", () => {
+void test("snapshot agent at the input bound remains valid without appearing in the label", () => {
 	assert.deepEqual(activity(progress(task("a".repeat(4096)))),
-		{ activity: "exploring", label: `${"a".repeat(32)} · Exploring...` });
+		{ activity: "exploring", label: "Exploring..." });
 });
 
 void test("external names are single-line, control-free and bounded before classification", () => {
 	const dirty = "\u001b[31mAgent\u001b[0m\n\t\u202eName\u0007";
 	assert.deepEqual(activity(progress(task(dirty, "tool_running", ["\u001b]0;title\u0007read\nfile"]))),
-		{ activity: "executing", label: "Agent Name · Executing..." });
+		{ activity: "executing", label: "Executing..." });
 	assert.deepEqual(activity(progress(task("a".repeat(1000), "tool_running", ["b".repeat(1000)]))),
-		{ activity: "executing", label: `${"a".repeat(32)} · Executing...` });
+		{ activity: "executing", label: "Executing..." });
 	assert.equal(activity(progress(task("\u0000\n"))), undefined);
 });

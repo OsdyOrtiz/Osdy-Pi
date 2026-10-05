@@ -4,8 +4,8 @@ import { classifyWorkingActivity, WORKING_ACTIVITY_LABELS } from "./working-acti
 
 export type ChildWorkingState = { activity: WorkingActivity; label: string };
 
-function childState(agent: string, activity: WorkingActivity): ChildWorkingState {
-	return { activity, label: `${agent} · ${WORKING_ACTIVITY_LABELS[activity]}` };
+function childState(activity: WorkingActivity): ChildWorkingState {
+	return { activity, label: WORKING_ACTIVITY_LABELS[activity] };
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -27,7 +27,7 @@ export function childAssignmentState(toolName: string, args: unknown): ChildWork
 	if (!record(args)) return undefined;
 	const agent = args.agent === undefined && toolName === "subagent_continue" ? "Subagent" : safeLabel(args.agent, 32);
 	if (!agent) return undefined;
-	return childState(agent, "working");
+	return childState("working");
 }
 
 function observableActivity(value: unknown): WorkingActivity | undefined {
@@ -63,7 +63,7 @@ export function childActivityState(partialResult: unknown): ChildWorkingState | 
 		const agent = safeLabel(task.agent, 32);
 		const activity = record(task.live_activity) ? observableActivity(task.live_activity.current) : undefined;
 		if (!agent || !activity) return undefined;
-		first ??= childState(agent, activity);
+		first ??= childState(activity);
 		running++;
 	}
 	if (!first) return undefined;
