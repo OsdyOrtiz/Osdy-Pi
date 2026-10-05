@@ -10,8 +10,8 @@ Commit and push `feat/working-subagent-activity`, then merge and push `main`. Ke
 
 ## Tasks and routes
 - [x] D1 — Refresh README and authorization; verify current changes. Delegated documentation writer (two files) and independent command verifier completed.
-- [ ] D2 — Commit feature/tests/README and close offered native review. In progress. Parent Git; provider-owned immutable review.
-- [ ] D3 — Commit historical ledgers, push branch, merge/push main and verify remote refs/cleanliness. Parent Git; stop on unexpected divergence/conflicts.
+- [x] D2 — Commit feature/tests/README and close offered native review. Parent Git; provider-owned immutable review completed.
+- [ ] D3 — Commit historical ledgers, push branch, merge/push main and verify remote refs/cleanliness. In progress. Parent Git; stop on unexpected divergence/conflicts.
 
 ## Checks and evidence
 - Documentation refresh has no meaningful deterministic RED; structural readback used. Prior behavior RED/GREEN remains in original ledger.
@@ -22,4 +22,5 @@ Commit and push `feat/working-subagent-activity`, then merge and push `main`. Ke
 - Rollback: revert feature adapter/hooks/tests/README independently of historical ledger commit.
 
 ## Progress and next step
-D1 verified. Stage only feature paths/current trackers for D2; record observed commit/review identities. Stage historical docs separately for D3. Delivery not yet performed.
+D1/D2 complete. Feature commit `5bcfca96e660012acfe840486e5f2641c9e1111f`:351 authored lines, nine paths. Native tier high (runtime process boundary); four lenses approved without correction. Lineage `review-de2e1c26e37a4487`, target `sha256:45d34f0d210b311ee129ccf374d4e8533733bdabd295b8857d63beed457c7613`; exact acknowledgement burned revision `sha256:5f308188b6b9e7909cbee1e70e39b14e37a376517bbf8aedf7c2ad54c439d2ba`. This does not itself authorize delivery; user's explicit Git authorization does.
+Next: commit historical docs and this evidence separately, then push branch and fast-forward main if refs remain compatible. Delivery not yet performed.
