@@ -1,18 +1,20 @@
 # Config and usage shortcuts delivery
 
-## Objective, authority and scope
-Deliver Ctrl+Alt+O (`/osdyConfig`) and Ctrl+Alt+U (`/usage`), macOS Ctrl+Option+O/U. User confirmed physical delivery on one Mac terminal and authorized README update first, commit, feature push, main merge/push and existing automatic npm publication. No local npm publish/tag/version/workflow changes.
-Branch: `feat/config-usage-shortcuts` from main `602ba7a`; remote main freshly fetched and identical. Seven source files: README.md; extensions/osdy-pi/runtime.ts/runtime.test.ts; account-profiles.ts/account-profiles.test.ts; control-center-account.ts/control-center-account.test.ts. Preserve base-context idle and manual reload safeguards.
+## Objective and authority
+Deliver Ctrl+Alt+O (`/osdyConfig`) and Ctrl+Alt+U (`/usage`), macOS Ctrl+Option+O/U. User confirmed physical delivery on one Mac terminal; authorized README first, commit, feature push, main merge/push and existing automatic npm publication. No local npm publication, tag, version, dependencies or workflow changes.
 
-## Tasks
-- [x] D1 Finalize README and verify candidate. Delegated worker updated stale physical-QA claim; independent verifier observed 12 release tests, 563 extension + 89 script tests, typecheck, lint, diff check all pass. No full live-provider/account/audio verification claimed.
-- [x] D2 Commit and push feature work. Source commit `9ebefd2922071673d1498d9a890065afc5dfe43d` created and pushed to origin/feat/config-usage-shortcuts; exact eight owned surfaces (seven source files plus tracking), no force push.
-- [ ] D3 Merge main, push and verify automatic publication. In progress. Parent Git coordination then delegated CI/registry verification. Stop on conflicts or uncertain mutations.
+## Completed tasks
+- [x] D1 Finalize README and verify candidate. Bounded worker corrected physical-QA claim; independent verifier: 12 release tests, 563 extension + 89 script tests, typecheck, lint, diff check all pass. Broader live-provider/account/audio behavior remains unverified.
+- [x] D2 Commit/push feature. Source `9ebefd2922071673d1498d9a890065afc5dfe43d`, feature `feat/config-usage-shortcuts`, from main `602ba7a`; seven source files plus task evidence, no force pushes. Progress evidence `108d5648e4958aef1ae9390d14fcb8332867d0b7` changed only excluded odd bookkeeping.
+- [x] D3 Fast-forward merge/main push and verify publication. Main pushed at `108d5648e4958aef1ae9390d14fcb8332867d0b7`. Independent verifier reconciled official `osdy-pi@1.11.11` and latest; registry releaseSource matches main. Published archive byte-identical to retained CI archive, 149 files.
 
-## Decisions and evidence
-Source manifest and both lock roots remain 1.11.0; existing CI allocates next registry-backed patch, official registry, latest tag, immutable archive checks. No local version bump needed. RDD off; no native review ceremony. LSP active probe confirmed zero errors in account helper and test; compiler also clean.
-Forecast approximately 585 authored changed lines, mostly regression coverage. Single direct merge chosen explicitly by user, no PR/artificial splitting. All changes feature-owned; odd tracking excluded from npm.
-D1 verified source and finalized README are frozen in `9ebefd2922071673d1498d9a890065afc5dfe43d` (D2). Subsequent odd-only evidence commit changes no packaged bytes. Publication success not yet observed.
+## Release evidence and failure disclosure
+Workflow https://github.com/OsdyOrtiz/Osdy-Pi/actions/runs/37569775286 completed with failure despite successful publication: all CI checks succeeded; npm accepted at 04:06:24Z, reconciliation stopped at 04:07:15Z before propagation. Official endpoints confirmed version/latest at 04:08:02Z, verified by 04:08:34Z. No publication retry. Follow-up: reconciliation propagation window is too short; no workflow fix authorized.
+SHA-1: `6dd74989e53e9159aa6b244c158ae74fd11e8336`.
+Integrity: `sha512-o2X5S506w4gPnRLFJOQPp5SrKlxWth2Keclik0xnyyBekscZuvCjl63H+YVmL3lF94pi0xUAceUs5BX2u5Kpiw==`.
+Artifact: https://github.com/OsdyOrtiz/Osdy-Pi/actions/runs/37569775286/artifacts/11460054453 . Retained ZIP: `/var/folders/qg/r_11gk3n283_h43_7ncnf6r00000gn/T/osdy-pi-delivery-37569775286.r6lQen/npm-release-37569775286-1.zip`, containing evidence.json and osdy-pi-1.11.11.tgz.
+Registry tarball matched retained bytes; GitHub artifact ZIP digest matched `8351a0c638c9b93fe8f28caf75b0a1e81d30b270932fea16d7c7ddaa36605746`.
 
-## Next step
-Commit updated evidence separately on the feature branch, push it, fast-forward main if remote ancestry remains unchanged, and push main. Record CI/publication evidence. Preserve unverified broader terminal/TUI/provider behavior limitations.
+## Constraints, review and next step
+Source version/lock roots stay 1.11.0; CI auto allocates official registry-backed patch/latest. RDD off; independent verification, no native review ceremony. Active LSP account helper/test clean. Single direct merge explicitly chosen, approximately 585 authored source diff lines primarily regressions.
+Final excluded evidence update stays on feature branch to avoid another main-push publication. Main's immutable releaseSource remains 108d564. Next: users update package; separately decide whether to fix automatic reconciliation timeout. No consumer runtime/provenance signature audit performed.
