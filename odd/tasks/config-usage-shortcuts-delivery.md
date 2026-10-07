@@ -6,13 +6,13 @@ Branch: `feat/config-usage-shortcuts` from main `602ba7a`; remote main freshly f
 
 ## Tasks
 - [x] D1 Finalize README and verify candidate. Delegated worker updated stale physical-QA claim; independent verifier observed 12 release tests, 563 extension + 89 script tests, typecheck, lint, diff check all pass. No full live-provider/account/audio verification claimed.
-- [ ] D2 Commit and push feature work. In progress, parent Git coordination; exact owned surfaces only, no force push.
-- [ ] D3 Merge main, push and verify automatic publication. Parent Git coordination then delegated CI/registry verification. Stop on conflicts or uncertain mutations.
+- [x] D2 Commit and push feature work. Source commit `9ebefd2922071673d1498d9a890065afc5dfe43d` created and pushed to origin/feat/config-usage-shortcuts; exact eight owned surfaces (seven source files plus tracking), no force push.
+- [ ] D3 Merge main, push and verify automatic publication. In progress. Parent Git coordination then delegated CI/registry verification. Stop on conflicts or uncertain mutations.
 
 ## Decisions and evidence
 Source manifest and both lock roots remain 1.11.0; existing CI allocates next registry-backed patch, official registry, latest tag, immutable archive checks. No local version bump needed. RDD off; no native review ceremony. LSP active probe confirmed zero errors in account helper and test; compiler also clean.
 Forecast approximately 585 authored changed lines, mostly regression coverage. Single direct merge chosen explicitly by user, no PR/artificial splitting. All changes feature-owned; odd tracking excluded from npm.
-D1 checked outcome will be recorded in the coherent feature source commit with D2. Publication success not yet observed.
+D1 verified source and finalized README are frozen in `9ebefd2922071673d1498d9a890065afc5dfe43d` (D2). Subsequent odd-only evidence commit changes no packaged bytes. Publication success not yet observed.
 
 ## Next step
-Stage exact seven source files and task evidence, commit Conventional Commit, push feature, then merge and push main. Record source commit and CI/publication evidence. Preserve unverified broader terminal/TUI/provider behavior limitations.
+Commit updated evidence separately on the feature branch, push it, fast-forward main if remote ancestry remains unchanged, and push main. Record CI/publication evidence. Preserve unverified broader terminal/TUI/provider behavior limitations.
