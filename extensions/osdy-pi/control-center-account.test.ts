@@ -138,6 +138,87 @@ void test("Bound Account reuses idle switching, quota refresh, and authoritative
 	}
 });
 
+void test("Bound base-context Account mutations refuse busy Pi and work when idle", async () => {
+	const previous = process.env.OSDY_PI_PROFILE_NAME;
+	try {
+		for (const idle of [false, true]) {
+			process.env.OSDY_PI_PROFILE_NAME = "personal";
+			const events: string[] = [];
+			const commands: string[][] = [];
+			const ctx = { isIdle: () => idle, ui: {
+				notify: (text: string) => events.push(text),
+				select: () => Promise.reject(new Error("dialog forbidden")), input: () => Promise.reject(new Error("dialog forbidden")),
+			} };
+			assert.equal("waitForIdle" in ctx, false);
+			const service = bindControlCenterAccount(ctx,
+				() => { events.push("refresh"); return Promise.resolve(); }, () => { events.push("render"); },
+				{ profiles: () => Promise.resolve(["work", "personal"]),
+					activate: name => { events.push(`activate:${name}`); return Promise.resolve(); },
+					run: args => { commands.push(args); return Promise.resolve({ code: 0, stdout: "No default account.", stderr: "" }); } });
+			assert.equal((await service.apply({ kind: "account-switch", profile: "work" })).failed, !idle);
+			assert.equal((await service.apply({ kind: "account-default", profile: "work" })).failed, !idle);
+			assert.equal((await service.apply({ kind: "account-default", profile: undefined })).failed, !idle);
+			assert.deepEqual(commands, idle ? [["account", "default", "work"], ["account", "default", "--clear"]] : []);
+			assert.equal(events.includes("activate:work"), idle);
+			assert.equal(events.includes("render"), idle);
+			assert.equal(events.includes("refresh"), idle);
+			assert.equal(process.env.OSDY_PI_PROFILE_NAME, idle ? "work" : "personal");
+		}
+	} finally {
+		if (previous === undefined) delete process.env.OSDY_PI_PROFILE_NAME;
+		else process.env.OSDY_PI_PROFILE_NAME = previous;
+	}
+});
+
+void test("Bound command Account defaults wait for idle and recheck idle and runtime freshness", async () => {
+	for (const outcome of ["idle", "busy", "stale", "rejected"] as const) {
+		let idle = false;
+		let current = true;
+		const events: string[] = [];
+		const service = bindControlCenterAccount({ isIdle: () => idle,
+			waitForIdle: () => {
+				events.push("wait");
+				idle = outcome !== "busy";
+				current = outcome !== "stale";
+				return outcome === "rejected" ? Promise.reject(new Error("wait failed")) : Promise.resolve();
+			},
+			ui: { notify: () => {}, select: () => Promise.resolve(undefined), input: () => Promise.resolve(undefined) },
+		}, () => { throw new Error("refresh forbidden"); }, () => {},
+		{ profiles: () => Promise.resolve(["work"]), run: args => {
+			events.push(args.join(" ")); return Promise.resolve({ code: 0, stdout: "", stderr: "" });
+		} }, { isCurrent: () => current });
+		assert.equal((await service.apply({ kind: "account-default", profile: "work" })).failed, outcome !== "idle");
+		assert.deepEqual(events, outcome === "idle" ? ["wait", "account default work"] : ["wait"]);
+	}
+});
+
+void test("Bound base-context Account rechecks idle after asynchronous profile validation", async () => {
+	const previous = process.env.OSDY_PI_PROFILE_NAME;
+	process.env.OSDY_PI_PROFILE_NAME = "personal";
+	let idle = true;
+	let finish: (profiles: string[]) => void = () => {};
+	const events: string[] = [];
+	const service = bindControlCenterAccount({ isIdle: () => idle,
+		ui: { notify: () => {}, select: () => Promise.resolve(undefined), input: () => Promise.resolve(undefined) },
+	}, () => { events.push("refresh"); return Promise.resolve(); }, () => { events.push("render"); },
+	{ profiles: () => new Promise(resolve => { finish = resolve; }),
+		activate: () => { events.push("activate"); return Promise.resolve(); },
+		run: () => { events.push("default"); return Promise.resolve({ code: 0, stdout: "", stderr: "" }); } });
+	try {
+		for (const kind of ["account-switch", "account-default"] as const) {
+			idle = true;
+			const applying = service.apply({ kind, profile: "work" });
+			idle = false;
+			finish(["work"]);
+			assert.equal((await applying).failed, true);
+		}
+		assert.deepEqual(events, []);
+	} finally {
+		if (previous === undefined) delete process.env.OSDY_PI_PROFILE_NAME;
+		else process.env.OSDY_PI_PROFILE_NAME = previous;
+	}
+});
+
 void test("Bound Account validates live external active names without rendering unsafe metadata", async () => {
 	const previous = process.env.OSDY_PI_PROFILE_NAME;
 	const service = bindControlCenterAccount({ isIdle: () => true, waitForIdle: () => Promise.resolve(),

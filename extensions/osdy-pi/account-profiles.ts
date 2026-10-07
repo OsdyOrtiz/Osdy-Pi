@@ -12,10 +12,9 @@ function sameProfile(left: string | undefined, right: string | undefined): boole
 	return left?.toLowerCase() === right?.toLowerCase();
 }
 
-export type AccountContext = Pick<
-	ExtensionCommandContext,
-	"isIdle" | "waitForIdle"
-> & {
+export type AccountContext = Pick<ExtensionContext, "isIdle"> & {
+	/** Only slash-command contexts can wait; base shortcut contexts must already be idle. */
+	waitForIdle?: ExtensionCommandContext["waitForIdle"];
 	shutdown?: ExtensionCommandContext["shutdown"];
 	sessionManager?: Pick<
 		ExtensionCommandContext["sessionManager"],
@@ -128,7 +127,14 @@ export async function switchAccountInPlace(
 		);
 		return false;
 	}
-	if (!ctx.isIdle()) await ctx.waitForIdle();
+	if (!ctx.isIdle() && ctx.waitForIdle) await ctx.waitForIdle();
+	if (!ctx.isIdle()) {
+		ctx.ui.notify(
+			"Account changes require Pi to be idle. Wait for active work to finish and retry.",
+			"warning",
+		);
+		return false;
+	}
 	try {
 		await activate(profile);
 	} catch {

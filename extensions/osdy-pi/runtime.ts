@@ -779,24 +779,29 @@ function registerUsageCommand(
 		getSessionContext,
 		startRefresh,
 	);
+	const openUsagePanel = async (ctx: ExtensionContext): Promise<void> => {
+		if (!ctx.hasUI) {
+			ctx.ui.notify("Codex usage requires the interactive UI", "warning");
+			return;
+		}
+		await showCodexUsagePanel(
+			ctx,
+			() => state.codexUsage,
+			refreshActiveSessionUsage,
+			{
+				profile: resolveActiveProfileLabel(),
+				provider: ctx.model?.provider ?? "unknown",
+				model: modelLabel(ctx),
+			},
+		);
+	};
 	pi.registerCommand("usage", {
 		description: "Show current Codex subscription usage.",
-		handler: async (_args, ctx) => {
-			if (!ctx.hasUI) {
-				ctx.ui.notify("Codex usage requires the interactive UI", "warning");
-				return;
-			}
-			await showCodexUsagePanel(
-				ctx,
-				() => state.codexUsage,
-				refreshActiveSessionUsage,
-				{
-					profile: resolveActiveProfileLabel(),
-					provider: ctx.model?.provider ?? "unknown",
-					model: modelLabel(ctx),
-				},
-			);
-		},
+		handler: async (_args, ctx) => openUsagePanel(ctx),
+	});
+	pi.registerShortcut("ctrl+alt+u", {
+		description: "Show current Codex subscription usage.",
+		handler: openUsagePanel,
 	});
 }
 
@@ -895,43 +900,54 @@ function registerCommand(
 	captureCurrentRuntime: () => () => boolean,
 	accountFactory: typeof bindControlCenterAccount,
 ): void {
+	const openControlCenter = async (
+		ctx: ExtensionContext,
+		onReloadRequired: () => Promise<void> | void,
+	): Promise<void> => {
+		const isCurrent = captureCurrentRuntime();
+		const completion: { result: ControlCenterResult } = { result: { kind: "closed" } };
+		await withEditorMountHold(pi, ctx, state, workingTreeState, async () => {
+			completion.result = await showControlCenter(ctx, {
+				snapshot: () => state,
+				apply: (action) => isCurrent()
+					? applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore)
+					: Promise.resolve(false),
+			}, {
+				git: createControlCenterGit({
+					snapshot: () => ({ enabled: state.workingTreeEnabled, placement: state.workingTreePlacement }),
+					exec: async (args) => {
+						const result = await pi.exec("git", args, { cwd: ctx.cwd, timeout: 5000 });
+						if (result.code !== 0 || result.killed) throw new Error("Git inspection failed");
+						return result.stdout;
+					},
+					applyEnabled: (value) => applyWorkingTreeEnabled(value, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
+				}),
+				sounds: bindControlCenterSounds(pi, ctx, settingsStore, createAudioPlaybackAdapter()),
+				account: accountFactory(ctx, refreshUsage, () => state.tui?.requestRender(), undefined, { isCurrent }),
+				usage: createControlCenterUsage({ quota: () => state.codexUsage, history: readUsageHistory,
+					refresh: refreshUsage, active: readActiveProfileName }),
+				todo: createControlCenterTodo({ agentDir: todoAgentDir(), cwd: ctx.cwd,
+					loaded: todoActive, isIdle: () => ctx.isIdle(), isCurrent }),
+				agents: createControlCenterAgents({ agentDir: todoAgentDir(), cwd: ctx.cwd,
+					env: { ...process.env }, isIdle: () => ctx.isIdle(), isCurrent }),
+			});
+		}, isCurrent);
+		// Disposal and hold release precede either effect; check freshness without another await.
+		if (completion.result.kind === "reload" && isCurrent()) await onReloadRequired();
+	};
 	pi.registerCommand("osdyConfig", {
 		description: "Open Osdy Control Center (preferences, Git, Sounds, Account, Usage, TODO and Agents).",
-		handler: async (_args, ctx) => {
-			const isCurrent = captureCurrentRuntime();
-			const completion: { result: ControlCenterResult } = { result: { kind: "closed" } };
-			await withEditorMountHold(pi, ctx, state, workingTreeState, async () => {
-				completion.result = await showControlCenter(ctx, {
-					snapshot: () => state,
-					apply: (action) => isCurrent()
-						? applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore)
-						: Promise.resolve(false),
-				}, {
-					git: createControlCenterGit({
-						snapshot: () => ({ enabled: state.workingTreeEnabled, placement: state.workingTreePlacement }),
-						exec: async (args) => {
-							const result = await pi.exec("git", args, { cwd: ctx.cwd, timeout: 5000 });
-							if (result.code !== 0 || result.killed) throw new Error("Git inspection failed");
-							return result.stdout;
-						},
-						applyEnabled: (value) => applyWorkingTreeEnabled(value, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
-					}),
-					sounds: bindControlCenterSounds(pi, ctx, settingsStore, createAudioPlaybackAdapter()),
-					account: accountFactory(ctx, refreshUsage, () => state.tui?.requestRender(), undefined, { isCurrent }),
-					usage: createControlCenterUsage({ quota: () => state.codexUsage, history: readUsageHistory,
-						refresh: refreshUsage, active: readActiveProfileName }),
-					todo: createControlCenterTodo({ agentDir: todoAgentDir(), cwd: ctx.cwd,
-						loaded: todoActive, isIdle: () => ctx.isIdle(), isCurrent }),
-					agents: createControlCenterAgents({ agentDir: todoAgentDir(), cwd: ctx.cwd,
-						env: { ...process.env }, isIdle: () => ctx.isIdle(), isCurrent }),
-				});
-			}, isCurrent);
-			if (completion.result.kind === "reload" && isCurrent()) {
-				// Disposal and CC06 hold release precede reload; old context is unusable afterward.
-				try { await ctx.reload(); } catch { return; }
-				return;
-			}
-		},
+		handler: async (_args, ctx) => openControlCenter(ctx, async () => {
+			// Keep reload bound to the command context; never use that context afterward.
+			try { await ctx.reload(); } catch { return; }
+		}),
+	});
+	pi.registerShortcut("ctrl+alt+o", {
+		description: "Open Osdy Control Center.",
+		handler: async (ctx) => openControlCenter(ctx, () => {
+			// Shortcuts receive only the base context, without command-only reload.
+			ctx.ui.notify("Settings saved. Run /reload manually to apply the changes.", "info");
+		}),
 	});
 	pi.registerCommand("osdy-pi", {
 		description:

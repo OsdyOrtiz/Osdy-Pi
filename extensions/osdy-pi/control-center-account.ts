@@ -136,7 +136,7 @@ export function bindControlCenterAccount(ctx: AccountContext, refreshUsage: () =
 			await backend.activate!(name);
 		}, refreshUsage, requestRender) : Promise.resolve(false),
 		setDefault: async profile => {
-			if (!ctx.isIdle()) await ctx.waitForIdle();
+			if (!ctx.isIdle() && ctx.waitForIdle) await ctx.waitForIdle();
 			if (!(options.isCurrent?.() ?? true) || !ctx.isIdle()) return false;
 			return (await backend.run(["account", "default", profile ?? "--clear"])).code === 0;
 		},

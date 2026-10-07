@@ -460,12 +460,14 @@ void test("manages profile rename and permanent removal prompts through authorit
 
 void test("switches in place after idle without spawning or shutting down", async () => {
 	const events: string[] = [];
+	let idle = false;
 	await switchAccountInPlace(
 		{
-			isIdle: () => false,
+			isIdle: () => idle,
 			waitForIdle: () =>
 				Promise.resolve().then(() => {
 					events.push("idle");
+					idle = true;
 				}),
 			ui: {
 				notify: (message: string) => events.push(message),
@@ -493,6 +495,46 @@ void test("switches in place after idle without spawning or shutting down", asyn
 		"refresh",
 		"Switched to work. Your next request uses this account.",
 	]);
+});
+
+void test("base-context account switches require idle without a command wait hook", async () => {
+	const previous = process.env.OSDY_PI_PROFILE_NAME;
+	try {
+		for (const idle of [false, true]) {
+			process.env.OSDY_PI_PROFILE_NAME = "personal";
+			const events: string[] = [];
+			const notices: string[] = [];
+			const ctx = { isIdle: () => idle, ui: {
+				notify: (message: string) => notices.push(message),
+				select: () => Promise.resolve(undefined), input: () => Promise.resolve(undefined),
+			} };
+			assert.equal("waitForIdle" in ctx, false);
+			const switched = await switchAccountInPlace(ctx, "work",
+				profile => { events.push(`activate:${profile}`); return Promise.resolve(); },
+				() => { events.push("refresh"); return Promise.resolve(); },
+				() => { events.push("render"); });
+			assert.equal(switched, idle);
+			assert.deepEqual(events, idle ? ["activate:work", "render", "refresh"] : []);
+			assert.equal(process.env.OSDY_PI_PROFILE_NAME, idle ? "work" : "personal");
+			assert.match(notices.join(" "), idle ? /Switched to work/ : /require Pi to be idle/);
+		}
+	} finally {
+		if (previous === undefined) delete process.env.OSDY_PI_PROFILE_NAME;
+		else process.env.OSDY_PI_PROFILE_NAME = previous;
+	}
+});
+
+void test("a command wait hook cannot activate an account if Pi remains busy", async () => {
+	const events: string[] = [];
+	const switched = await switchAccountInPlace({ isIdle: () => false,
+		waitForIdle: () => { events.push("wait"); return Promise.resolve(); },
+		ui: { notify: message => events.push(message), select: () => Promise.resolve(undefined), input: () => Promise.resolve(undefined) },
+	}, "work", () => { events.push("activate"); return Promise.resolve(); },
+	() => { events.push("refresh"); return Promise.resolve(); }, () => { events.push("render"); });
+	assert.equal(switched, false);
+	assert.equal(events[0], "wait");
+	assert.match(events[1] ?? "", /require Pi to be idle/);
+	assert.equal(events.length, 2);
 });
 
 void test("keeps the current account when in-place activation fails", async () => {

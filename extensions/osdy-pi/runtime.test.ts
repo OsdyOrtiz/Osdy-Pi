@@ -47,6 +47,8 @@ registerHooks({
 	},
 });
 
+type ShortcutRegistration = Parameters<ExtensionAPI["registerShortcut"]>[1];
+
 const profileLabels = await import("./profile-label.js");
 const { showControlCenter } = await import("./control-center.js");
 
@@ -60,7 +62,7 @@ void test("registered Account factory isolates profile preview from active quota
 	let signal: AbortSignal | undefined; let finish = () => {}; let factoryCalls = 0; let renderCount = 0;
 	let current: (() => boolean) | undefined;
 	const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
-		on: () => {}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {}, events: { on: () => () => {} },
+		registerShortcut: () => {}, on: () => {}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {}, events: { on: () => () => {} },
 		exec: () => { throw new Error("launcher or provider forbidden"); } } as unknown as ExtensionAPI;
 	const ctx = { cwd: process.cwd(), mode: "tui", hasUI: true, isIdle: () => true, waitForIdle: () => Promise.resolve(), ui: {
 		notify: (text: string) => notices.push(text),
@@ -197,7 +199,7 @@ void test("shared visual actions apply immediately, save the complete settings, 
 const { isSmallResponsiveMode } = await import("./utils.js");
 const { createResponsiveCoordinator, reconcileResponsiveUi, disableOsdyPi } = await import("./runtime-helpers.js");
 
-async function focusFixture(options: { boundary?: boolean; throwApply?: boolean; synchronousThrow?: boolean; underlyingOverlay?: boolean; startupFailure?: boolean; registered?: boolean; todoDir?: string; reloadFails?: boolean;
+async function focusFixture(options: { boundary?: boolean; throwApply?: boolean; synchronousThrow?: boolean; underlyingOverlay?: boolean; startupFailure?: boolean; registered?: boolean; shortcut?: boolean; idle?: boolean; todoDir?: string; reloadFails?: boolean;
 	accountFactory?: NonNullable<Parameters<typeof registerOsdyPi>[1]>["accountFactory"] } = {}) {
 	let input: (data: string) => void = () => {};
 	const columns = options.boundary
@@ -237,7 +239,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 	let panel: Component & { dispose?(): void };
 	let handle: OverlayHandle;
 	let otherHandle: OverlayHandle | undefined;
-	let complete: () => void = () => {};
+	let complete: (result?: unknown) => void = () => {};
 	let current = true;
 	let headerMounts = 0;
 	const writes: GlobalEditorSettings[] = [];
@@ -246,8 +248,8 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 	const notices: string[] = [];
 	const theme = { name: "dark", appearance: "dark" as const, fg: (_color: string, text: string) => text };
 	const lifecycle: string[] = [];
-	const ctx = { cwd: options.todoDir ?? "/synthetic", isIdle: () => true,
-		reload: () => { lifecycle.push("reload"); return options.reloadFails ? Promise.reject(new Error("reload failed")) : Promise.resolve(); },
+	let idle = options.idle ?? true;
+	const ctx = { cwd: options.todoDir ?? "/synthetic", isIdle: () => idle,
 		hasUI: true, mode: "tui", modelRegistry: { getProviderAuth: () => Promise.resolve(undefined) }, ui: {
 		theme, getAllThemes: () => [{ name: "dark", path: undefined }],
 		setTheme: () => { theme.name = "light"; panel.invalidate(); return { success: true }; },
@@ -275,7 +277,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 					lifecycle.push("done"); closes++; tui.hideOverlay(); lifecycle.push("hidden");
 					resolve(result as T); panel.dispose?.(); lifecycle.push("disposed");
 				};
-				complete = () => finish(undefined);
+				complete = result => finish(result);
 				panel = factory(tui, theme as Theme, undefined as never, finish) as typeof panel;
 				const overlayOptions = customOptions?.overlayOptions;
 				handle = tui.showOverlay(panel, typeof overlayOptions === "function" ? overlayOptions() : overlayOptions);
@@ -285,6 +287,12 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 	} };
 	tui.start();
 	const runtimeCtx = ctx as unknown as ExtensionContext;
+	const commandCtx = { ...ctx,
+		waitForIdle: () => { lifecycle.push("idle"); idle = true; return Promise.resolve(); },
+		reload: () => {
+			lifecycle.push("reload"); return options.reloadFails ? Promise.reject(new Error("reload failed")) : Promise.resolve();
+		},
+	} as unknown as ExtensionCommandContext;
 	const coordinator = createResponsiveCoordinator({} as ExtensionAPI, runtimeCtx, state, tree);
 	coordinator.start();
 	const showDirect = () => withEditorMountHold({} as ExtensionAPI, runtimeCtx, state, tree, async () => { await showControlCenter(runtimeCtx, {
@@ -303,8 +311,10 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 	if (options.registered) {
 		coordinator.stop();
 		const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
+		const shortcuts = new Map<string, ShortcutRegistration>();
 		const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>();
 		const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
+			registerShortcut: (key: string, shortcut: ShortcutRegistration) => shortcuts.set(key, shortcut),
 			on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => Promise<void> | void) => {
 				const registered = handlers.get(name) ?? []; registered.push(handler); handlers.set(name, registered);
 			},
@@ -320,12 +330,23 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 		} finally {
 			if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
 		}
+		shutdown = () => { void handlers.get("session_shutdown")?.[1]?.({}, runtimeCtx); };
+		if (options.shortcut) {
+			try {
+				assert.ok(shortcuts.has("ctrl+alt+o"), "Ctrl+Alt+O must open Control Center");
+				assert.equal(shortcuts.has("f1"), false);
+				assert.equal(shortcuts.has("f2"), false);
+				assert.equal("reload" in runtimeCtx, false, "shortcuts receive only the base context");
+				assert.equal("waitForIdle" in runtimeCtx, false, "shortcuts cannot wait through command-only hooks");
+			} catch (error) { shutdown(); tui.stop(); throw error; }
+		}
 		await handlers.get("session_start")?.[1]?.({}, runtimeCtx);
 		replacements = 0;
 		headerMounts = 0;
-		shutdown = () => { void handlers.get("session_shutdown")?.[1]?.({}, runtimeCtx); };
 		transition = async () => { await handlers.get("session_start")?.[1]?.({}, runtimeCtx); };
-		reopen = () => commands.get("osdyConfig")!.handler("", runtimeCtx as ExtensionCommandContext);
+		reopen = options.shortcut
+			? async () => { await shortcuts.get("ctrl+alt+o")!.handler(runtimeCtx); }
+			: () => commands.get("osdyConfig")!.handler("", commandCtx);
 	}
 	if (options.underlyingOverlay) otherHandle = tui.showOverlay({ render: () => ["Other overlay"], invalidate: () => {} });
 	const showing = reopen();
@@ -337,12 +358,13 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 		disable: () => { state.enabled = false; disableOsdyPi(runtimeCtx, state); },
 		reconcile: () => reconcileResponsiveUi({} as ExtensionAPI, runtimeCtx, state, tree), send: (data: string) => input(data), text: () => panel.render(100).join("\n"),
 		focused: () => handle.isFocused(), replacements: () => replacements, closes: () => closes,
-		resolveSave: () => resolveSave(), rejectSave: () => rejectSave(), complete: () => complete(),
+		resolveSave: () => resolveSave(), rejectSave: () => rejectSave(), complete: (result?: unknown) => complete(result),
+		setIdle: (value: boolean) => { idle = value; },
 		editors, mountedEditor: () => editors.find(candidate => editorArea.children.includes(candidate))!,
 		other: () => otherHandle, cleanup: () => { shutdown(); coordinator.stop(); panel?.dispose?.(); handle?.hide(); otherHandle?.hide(); tui.stop(); } };
 }
-for (const closePending of [false, true]) {
-	void test(`registered Account real TUI ${closePending ? "aborts pending preview and ignores late completion" : "renders selected profile quota before Escape restores mounted input"}`, async () => {
+for (const shortcut of [false, true]) for (const closePending of [false, true]) {
+	void test(`registered ${shortcut ? "Ctrl+Alt+O" : "command"} Account real TUI ${closePending ? "aborts pending preview and ignores late completion" : "renders selected profile quota before Escape restores mounted input"}`, async () => {
 		const { bindControlCenterAccount } = await import("./control-center-account.js");
 		const queries: string[] = []; const metadataCalls: string[][] = [];
 		let signal: AbortSignal | undefined;
@@ -354,7 +376,7 @@ for (const closePending of [false, true]) {
 			quotaSnapshot: { fetchedAt: checkedAt, planType: "plus", ordinaryUsageAllowed: true, credits: undefined,
 				buckets: [{ id: "codex", label: "Codex", primary: { usedPercent: 37, windowMinutes: 300, resetsAt }, secondary: undefined }] },
 		};
-		const f = await focusFixture({ registered: true, accountFactory: (context, _refresh, render, _backend, options) => {
+		const f = await focusFixture({ registered: true, shortcut, idle: false, accountFactory: (context, _refresh, render, _backend, options) => {
 			factoryCalls++;
 			return bindControlCenterAccount(context, () => { activeRefreshes++; throw new Error("active quota refresh forbidden"); }, render,
 				{ profiles: () => Promise.resolve(["personal", "work"]),
@@ -425,12 +447,73 @@ for (const closePending of [false, true]) {
 	});
 }
 
-void test("registered TODO reload follows public done, SDK hide/dispose and deferred editor mount release", async () => {
-	for (const reloadFails of [false, true]) {
+for (const shortcut of [false, true]) void test(`registered ${shortcut ? "Ctrl+Alt+O" : "command"} Account confirms mutations and respects its idle capability`, async () => {
+	const { bindControlCenterAccount } = await import("./control-center-account.js");
+	const previous = process.env.OSDY_PI_PROFILE_NAME;
+	try {
+		for (const initialIdle of [false, true]) {
+			process.env.OSDY_PI_PROFILE_NAME = "personal";
+			let defaultProfile: string | undefined = "personal";
+			const mutations: string[] = [];
+			const f = await focusFixture({ registered: true, shortcut, idle: initialIdle,
+				accountFactory: (context, _refresh, render, _backend, options) => {
+					assert.equal(typeof context.waitForIdle, shortcut ? "undefined" : "function");
+					return bindControlCenterAccount(context,
+						() => { mutations.push("refresh"); return Promise.resolve(); }, render,
+						{ profiles: () => Promise.resolve(["work", "personal"]),
+							activate: profile => { mutations.push(`switch:${profile}`); return Promise.resolve(); },
+							run: args => {
+								if (args.length === 3) {
+									mutations.push(`default:${args[2]}`);
+									defaultProfile = args[2] === "--clear" ? undefined : args[2];
+								}
+								return Promise.resolve({ code: 0, stdout: defaultProfile ?? "No default account.", stderr: "" });
+							},
+						}, options);
+				},
+			});
+			try {
+				for (let i = 0; i < 6; i++) f.send("\x1b[B");
+				await flushFocus(); await flushFocus();
+				f.send("\x1b[C"); f.send("\x1b[H");
+				assert.match(f.text(), /> work/);
+				const refused = shortcut && !initialIdle;
+				for (const key of ["s", "d", "c"]) {
+					f.setIdle(initialIdle);
+					const beforeCancel = [...mutations];
+					f.send(key);
+					assert.match(f.text(), /> Cancel/);
+					f.send("\r");
+					assert.deepEqual(mutations, beforeCancel, "Cancel never mutates");
+					f.send(key); f.text(); f.send("\x1b[B"); f.send("\r");
+					await flushFocus(); await flushFocus();
+					assert.match(f.text(), refused ? /Account operation failed; change not confirmed/ : key === "s" ? /Account switched/ : /Default account saved/);
+					assert.equal(f.closes(), 0, "Account changes keep the panel open");
+				}
+				assert.deepEqual(mutations, refused ? [] : ["switch:work", "refresh", "default:work", "default:--clear"]);
+				assert.equal(process.env.OSDY_PI_PROFILE_NAME, refused ? "personal" : "work");
+				assert.equal(defaultProfile, refused ? "personal" : undefined);
+				assert.equal(f.lifecycle.filter(event => event === "idle").length, !shortcut && !initialIdle ? 3 : 0);
+				f.send("\x1b"); await f.showing;
+				assert.equal(f.tui.hasOverlay(), false);
+				assert.ok(!f.lifecycle.includes("reload"));
+				assertEditorContinuity(f);
+			} finally { f.cleanup(); }
+		}
+	} finally {
+		if (previous === undefined) delete process.env.OSDY_PI_PROFILE_NAME;
+		else process.env.OSDY_PI_PROFILE_NAME = previous;
+	}
+});
+
+void test("registered TODO selection reloads from the command but Ctrl+Alt+O requests manual reload after disposal and hold release", async () => {
+	for (const { shortcut, reloadFails } of [
+		{ shortcut: false, reloadFails: false }, { shortcut: false, reloadFails: true }, { shortcut: true, reloadFails: false },
+	]) {
 		const previousDir = process.env.PI_CODING_AGENT_DIR;
 		const agentDir = mkdtempSync(join(tmpdir(), "osdy-cc07-runtime-"));
 		process.env.PI_CODING_AGENT_DIR = agentDir;
-		const f = await focusFixture({ registered: true, todoDir: agentDir, reloadFails });
+		const f = await focusFixture({ registered: true, shortcut, todoDir: agentDir, reloadFails });
 		try {
 			f.lifecycle.length = 0;
 			// Queue simple editor while this real overlay still owns input.
@@ -447,10 +530,13 @@ void test("registered TODO reload follows public done, SDK hide/dispose and defe
 			assert.match(f.text(), /Reload follows/);
 			f.send("\x1b[B"); f.send("\r");
 			await f.showing;
-			assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed", "editor-mount", "reload"]);
+			assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed", "editor-mount", ...(shortcut ? [] : ["reload"])]);
 			assert.equal(f.closes(), 1);
 			assert.equal(f.tui.hasOverlay(), false);
-			assert.deepEqual(f.notices, [], "no stale-context notification even after reload rejection");
+			if (shortcut) {
+				assert.equal(f.notices.length, 1);
+				assert.match(f.notices[0]!, /saved.*run \/reload.*manually/i);
+			} else assert.deepEqual(f.notices, [], "no stale-context notification even after reload rejection");
 			assert.match(readFileSync(join(agentDir, "settings.json"), "utf8"), /"enabled": true/);
 		} finally {
 			f.cleanup();
@@ -459,14 +545,27 @@ void test("registered TODO reload follows public done, SDK hide/dispose and defe
 	}
 });
 
-void test("registered Agents uses synthetic normal Pi and reloads only after SDK disposal and hold release", { timeout: 5000 }, async () => {
+void test("Ctrl+Alt+O ignores a reload result after runtime shutdown", async () => {
+	const f = await focusFixture({ registered: true, shortcut: true });
+	try {
+		f.shutdown();
+		f.lifecycle.length = 0;
+		f.complete({ kind: "reload" });
+		await f.showing;
+		assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed"]);
+		assert.deepEqual(f.notices, []);
+		assert.equal(f.tui.hasOverlay(), false);
+	} finally { f.cleanup(); }
+});
+
+for (const shortcut of [false, true]) void test(`registered ${shortcut ? "Ctrl+Alt+O" : "command"} Agents uses synthetic normal Pi and handles reload only after SDK disposal and hold release`, { timeout: 5000 }, async () => {
 	const previousHome = process.env.HOME; const previousDir = process.env.PI_CODING_AGENT_DIR;
 	const home = mkdtempSync(join(tmpdir(), "osdy-cc08-runtime-"));
 	const agentDir = join(home, ".pi", "agent"); mkdirSync(agentDir, { recursive: true });
 	const path = join(agentDir, "settings.json");
 	writeFileSync(path, JSON.stringify({ packages: ["npm:gentle-pi", "npm:pi-subagents-j0k3r"], unrelated: true }));
 	process.env.HOME = home; delete process.env.PI_CODING_AGENT_DIR;
-	const f = await focusFixture({ registered: true, todoDir: home });
+	const f = await focusFixture({ registered: true, shortcut, todoDir: home });
 	try {
 		f.lifecycle.length = 0;
 		for (let i = 0; i < 3; i++) f.send("\x1b[B");
@@ -481,8 +580,12 @@ void test("registered Agents uses synthetic normal Pi and reloads only after SDK
 		f.send("\r"); assert.equal(f.closes(), 0);
 		f.send("g"); f.text(); f.send("\x1b[B"); f.send("\r");
 		await f.showing;
-		assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed", "editor-mount", "reload"]);
-		assert.equal(f.closes(), 1); assert.equal(f.tui.hasOverlay(), false); assert.deepEqual(f.notices, []);
+		assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed", "editor-mount", ...(shortcut ? [] : ["reload"])]);
+		assert.equal(f.closes(), 1); assert.equal(f.tui.hasOverlay(), false);
+		if (shortcut) {
+			assert.equal(f.notices.length, 1);
+			assert.match(f.notices[0]!, /saved.*run \/reload.*manually/i);
+		} else assert.deepEqual(f.notices, []);
 		assert.match(readFileSync(path, "utf8"), /-\.\/index.ts/);
 		assert.match(readFileSync(path, "utf8"), /"unrelated": true/);
 	} finally {
@@ -819,9 +922,9 @@ void test("registered runtime modal wiring defers editor changes and shutdown ca
 	} finally { f.cleanup(); }
 });
 
-void test("registered runtime session transition ignores the old modal finally and uses the new watcher", async (t) => {
+for (const shortcut of [false, true]) void test(`registered ${shortcut ? "Ctrl+Alt+O" : "command"} session transition ignores the old modal finally and uses the new watcher`, async (t) => {
 	t.mock.timers.enable({ apis: ["setInterval"] });
-	const f = await focusFixture({ registered: true });
+	const f = await focusFixture({ registered: true, shortcut });
 	try {
 		chooseVisual(f, 3);
 		await f.transition();
@@ -845,10 +948,11 @@ void test("registered runtime session transition ignores the old modal finally a
 	} finally { f.cleanup(); }
 });
 
-void test("registered legacy commands and osdyConfig share live values and existing persistence/notifications", async () => {
+void test("registered Ctrl+Alt+O and osdyConfig share the same panel, live values and legacy persistence/notifications", async () => {
 	const previousDir = process.env.PI_CODING_AGENT_DIR;
 	process.env.PI_CODING_AGENT_DIR = fileURLToPath(new URL("./.startup-test-missing", import.meta.url));
 	const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
+	const shortcuts = new Map<string, ShortcutRegistration>();
 	const writes: GlobalEditorSettings[] = [];
 	const notices: { message: string; level: string | undefined }[] = [];
 	const gitCalls: { command: string; args: string[] }[] = [];
@@ -856,6 +960,7 @@ void test("registered legacy commands and osdyConfig share live values and exist
 	let mounts = 0;
 	let panels = 0;
 	const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
+		registerShortcut: (key: string, shortcut: ShortcutRegistration) => shortcuts.set(key, shortcut),
 		on: () => {}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
 		exec: (command: string, args: string[]) => {
 			gitCalls.push({ command, args: [...args] });
@@ -922,16 +1027,24 @@ void test("registered legacy commands and osdyConfig share live values and exist
 		assert.deepEqual(notices.at(-1), { message: "osdy-pi mascot: Osdy-Halloween", level: "info" });
 		for (const args of ["working-tree status", "header status", "mascot status", "editor status", "header invalid", "mascot bts extra", "mascot osdy-halloween extra", "mascot invalid", "editor simple extra"]) await legacy.handler(args, ctx);
 		assert.equal(writes.length, before, "status and invalid inputs never save");
-		const beforeModalGitCalls = gitCalls.length;
-		const beforeModalNotices = notices.length;
-		await modal.handler("", ctx);
-		assert.deepEqual(notices.slice(beforeModalNotices).filter((notice) => notice.level === "error"), [],
-			"modal integration assertions must not be swallowed as Control Center error notifications");
-		assert.equal(panels, 1);
-		assert.deepEqual(gitCalls.slice(beforeModalGitCalls, beforeModalGitCalls + 2), [
-			{ command: "git", args: ["--no-optional-locks", "branch", "--show-current"] },
-			{ command: "git", args: ["--no-optional-locks", "status", "--short", "--untracked-files=normal"] },
-		], "modal inspection uses exact read-only Git commands, including the global option");
+		assert.equal(shortcuts.has("f1"), false);
+		assert.equal(shortcuts.has("f2"), false);
+		assert.deepEqual([...shortcuts.keys()].sort(), ["ctrl+alt+o", "ctrl+alt+u"]);
+		assert.equal("reload" in ctx, false);
+		for (const open of [() => modal.handler("", ctx), () => shortcuts.get("ctrl+alt+o")!.handler(ctx)]) {
+			await legacy.handler("header neon", ctx);
+			await legacy.handler("working-tree off", ctx);
+			const beforeModalGitCalls = gitCalls.length;
+			const beforeModalNotices = notices.length;
+			await open();
+			assert.deepEqual(notices.slice(beforeModalNotices).filter((notice) => notice.level === "error"), [],
+				"modal integration assertions must not be swallowed as Control Center error notifications");
+			assert.deepEqual(gitCalls.slice(beforeModalGitCalls, beforeModalGitCalls + 2), [
+				{ command: "git", args: ["--no-optional-locks", "branch", "--show-current"] },
+				{ command: "git", args: ["--no-optional-locks", "status", "--short", "--untracked-files=normal"] },
+			], "both entry points inspect Git through the same read-only owner");
+		}
+		assert.equal(panels, 2);
 		failure = true;
 		await legacy.handler("working-tree off", ctx);
 		assert.match(notices.at(-1)?.message ?? "", /disabled but could not be saved/);
@@ -947,6 +1060,52 @@ void test("registered legacy commands and osdyConfig share live values and exist
 		assert.ok(mounts >= 5);
 	} finally {
 		if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
+	}
+});
+
+void test("registered shortcuts preserve command no-UI and Control Center mode/error guards", async () => {
+	const previous = process.env.PI_CODING_AGENT_DIR;
+	process.env.PI_CODING_AGENT_DIR = fileURLToPath(new URL("./.startup-test-missing", import.meta.url));
+	const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
+	const shortcuts = new Map<string, ShortcutRegistration>();
+	const notices: { message: string; level: string | undefined }[] = [];
+	let customCalls = 0;
+	const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
+		registerShortcut: (key: string, shortcut: ShortcutRegistration) => shortcuts.set(key, shortcut),
+		on: () => {}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
+		events: { on: () => () => {} }, exec: () => { throw new Error("external execution forbidden"); },
+	} as unknown as ExtensionAPI;
+	const ctx = { cwd: "/synthetic", hasUI: false, mode: "tui", ui: {
+		notify: (message: string, level?: string) => notices.push({ message, level }),
+		custom: () => { customCalls++; throw new Error("overlay failed"); },
+		setEditorComponent: () => {}, setHeader: () => {}, setFooter: () => {}, setWidget: () => {}, setWorkingVisible: () => {},
+	} } as unknown as ExtensionContext;
+	const commandCtx = { ...ctx, reload: () => { throw new Error("reload forbidden"); } } as unknown as ExtensionCommandContext;
+	try {
+		await registerOsdyPi(pi);
+		assert.equal(shortcuts.has("f1"), false);
+		assert.equal(shortcuts.has("f2"), false);
+		assert.deepEqual([...shortcuts.keys()].sort(), ["ctrl+alt+o", "ctrl+alt+u"]);
+		for (const [key, command] of [["ctrl+alt+o", "osdyConfig"], ["ctrl+alt+u", "usage"]] as const) {
+			notices.length = 0;
+			await commands.get(command)!.handler("", commandCtx);
+			const commandNotice = notices.at(-1);
+			await shortcuts.get(key)!.handler(ctx);
+			assert.deepEqual(notices.at(-1), commandNotice);
+			assert.equal(commandNotice?.level, "warning");
+			assert.match(commandNotice?.message ?? "", /interactive.*UI/);
+		}
+		assert.equal(customCalls, 0);
+		for (const mode of ["rpc", "json", "print"] as const) {
+			await shortcuts.get("ctrl+alt+o")!.handler({ ...ctx, mode, hasUI: true });
+			assert.match(notices.at(-1)?.message ?? "", /interactive terminal UI/);
+		}
+		assert.equal(customCalls, 0);
+		await shortcuts.get("ctrl+alt+o")!.handler({ ...ctx, hasUI: true });
+		assert.equal(customCalls, 1);
+		assert.deepEqual(notices.at(-1), { message: "Control Center unavailable: overlay failed", level: "error" });
+	} finally {
+		if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
 	}
 });
 
@@ -986,7 +1145,10 @@ void test("actual factory registers no TODO surfaces by default, and all three o
    assert.ok(commands.includes("osdyConfig"));
    assert.equal(commands.includes("osdy"), false);
    assert.equal(commands.includes("todos"), enabled); assert.equal(tools.includes("todo"), enabled);
-   assert.equal(shortcuts.length > 0, enabled);
+   assert.ok(shortcuts.includes("ctrl+alt+o")); assert.ok(shortcuts.includes("ctrl+alt+u"));
+   assert.equal(shortcuts.includes("f1"), false); assert.equal(shortcuts.includes("f2"), false);
+   assert.equal(shortcuts.includes("ctrl+shift+t"), enabled);
+   assert.equal(shortcuts.length, enabled ? 3 : 2);
    assert.equal(execCalls, probes);
   }
  } finally {
@@ -1020,7 +1182,10 @@ void test("official SDK factory uses SDK cwd, not the safe process cwd, before T
     assert.equal(extension.commands.has("osdy"), false);
     assert.equal(extension.tools.has("todo"), active, cwd);
     assert.equal(extension.commands.has("todos"), active, cwd);
-    assert.equal(extension.shortcuts.size > 0, active, cwd);
+    assert.ok(extension.shortcuts.has("ctrl+alt+o")); assert.ok(extension.shortcuts.has("ctrl+alt+u"));
+    assert.equal(extension.shortcuts.has("f1"), false); assert.equal(extension.shortcuts.has("f2"), false);
+    assert.equal(extension.shortcuts.has("ctrl+shift+t"), active, cwd);
+    assert.equal(extension.shortcuts.size, active ? 3 : 2, cwd);
    } finally { runtime.invalidate(); }
   }
  } finally {
@@ -1048,7 +1213,8 @@ void test("unavailable, failed and invalid SDK cwd probes fail closed", async ()
    } as unknown as ExtensionAPI;
    await registerOsdyPi(pi);
    assert.ok(commands.includes("osdy-pi")); assert.equal(commands.includes("todos"), false);
-   assert.equal(tools.includes("todo"), false); assert.equal(shortcuts.length, 0);
+   assert.equal(tools.includes("todo"), false); assert.deepEqual(shortcuts.sort(), ["ctrl+alt+o", "ctrl+alt+u"]);
+   assert.equal(shortcuts.includes("f1"), false); assert.equal(shortcuts.includes("f2"), false);
   }
  } finally {
   if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
@@ -1168,7 +1334,7 @@ void test("real session_start restores labels before editor mounting and rejects
 					registered.push(handler);
 					handlers.set(name, registered);
 				},
-				registerCommand: () => {}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
+				registerCommand: () => {}, registerShortcut: () => {}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
 				events: { on: () => () => {} },
 				exec: () => Promise.resolve({ code: 1, stdout: "", stderr: "unavailable" }),
 			} as unknown as ExtensionAPI;
@@ -1507,6 +1673,8 @@ class IdleQuotaClock implements CodexUsageRefreshClock {
 
 async function idleQuotaFixture() {
 	const clock = new IdleQuotaClock();
+	const shortcuts = new Map<string, ShortcutRegistration>();
+	const authSessions: number[] = [];
 	const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
 	const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>();
 	const requests: Array<{ signal: AbortSignal; resolve(snapshot: CodexUsageSnapshot): void; reject(error: Error): void }> = [];
@@ -1515,16 +1683,19 @@ async function idleQuotaFixture() {
 	const snapshot = (fetchedAt: number): CodexUsageSnapshot => ({ fetchedAt, planType: "plus", ordinaryUsageAllowed: true,
 		buckets: [], credits: undefined });
 	const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
+		registerShortcut: (key: string, shortcut: ShortcutRegistration) => shortcuts.set(key, shortcut),
 		on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => Promise<void> | void) => {
 			const list = handlers.get(name) ?? []; list.push(handler); handlers.set(name, list);
 		}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
 		events: { on: () => () => {} }, exec: () => { throw new Error("external execution forbidden"); },
 	} as unknown as ExtensionAPI;
 	const accessToken = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "fake-account" } })).toString("base64url")}.signature`;
-	const makeContext = () => ({ cwd: "/synthetic-idle-quota", get hasUI() { return hasUI; }, get mode() { return mode; },
+	const makeContext = () => {
+		const generation = session;
+		return ({ cwd: "/synthetic-idle-quota", get hasUI() { return hasUI; }, get mode() { return mode; },
 		get model() { return { provider, id: "fake-codex", name: `session-${session}` }; }, isIdle: () => idle,
 		getThinkingLevel: () => "off", modelRegistry: { getProviderAuth: () => {
-			authCalls++; return Promise.resolve({ auth: { apiKey: accessToken } });
+			authCalls++; authSessions.push(generation); return Promise.resolve({ auth: { apiKey: accessToken } });
 		} }, ui: { getEditorComponent: () => undefined, setEditorComponent: () => {}, setHeader: () => {}, setFooter: () => {},
 			setWidget: () => {}, setWorkingVisible: () => {}, notify: () => {},
 			custom: (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component) => {
@@ -1532,7 +1703,8 @@ async function idleQuotaFixture() {
 				return Promise.resolve();
 			},
 		},
-	}) as unknown as ExtensionContext;
+		}) as unknown as ExtensionContext;
+	};
 	let ctx = makeContext();
 	const previousDir = process.env.PI_CODING_AGENT_DIR;
 	// A nonexistent synthetic directory prevents factory inspection of personal settings.
@@ -1553,10 +1725,17 @@ async function idleQuotaFixture() {
 		assert.ok(handler, `runtime ${name} handler must be registered`);
 		await handler({}, ctx); await clock.advance(0);
 	};
-	return { clock, requests, snapshot, authCalls: () => authCalls,
+	return { clock, requests, snapshot, authSessions, authCalls: () => authCalls, context: () => ctx,
 		start: () => lifecycle("session_start"), stop: () => lifecycle("session_shutdown"), settle: () => lifecycle("agent_settled"),
 		replace: async () => { session++; ctx = makeContext(); await lifecycle("session_start"); },
 		manual: async () => { await commands.get("usage")!.handler("", ctx as ExtensionCommandContext); await clock.advance(0); },
+		shortcut: async (context: ExtensionContext = ctx) => {
+			assert.ok(shortcuts.has("ctrl+alt+u"), "Ctrl+Alt+U must open subscription usage");
+			assert.equal(shortcuts.has("f1"), false);
+			assert.equal(shortcuts.has("f2"), false);
+			assert.equal("reload" in context, false);
+			await shortcuts.get("ctrl+alt+u")!.handler(context); await clock.advance(0);
+		},
 		visual: async (action: "on" | "off") => { await commands.get("osdy-pi")!.handler(action, ctx as ExtensionCommandContext); },
 		panel: () => panel!.render(100).join("\n"),
 		set: (values: { enabled?: boolean; hasUI?: boolean; idle?: boolean; provider?: string; mode?: string }) => {
@@ -1585,6 +1764,29 @@ void test("registered idle quota runtime respects timing, in-flight manual reque
 		await f.clock.advance(60_000); assert.equal(f.requests.length, 5);
 		assert.equal(f.authCalls(), 5, "only active auth is queried");
 		assert.equal(f.clock.jobs.size, 0, "timer is suspended while idle query is pending");
+	} finally { await f.stop(); }
+});
+
+void test("Ctrl+Alt+U opens the usage command panel and refreshes the latest session from a base context", async () => {
+	const f = await idleQuotaFixture();
+	try {
+		await f.start(); await f.complete(0);
+		await f.manual();
+		const commandPanel = f.panel();
+		await f.shortcut();
+		assert.equal(f.panel(), commandPanel, "both entry points render the same loading dashboard and metadata");
+		assert.equal(f.requests.length, 3);
+		assert.equal(f.requests[1]?.signal.aborted, true, "Ctrl+Alt+U supersedes the command refresh");
+		await f.complete(1); await f.complete(2);
+		assert.match(f.panel(), /Codex subscription usage/);
+		const oldContext = f.context();
+		await f.replace(); await f.complete(3);
+		await f.shortcut(oldContext);
+		assert.equal(f.authSessions.at(-1), 1, "even an older shortcut context refreshes current session auth");
+		await f.stop();
+		assert.equal(f.requests[4]?.signal.aborted, true);
+		await f.complete(4);
+		assert.equal(f.clock.jobs.size, 0, "shutdown ignores the late shortcut query result");
 	} finally { await f.stop(); }
 });
 
