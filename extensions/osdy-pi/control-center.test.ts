@@ -20,6 +20,25 @@ registerHooks({
 });
 const { ControlCenter } = await import("./control-center.js");
 
+void test("Usage reset returns external intent without generic inline approval or service apply", async () => {
+	let intent: unknown;
+	let applies = 0;
+	const panel = new ControlCenter({
+		theme: () => ({ name: "dark", appearance: "dark", fg: (_color, text) => text }),
+		readThemes: () => [], applyTheme: () => ({ success: true }), requestRender: () => {}, height: () => 24,
+		close: () => {}, external: result => { intent = result; },
+		usage: { useReset: () => Promise.resolve(true), read: () => Promise.resolve({ summary: "Active", note: "", rows: [
+			{ label: "Use or check banked reset", current: false, action: { kind: "usage-reset" } },
+		] }), apply: () => { applies++; return Promise.resolve({ failed: false, message: "" }); } },
+	});
+	for (let i = 0; i < 7; i++) panel.handleInput(down);
+	await settle(); panel.handleInput(right); panel.handleInput("\r");
+	assert.deepEqual(intent, { kind: "codex-reset" });
+	assert.equal(applies, 0);
+	assert.doesNotMatch(panel.render(100).join("\n"), /Confirm|> Cancel/);
+	panel.dispose();
+});
+
 void test("TODO confirmation is Cancel-first, blocks navigation while saving, and completes with typed reload", async () => {
 	let calls = 0;
 	let complete: (result: { kind: "reload"; message: string }) => void = () => {};
@@ -638,18 +657,25 @@ void test("Stored-profile view uses dashboard groups, account summary and pinned
 		setDefault: () => { throw new Error("No default write"); }, usage: profile => {
 			requests.push(profile); return Promise.resolve({ status: "ready", profile, checkedAt: 1000,
 				quotaSnapshot: { fetchedAt: 2000, planType: "plus", ordinaryUsageAllowed: true,
+					bankedResetCount: 1, bankedResetDetails: [{ id: "opaque-preview-credit", expiresAt: undefined }],
 					credits: { hasCredits: true, unlimited: false, balance: "10", resetCreditCount: 2 },
 					buckets: [{ id: "codex", label: undefined,
 						primary: { usedPercent: 0, windowMinutes: 300, resetsAt: undefined },
 						secondary: { usedPercent: 100, windowMinutes: 10080, resetsAt: 0 } },
 					{ id: "extra", label: "Additional", primary: undefined, secondary: undefined }] } });
 		} });
-	const f = fixture(undefined, undefined, { account }); f.resize(100);
+	let resets = 0;
+	const f = fixture(undefined, undefined, { account, usage: {
+		useReset: () => { resets++; return Promise.resolve(true); },
+		read: () => Promise.resolve({ summary: "Active", note: "", rows: [] }),
+		apply: () => Promise.resolve({ failed: false, message: "" }),
+	} }); f.resize(100);
 	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right); f.panel.handleInput(down); f.panel.handleInput("v"); await settle();
 	const view = plain(f.panel.render(120));
 	for (const text of ["Session", "Weekly", "100% left", "0% left", "Additional [extra]", "Quotas + account", "Credits: 10", "Credit resets: 2", "Plan: plus", "Checked:", "Updated:", "Profile: personal"]) assert.ok(view.includes(text), text);
-	assert.doesNotMatch(view, /Profile: work|esc\/q close/);
+	assert.doesNotMatch(view, /Profile: work|esc\/q close|use\/check reset|Use or check banked reset|opaque-preview/);
+	f.panel.handleInput("u"); assert.equal(resets, 0, "stored profile previews never have a consume action");
 	for (let width = 1; width <= 120; width++) {
 		for (const height of [4, 6, 9, 14, 30]) {
 			f.resize(height); const lines = f.panel.render(width);

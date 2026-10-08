@@ -3,6 +3,7 @@ import { Input, Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi
 import { doubleBorderBox, MODAL_OVERLAY_OPTIONS } from "./modal-frame.js";
 import { preferenceDetail, visualPreferenceLabel } from "./control-center-preferences.js";
 import type { ControlCenterPreferences, VisualPreferenceAction } from "./control-center-preferences.js";
+import type { CodexResetAction } from "./codex-reset-ui.js";
 import type { ControlCenterTodoAction, ControlCenterTodoService } from "./control-center-todo.js";
 import type { ControlCenterAgentsAction, ControlCenterAgentsService } from "./control-center-agents.js";
 import type { AudioNotificationEvent } from "./audio-notification-types.js";
@@ -23,6 +24,7 @@ export type ControlCenterAccountAction =
 	| { kind: "account-switch"; profile: string }
 	| { kind: "account-default"; profile: string | undefined };
 export type ControlCenterUsageAction =
+	| { kind: "usage-reset" }
 	| { kind: "usage-refresh" }
 	| { kind: "usage-range"; range: "day" | "week" | "month" }
 	| { kind: "usage-account"; current: boolean }
@@ -48,17 +50,18 @@ export interface ControlCenterRow {
 	quota?: CodexUsageWindow;
 	quotaName?: "Session" | "Weekly";
 }
-export type ControlCenterResult = { kind: "closed" } | { kind: "reload" };
+export type ControlCenterResult = { kind: "closed" } | { kind: "reload" } | { kind: "codex-reset" };
 export type ProviderApplyResult = { kind: "reload"; message: string } | { kind: "rejected"; message: string };
 export interface ControlCenterDependencies {
 	preferences?: ControlCenterPreferences | undefined;
 	git?: ControlCenterService | undefined;
 	sounds?: ControlCenterService | undefined;
 	account?: (ControlCenterService<ControlCenterAccountAction> & { cancelUsage?(): void; isCurrent?(): boolean; quotaDetails?(profile: string): string[]; quotaSnapshot?(profile: string): CodexUsageSnapshot | undefined }) | undefined;
-	usage?: ControlCenterService<ControlCenterUsageAction> | undefined;
+	usage?: (ControlCenterService<ControlCenterUsageAction> & { useReset?: CodexResetAction | undefined }) | undefined;
 	todo?: ControlCenterTodoService | undefined;
 	agents?: ControlCenterAgentsService | undefined;
 	reload?: (result: { kind: "reload" }) => void;
+	external?: (result: { kind: "codex-reset" }) => void;
 	theme: () => Pick<Theme, "name" | "appearance" | "fg">;
 	readThemes: () => { name: string; path: string | undefined }[];
 	applyTheme: (name: string) => { success: boolean; error?: string };
@@ -169,6 +172,7 @@ export class ControlCenter implements Component, Focusable {
 	}
 
 	private applyService(action: InlineServiceAction) {
+		if (action.kind === "usage-reset") return undefined;
 		if (action.kind === "account-usage" || action.kind === "account-switch" || action.kind === "account-default") return this.dependencies.account?.apply(action);
 		if (action.kind === "usage-refresh" || action.kind === "usage-range" || action.kind === "usage-account" || action.kind === "usage-detail") return this.dependencies.usage?.apply(action);
 		return (this.category === "Git" ? this.dependencies.git : this.dependencies.sounds)?.apply(action);
@@ -368,6 +372,13 @@ export class ControlCenter implements Component, Focusable {
 	private activate(action: ControlCenterAction, details?: string[]): void {
 		if (action.kind === "account-back") { this.leaveQuota(); return; }
 		if (this.saving || this.loading || this.queryingUsage) return;
+		if (action.kind === "usage-reset") {
+			if (this.category === "Usage" && this.dependencies.usage?.useReset && this.dependencies.external) {
+				this.dispose();
+				this.dependencies.external({ kind: "codex-reset" });
+			}
+			return; // The workflow owns selection/confirmation AFTER custom disposal.
+		}
 		if (action.kind === "account-select") {
 			this.dependencies.account?.cancelUsage?.();
 			this.selectedProfile = action.profile;
@@ -744,6 +755,7 @@ export async function showControlCenter(ctx: ControlCenterContext, preferences?:
 				height: () => Math.max(1, Math.floor(tui.terminal.rows * 0.92) - 2),
 				close: () => done({ kind: "closed" }),
 				reload: result => done(result),
+				external: result => done(result),
 			});
 			return panel;
 		}, { overlay: true, overlayOptions: { ...MODAL_OVERLAY_OPTIONS, minWidth: 1, width: "96%", margin: 0 } });

@@ -1,3 +1,4 @@
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
@@ -62,6 +63,9 @@ import {
 	type CodexUsageSnapshot,
 } from "./codex-usage.js";
 import { showCodexUsagePanel } from "./codex-usage-ui.js";
+import { createCodexResetStore } from "./codex-reset-store.js";
+import { createCodexResetWorkflow, type CodexResetContext } from "./codex-reset.js";
+import { createCodexResetInteraction, notifyCodexResetResult, type CodexResetAction } from "./codex-reset-ui.js";
 import { modelLabel } from "./metrics.js";
 import { readLastActiveProfileLabel, resolveActiveProfileLabel } from "./profile-label.js";
 import {
@@ -774,16 +778,21 @@ function registerUsageCommand(
 	state: OsdyState,
 	getSessionContext: () => ExtensionContext | undefined,
 	startRefresh: (ctx: ExtensionContext) => Promise<void>,
+	bindReset: (ctx: ExtensionContext) => Promise<CodexResetAction | undefined>,
+	captureCurrentRuntime: () => () => boolean,
 ): void {
 	const refreshActiveSessionUsage = createActiveSessionRefresh(
 		getSessionContext,
 		startRefresh,
 	);
 	const openUsagePanel = async (ctx: ExtensionContext): Promise<void> => {
-		if (!ctx.hasUI) {
+		if (!ctx.hasUI || ctx.mode !== "tui") {
 			ctx.ui.notify("Codex usage requires the interactive UI", "warning");
 			return;
 		}
+		const isCurrent = captureCurrentRuntime();
+		const useReset = await bindReset(ctx);
+		if (!isCurrent()) return;
 		await showCodexUsagePanel(
 			ctx,
 			() => state.codexUsage,
@@ -793,6 +802,7 @@ function registerUsageCommand(
 				provider: ctx.model?.provider ?? "unknown",
 				model: modelLabel(ctx),
 			},
+			useReset,
 		);
 	};
 	pi.registerCommand("usage", {
@@ -899,12 +909,15 @@ function registerCommand(
  refreshUsage: () => Promise<void>,
 	captureCurrentRuntime: () => () => boolean,
 	accountFactory: typeof bindControlCenterAccount,
+	bindReset: (ctx: ExtensionContext) => Promise<CodexResetAction | undefined>,
 ): void {
 	const openControlCenter = async (
 		ctx: ExtensionContext,
 		onReloadRequired: () => Promise<void> | void,
 	): Promise<void> => {
 		const isCurrent = captureCurrentRuntime();
+		const useReset = ctx.hasUI && ctx.mode === "tui" ? await bindReset(ctx) : undefined;
+		if (!isCurrent()) return;
 		const completion: { result: ControlCenterResult } = { result: { kind: "closed" } };
 		await withEditorMountHold(pi, ctx, state, workingTreeState, async () => {
 			completion.result = await showControlCenter(ctx, {
@@ -925,7 +938,7 @@ function registerCommand(
 				sounds: bindControlCenterSounds(pi, ctx, settingsStore, createAudioPlaybackAdapter()),
 				account: accountFactory(ctx, refreshUsage, () => state.tui?.requestRender(), undefined, { isCurrent }),
 				usage: createControlCenterUsage({ quota: () => state.codexUsage, history: readUsageHistory,
-					refresh: refreshUsage, active: readActiveProfileName }),
+					refresh: refreshUsage, active: readActiveProfileName, useReset }),
 				todo: createControlCenterTodo({ agentDir: todoAgentDir(), cwd: ctx.cwd,
 					loaded: todoActive, isIdle: () => ctx.isIdle(), isCurrent }),
 				agents: createControlCenterAgents({ agentDir: todoAgentDir(), cwd: ctx.cwd,
@@ -934,6 +947,10 @@ function registerCommand(
 		}, isCurrent);
 		// Disposal and hold release precede either effect; check freshness without another await.
 		if (completion.result.kind === "reload" && isCurrent()) await onReloadRequired();
+		else if (completion.result.kind === "codex-reset" && isCurrent() && useReset) {
+			await useReset();
+			if (isCurrent()) ctx.ui.notify("Control Center closed. Reopen Usage to view or check banked resets.", "info");
+		}
 	};
 	pi.registerCommand("osdyConfig", {
 		description: "Open Osdy Control Center (preferences, Git, Sounds, Account, Usage, TODO and Agents).",
@@ -1101,6 +1118,8 @@ export async function registerOsdyPi(
 	pi: ExtensionAPI,
 	dependencies: {
 		readActiveProfile?: () => Promise<string | undefined>;
+		/** Tests inject a synthetic agent-data root; production uses the SDK root. */
+		agentDir?: () => string;
 		codexUsageClock?: CodexUsageRefreshClock;
 		fetchCodexUsage?: CodexUsageFetcher;
 		accountFactory?: typeof bindControlCenterAccount;
@@ -1162,6 +1181,72 @@ export async function registerOsdyPi(
 	let runtimeGeneration = 0;
 	let usageSettingsReady = false;
 	let codexUsageAbort: AbortController | undefined;
+	const resetAborts = new Set<AbortController>();
+	const getResetContext = async (): Promise<CodexResetContext | undefined> => {
+		const ctx = sessionContext;
+		const generation = runtimeGeneration;
+		const sessionId = ctx?.sessionManager?.getSessionId();
+		if (!ctx || !sessionId) return undefined;
+		try {
+			const active = await ctx.modelRegistry.getProviderAuth("openai-codex");
+			if (ctx !== sessionContext || generation !== runtimeGeneration || sessionId !== ctx.sessionManager.getSessionId()) return undefined;
+			const accessToken = active?.auth.apiKey;
+			if (!accessToken) return undefined;
+			return { auth: { accessToken, accountId: extractCodexAccountId(accessToken) }, generation, sessionId };
+		} catch { return undefined; }
+	};
+	const sameResetContext = (captured: CodexResetContext, latest: CodexResetContext | undefined): boolean =>
+		!!latest && captured.generation === latest.generation && captured.sessionId === latest.sessionId &&
+		captured.auth.accountId === latest.auth.accountId && captured.auth.accessToken === latest.auth.accessToken;
+	// Exactly one controller per registration, never one per panel or surface.
+	const resetWorkflow = createCodexResetWorkflow({
+		store: createCodexResetStore(join((dependencies.agentDir ?? getAgentDir)(), "osdy-pi", "codex-reset-attempts")),
+		getContext: getResetContext,
+		readQuota: (auth, options) => (dependencies.fetchCodexUsage ?? fetchCodexUsage)(auth, { signal: options.signal ?? new AbortController().signal }),
+		refresh: async captured => {
+			if (!sameResetContext(captured, await getResetContext())) throw new Error("Usage context changed");
+			codexUsageAbort?.abort();
+			const abort = new AbortController();
+			codexUsageAbort = abort;
+			const cached = state.codexUsage.kind === "idle" ? undefined : state.codexUsage.snapshot;
+			try {
+				const snapshot = await (dependencies.fetchCodexUsage ?? fetchCodexUsage)(captured.auth, { signal: abort.signal });
+				const latest = abort.signal.aborted ? undefined : await getResetContext();
+				if (abort.signal.aborted || codexUsageAbort !== abort || !sameResetContext(captured, latest)) throw new Error("Usage context changed");
+				state.codexUsage = { kind: "ready", snapshot };
+			} catch {
+				const latest = abort.signal.aborted ? undefined : await getResetContext();
+				if (!abort.signal.aborted && codexUsageAbort === abort && sameResetContext(captured, latest))
+					state.codexUsage = { kind: "error", message: "Codex usage refresh unavailable", snapshot: cached };
+				throw new Error("Codex usage refresh unavailable");
+			} finally {
+				if (codexUsageAbort === abort) codexUsageAbort = undefined;
+				state.tui?.requestRender();
+			}
+		},
+	});
+	const bindReset = async (ctx: ExtensionContext): Promise<CodexResetAction | undefined> => {
+		const captured = await getResetContext();
+		if (!captured) return undefined;
+		const interaction = createCodexResetInteraction(ctx.ui);
+		const isCurrent = () => captured.generation === runtimeGeneration &&
+			captured.sessionId === sessionContext?.sessionManager?.getSessionId();
+		const boundCurrent = async () => isCurrent() && sameResetContext(captured, await getResetContext());
+		return async () => {
+			if (!isCurrent()) { notifyCodexResetResult(ctx.ui, { kind: "cancelled" }); return false; }
+			const abort = new AbortController();
+			resetAborts.add(abort);
+			try {
+				// run acquires the shared guard BEFORE any async auth/GET/dialog work.
+				const result = await resetWorkflow.run({
+					choose: async choices => await boundCurrent() ? interaction.choose(choices) : undefined,
+					confirm: async prompt => await boundCurrent() ? interaction.confirm(prompt) : false,
+				}, { signal: abort.signal });
+				notifyCodexResetResult(ctx.ui, result);
+				return await boundCurrent();
+			} finally { resetAborts.delete(abort); }
+		};
+	};
 	const refreshCurrentCodexUsage = async (
 		ctx: ExtensionContext,
 	): Promise<void> => {
@@ -1259,6 +1344,7 @@ export async function registerOsdyPi(
 		usageSettingsReady = false;
 		idleUsageRefresh.stop();
 		runtimeGeneration++;
+		for (const abort of resetAborts) abort.abort();
 		state.editorMountHold = undefined;
 		state.editorReconcilePending = false;
 		state.tui = undefined;
@@ -1280,6 +1366,7 @@ export async function registerOsdyPi(
 		state.codexUsage = { kind: "idle" };
 		usageSettingsReady = false;
 		runtimeGeneration++;
+		for (const abort of resetAborts) abort.abort();
 		state.editorMountHold = undefined;
 		state.editorReconcilePending = false;
 		state.tui = undefined;
@@ -1336,6 +1423,14 @@ export async function registerOsdyPi(
 		state,
 		() => sessionContext,
 		refreshCurrentCodexUsage,
+		bindReset,
+		() => {
+			const generation = runtimeGeneration;
+			const ctx = sessionContext;
+			const sessionId = ctx?.sessionManager?.getSessionId();
+			return () => generation === runtimeGeneration && ctx === sessionContext &&
+				sessionId === sessionContext?.sessionManager?.getSessionId();
+		},
 	);
 	registerCommand(
 		pi,
@@ -1358,5 +1453,6 @@ export async function registerOsdyPi(
 			return () => generation === runtimeGeneration;
 		},
 		dependencies.accountFactory ?? bindControlCenterAccount,
+		bindReset,
 	);
 }

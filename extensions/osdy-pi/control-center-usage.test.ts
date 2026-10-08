@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { visibleWidth } from "@earendil-works/pi-tui";
 registerHooks({ resolve(specifier, context, next) {
 	if (specifier.startsWith(".") && specifier.endsWith(".js") && context.parentURL?.endsWith(".ts")) {
 		const url = new URL(`${specifier.slice(0, -3)}.ts`, context.parentURL);
@@ -11,12 +12,27 @@ registerHooks({ resolve(specifier, context, next) {
 	return next(specifier, context);
 } });
 const { createControlCenterUsage } = await import("./control-center-usage.js");
+const { ControlCenter } = await import("./control-center.js");
 const { readActiveProfileName } = await import("./account-profiles.js");
+void test("reset row is owner-enabled even with unavailable quota, but never applies inline", async () => {
+	for (const enabled of [false, true]) {
+		let calls = 0;
+		const service = createControlCenterUsage({ quota: () => ({ kind: "idle" }),
+			history: () => Promise.resolve({ records: [], warnings: [], limited: false, missing: true }),
+			refresh: () => Promise.resolve(), active: () => undefined,
+			useReset: enabled ? () => { calls++; return Promise.resolve(true); } : undefined });
+		const row = (await service.read()).rows.find(row => row.label === "Use or check banked reset");
+		assert.equal(!!row, enabled);
+		if (row) { assert.equal(row.action.kind, "usage-reset"); await service.apply({ kind: "usage-reset" }); }
+		assert.equal(calls, 0, "runtime must own the external intent after custom disposal");
+	}
+});
+
 void test("Usage reads cached quota and owner history, refresh is explicit", async () => {
 	let refreshes = 0;
 	const service = createControlCenterUsage({
 		quota: () => ({ kind: "ready", snapshot: { fetchedAt: 100, planType: "plus", ordinaryUsageAllowed: true,
-			credits: undefined, buckets: [{ id: "codex", label: undefined, primary: { usedPercent: 25, windowMinutes: 300, resetsAt: 200 }, secondary: undefined }] } }),
+			credits: undefined, bankedResetCount: 3, buckets: [{ id: "codex", label: undefined, primary: { usedPercent: 25, windowMinutes: 300, resetsAt: 200 }, secondary: undefined }] } }),
 		history: () => Promise.resolve({ records: [], warnings: [], limited: false, missing: true }),
 		refresh: () => { refreshes++; return Promise.resolve(); }, active: () => "work",
 	});
@@ -24,6 +40,10 @@ void test("Usage reads cached quota and owner history, refresh is explicit", asy
 	assert.equal(refreshes, 0);
 	assert.match(JSON.stringify(view), /Active Codex quota/);
 	assert.equal(view.rows.find(row => row.quota)?.quota?.usedPercent, 25);
+	const banked = view.rows.find(row => row.label === "Banked resets: 3");
+	assert.ok(banked);
+	assert.equal(banked.group, view.rows.find(row => row.quota)?.group);
+	assert.equal(banked.action.kind, "usage-detail");
 	assert.match(JSON.stringify(view), /75% left/);
 	assert.equal(view.rows.filter(row => row.action.kind === "usage-range").some(row => row.quota !== undefined), false);
 	assert.match(JSON.stringify(view), /No recorded turns/);
@@ -83,7 +103,7 @@ void test("Explicit refresh still updates local history when quota fails", async
 });
 
 void test("Cached quota remains distinct from local filters during automatic loading or failure", async () => {
-	const snapshot = { fetchedAt: 1000, credits: undefined, planType: undefined, ordinaryUsageAllowed: undefined,
+	const snapshot = { fetchedAt: 1000, credits: undefined, planType: undefined, ordinaryUsageAllowed: undefined, bankedResetCount: 0,
 		buckets: [{ id: "codex", label: undefined, primary: { usedPercent: 100, windowMinutes: 300, resetsAt: undefined },
 			secondary: { usedPercent: 0, windowMinutes: 10080, resetsAt: undefined } }] };
 	for (const kind of ["ready", "loading", "error"] as const) {
@@ -91,8 +111,15 @@ void test("Cached quota remains distinct from local filters during automatic loa
 			history: () => Promise.resolve({ records: [], warnings: [], limited: false, missing: true }),
 			refresh: () => { throw new Error("filter must not refresh"); }, active: () => "work" });
 		for (const range of ["day", "week", "month"] as const) {
-			await service.apply({ kind: "usage-range", range });
+			assert.equal((await service.apply({ kind: "usage-range", range })).failed, false);
+			assert.equal((await service.apply({ kind: "usage-account", current: range !== "week" })).failed, false);
 			const view = await service.read();
+			const banked = view.rows.find(row => row.label === "Banked resets: 0");
+			assert.ok(banked);
+			assert.equal(banked.group, view.rows.find(row => row.quota)?.group);
+			const stateNote = kind === "loading" ? "refresh pending" : kind === "error" ? "refresh unavailable" : "Cached active-account quota";
+			assert.ok(banked.details?.some(detail => detail.includes(stateNote)));
+			assert.ok(banked.details?.some(detail => detail.includes("local range filters do not change it")));
 			assert.deepEqual(view.rows.filter(row => row.quota).map(row => row.quota?.usedPercent), [100, 0]);
 			assert.match(JSON.stringify(view), /0% left/);
 			assert.match(JSON.stringify(view), /100% left/);
@@ -103,6 +130,72 @@ void test("Cached quota remains distinct from local filters during automatic loa
 	const empty = createControlCenterUsage({ quota: () => ({ kind: "ready", snapshot: { ...snapshot, buckets: [] } }),
 		history: () => Promise.resolve({ records: [], warnings: [], limited: false, missing: true }), refresh: () => Promise.resolve(), active: () => undefined });
 	assert.match(JSON.stringify(await empty.read()), /Active Codex quota: unknown/);
+	assert.ok((await empty.read()).rows.some(row => row.label === "Banked resets: 0"));
+});
+
+void test("Usage omits unknown banked resets instead of using legacy credit resets", async () => {
+	const service = createControlCenterUsage({
+		quota: () => ({ kind: "ready", snapshot: { fetchedAt: 0, planType: undefined, ordinaryUsageAllowed: undefined,
+			buckets: [], credits: { hasCredits: true, unlimited: false, balance: "12.50", resetCreditCount: 9 } } }),
+		history: () => Promise.resolve({ records: [], warnings: [], limited: false, missing: true }),
+		refresh: () => Promise.resolve(), active: () => undefined,
+	});
+	assert.ok(!(await service.read()).rows.some(row => row.label.includes("Banked resets:")));
+});
+
+void test("Usage appends shared expiry details to the count row while preserving cached refresh notes", async () => {
+	const now = new Date("2026-06-17T00:00:00Z");
+	const future = Date.parse("2026-07-17T00:00:00Z");
+	const past = now.getTime() - 60_000;
+	for (const kind of ["ready", "loading", "error"] as const) {
+		for (const bankedResetDetails of [undefined, [], [{ id: "opaque-future", expiresAt: future }, { id: "opaque-unknown", expiresAt: undefined }, { id: "opaque-past", expiresAt: past }]]) {
+			const snapshot = { fetchedAt: now.getTime(), planType: undefined, ordinaryUsageAllowed: undefined,
+				buckets: [], credits: undefined, bankedResetCount: 5, bankedResetDetails };
+			const usage = createControlCenterUsage({ quota: () => kind === "error" ? { kind, snapshot, message: "private" } : { kind, snapshot },
+				history: () => Promise.resolve({ records: [], warnings: [], limited: false, missing: true }),
+				refresh: () => { throw new Error("must not fetch"); }, active: () => "work", now: () => now });
+			await usage.apply({ kind: "usage-range", range: "week" });
+			const view = await usage.read();
+			assert.doesNotMatch(JSON.stringify(view), /opaque-/);
+			const row = view.rows.find(row => row.label === "Banked resets: 5");
+			assert.ok(row?.details);
+			assert.match(row.details[0] ?? "", /Cached active-account quota.*local range filters do not change it/);
+			if (kind !== "ready") assert.match(row.details[0] ?? "", kind === "loading" ? /refresh pending/ : /refresh unavailable/);
+			assert.deepEqual(row.details.slice(1), bankedResetDetails === undefined ? ["Reset expiry details unavailable."]
+				: bankedResetDetails.length === 0 ? ["Partial expiry details: 0 of 5 resets listed."] : [
+					`Reset 1: expires ${new Date(future).toLocaleString()} (local time)`, "Reset 2: Expiry not provided",
+					`Reset 3: expired ${new Date(past).toLocaleString()} (cached; local time)`, "Partial expiry details: 3 of 5 resets listed.",
+				]);
+		}
+	}
+});
+
+void test("Usage banked reset row fits narrow and wide Control Center views", async () => {
+	const usage = createControlCenterUsage({
+		quota: () => ({ kind: "ready", snapshot: { fetchedAt: 0, planType: undefined, ordinaryUsageAllowed: undefined,
+			buckets: [], credits: undefined, bankedResetCount: 3, bankedResetDetails: [{ id: "opaque-unknown", expiresAt: undefined }] } }),
+		history: () => Promise.resolve({ records: [], warnings: [], limited: false, missing: true }),
+		refresh: () => Promise.resolve(), active: () => undefined,
+	});
+	const panel = new ControlCenter({ usage,
+		theme: () => ({ name: "test", appearance: "dark", fg: (_color, text) => `\x1b[32m${text}\x1b[0m` }),
+		readThemes: () => [], applyTheme: () => ({ success: true }),
+		requestRender: () => {}, height: () => 50, close: () => {},
+	});
+	for (let index = 0; index < 7; index++) panel.handleInput("\x1b[B");
+	await new Promise<void>(resolve => setImmediate(resolve));
+	panel.handleInput("\t");
+	panel.handleInput("\x1b[H");
+	panel.handleInput("\x1b[B");
+	panel.handleInput("\x1b[B"); // Select banked count, then expand its read-only details.
+	panel.handleInput("?");
+	for (const width of [24, 48, 100]) {
+		const lines = panel.render(width);
+		assert.ok(lines.some(line => line.includes("Banked resets: 3")), `banked count at width ${width}`);
+		assert.ok(lines.every(line => visibleWidth(line) <= width), `ANSI width ${width}`);
+		if (width === 100) assert.match(lines.join("\n"), /Reset 1: Expiry not provided/);
+	}
+	panel.dispose();
 });
 
 void test("Usage reports unavailable sources without raw backend errors", async () => {
