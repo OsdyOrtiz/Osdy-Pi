@@ -22,19 +22,25 @@ export function createControlCenterSounds(dependencies: SoundDependencies): Cont
 		async read() {
 			const settings = await store.load();
 			return {
-				summary: "Master enablement: unavailable (path-only v1 settings)",
-				note: "Startup flags override saved paths; clearing a saved path does not disable flag-configured playback.",
-				rows: AUDIO_NOTIFICATION_EVENTS.flatMap((event) => {
-					const effective = dependencies.effective(settings, event);
-					const saved = settings.sounds[event];
-					const details = [`${event} saved: ${saved ?? "none"}`, `Effective (${effective.source}): ${effective.path ?? "none"}`];
-					return [
-						{ label: `Configure ${event}`,
-							current: false, details, action: { kind: "sound-configure" as const, event, path: saved ?? "" } },
-						{ label: `Clear saved ${event}`, current: false, details, action: { kind: "sound-clear" as const, event } },
-						{ label: `Test effective ${event}`, current: false, details, action: { kind: "sound-test" as const, event } },
-					];
-				}),
+				summary: `Automatic audio: ${settings.enabled ? "enabled" : "muted"}`,
+				note: "Startup flags override saved paths, then the bundled default. Clearing restores the bundled default unless a flag overrides; it does not disable flag-configured playback.",
+				rows: [
+					{ label: settings.enabled ? "Mute automatic audio" : "Enable automatic audio", current: false,
+						details: ["Mute all automatic sounds, including startup flags and the bundled default. Explicit sound tests still play.",
+							"Saved paths and visual notifications are unchanged. Applies to the next notification without reload; current playback is not stopped."],
+						action: { kind: "sound-enabled" as const, value: !settings.enabled } },
+					...AUDIO_NOTIFICATION_EVENTS.flatMap((event) => {
+						const effective = dependencies.effective(settings, event);
+						const saved = settings.sounds[event];
+						const details = [`${event} saved: ${saved ?? "none"}`, `Effective (${effective.source}): ${effective.path ?? "none"}`];
+						return [
+							{ label: `Configure ${event}`,
+								current: false, details, action: { kind: "sound-configure" as const, event, path: saved ?? "" } },
+							{ label: `Clear saved ${event}`, current: false, details, action: { kind: "sound-clear" as const, event } },
+							{ label: `Test effective ${event}`, current: false, details, action: { kind: "sound-test" as const, event } },
+						];
+					}),
+				],
 			};
 		},
 		async apply(action: ControlCenterServiceAction) {
@@ -57,15 +63,18 @@ export function createControlCenterSounds(dependencies: SoundDependencies): Cont
 					const validation = await (dependencies.validate ?? validateAudioNotificationPath)(action.path, { cwd: dependencies.cwd, mode: "global-save" });
 					if (!validation.ok) return { failed: true, message: `Invalid ${action.event} sound: ${validation.reason}. Use a readable .mp3 or .wav file. Not saved.` };
 					sounds[action.event] = validation.persistedPath;
-				} else delete sounds[action.event];
-				await store.save({ version: 1, sounds });
+				} else if (action.kind === "sound-clear") delete sounds[action.event];
+				await store.save({ ...settings, sounds,
+					enabled: action.kind === "sound-enabled" ? action.value : settings.enabled });
 			} catch (error) {
 				return { failed: true, message: `Not saved: ${message(error)}` };
 			}
 			// Event playback resolves the same store afresh each time; no separate runtime cache.
 			try {
 				await store.load();
-				return { failed: false, message: `Saved globally: ${action.event}. Runtime uses current saved paths; startup flags still take precedence.` };
+				return { failed: false, message: action.kind === "sound-enabled"
+					? `Saved globally: automatic audio ${action.value ? "enabled" : "muted"}. Applies to the next notification; explicit tests still play.`
+					: `Saved globally: ${action.event}. Runtime uses current saved paths; startup flags still take precedence.` };
 			} catch (error) {
 				return { failed: true, message: `Saved globally, but runtime refresh failed: ${message(error)}. Retry refresh by reopening Sounds.` };
 			}

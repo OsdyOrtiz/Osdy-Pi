@@ -3,7 +3,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import type { AudioSoundSettingsStore } from "./audio-sound-settings.js";
-import { resolveAudioNotificationSound } from "./audio-notification-config.js";
+import { resolveAudioNotificationSoundFromSettings } from "./audio-notification-config.js";
 import type { AudioNotificationEvent } from "./audio-notification-types.js";
 import type { AudioPlaybackAdapter } from "./audio-playback.js";
 
@@ -34,11 +34,14 @@ class DefaultAudioNotificationService implements AudioNotificationService {
 		event: AudioNotificationEvent,
 		ctx: ExtensionContext,
 	): Promise<void> {
-		const resolvedSound = await resolveAudioNotificationSound(
+		// One fresh snapshot gates all automatic audio, including startup flags.
+		const settings = await this.settingsStore.load();
+		if (!settings.enabled) return;
+		const resolvedSound = await resolveAudioNotificationSoundFromSettings(
 			this.pi,
 			ctx,
 			event,
-			this.settingsStore,
+			settings,
 		);
 		if (!resolvedSound.ok) return;
 		await this.playbackAdapter.play(resolvedSound.path);

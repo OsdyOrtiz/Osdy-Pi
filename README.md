@@ -6,6 +6,8 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 ## Release highlights
 
+**Audio notifications share a bundled 180 ms default sound on macOS and Windows**, with a persistent master mute in `/osdyConfig` → **Sounds**. Custom paths take precedence: startup flag → saved global path → bundled default. Muting preserves those paths and visual alerts; explicit **Test effective** still plays while muted. See [Audio notifications](#audio-notifications).
+
 **The Control Center consolidates Osdy controls in `/osdyConfig`**: ten categories cover appearance, Git, sounds, accounts, usage, and TODO/Agents provider settings. Account quota previews query a selected stored Codex profile without switching it. The header shows the installed Osdy package version when it fits; constrained layouts show only the centered mascot. See [Control Center in Pi](#control-center-in-pi) for confirmation and persistence boundaries.
 
 **Codex banked resets show counts and per-reset local expiry** in `/usage` and the Control Center. Press **u** in `/usage` or select **Usage → Use or check banked reset** for Cancel-first, active-account use or pending-attempt checks; stored-profile previews stay read-only. See [Use or check a banked reset](#use-or-check-a-banked-reset).
@@ -15,6 +17,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 | Area | What ships |
 | --- | --- |
 | Control Center | **Ctrl+Option+O** or `/osdyConfig` opens ten categories, including confirmed TODO/Agents provider selection and explicit per-profile Codex quota previews. |
+| Audio | Shared bundled default, per-event custom paths, and persistent automatic-audio mute; [explicit tests remain available](#audio-notifications). |
 | Local analytics (1.10.0) | `/osdy-usage` opens Summary, Profiles, Models, and History pages for recorded tokens and estimated cost—not billing or subscription quota. |
 | Themes introduced in 1.11.0 | Spider-Man Classic, Miles Morales, and Spider-Verse add three distinct dark palettes. |
 | Themes introduced in 1.9.0 | Halloween and Halloween Killer add two dark palettes. |
@@ -85,7 +88,7 @@ Positive counts also trigger a best-effort read-only reset-details GET within th
 - A selection shows **Saving** until persistence finishes and **Saved globally** only on success. Failed saves retain the live preference but report **could not be saved**; select again to retry. Application errors report **Not saved**, without claiming the runtime change succeeded. Duplicate selections are ignored while saving.
 - **Git** shows the current branch (or detached HEAD), changed-entry count/clean status, and the current widget position as a read-only session detail. Working-tree enablement applies and saves through the same owner as `/osdy-pi working-tree`; Git inspection never writes Git. `/osdy-pi diff` and position commands are unchanged.
 - **Sounds** shows each event's saved and effective path/source. Configure opens a single-line path editor **inside this overlay**: enter a readable `.mp3`/`.wav` path, then **Enter** to validate and save immediately, or **Esc** to cancel editing. Relative paths resolve against the project directory and save as absolute paths. Clear removes only that event's saved path from the existing v1 audio store (`<agent-dir>/extensions/osdy-pi/audio-notifications.json`). Notifications read this store afresh; refresh failures are reported separately from save failures.
-- Sounds' master enablement is **unavailable**: the existing schema has paths, not an enable switch or presets. Startup `--osdy-pi-sound-<event>` flags override saved paths, so **clearing a saved path does not disable flag-configured playback**. Only **Test effective** explicitly plays a sound; opening categories and configuring paths never play. Tests report unavailable files/platforms or playback failures; playback remains macOS/Windows only. The legacy `/osdy-pi sound setup` wizard is preserved.
+- **Sounds → Mute automatic audio / Enable automatic audio** is a persistent master switch, enabled by default (including existing v1 files). Muting suppresses all automatic event sounds, even startup-flag paths, without losing saved paths or changing visual notifications. It applies to the next notification without reload; already-started playback is not stopped. **Test effective** still plays while muted; opening categories and configuring paths never play. Startup `--osdy-pi-sound-<event>` flags override saved paths, so **clearing a saved path does not disable flag-configured playback**. Tests report unavailable files/platforms or playback failures; playback remains macOS/Windows only. Configure, Clear, and the legacy `/osdy-pi sound setup` wizard preserve the master state.
 - **Account** shows one row per validated profile, marked **Active** and **Default** where applicable. Select a profile, then use its visible context bar: **v View usage**, **s Switch** (inactive profiles), **d Set default**, and **c Clear default** (when a default exists). **v** or **Enter** explicitly queries that profile's stored Codex credentials without activating it; no second action list appears. Opening, navigating or highlighting never queries; stored profiles are never polled. A dedicated quota view reuses `/usage` dashboard content: Session/Weekly cards, additional bucket groups, remaining-capacity bars, resets, and the quotas/account summary with plan and credits when available. Identity belongs to the selected stored profile; unknown provider/model metadata is labeled honestly. Checked and updated times use local time; absent data is unknown, not zero. Refresh/Back controls and query feedback stay pinned while long dashboard content scrolls. **r Refresh** repeats the selected profile query; **s Switch**, when available, confirms activation of the currently viewed inactive profile. Cancelling that confirmation preserves the quota view and scroll position. **b Back** or **Esc** returns to the overview with the profile selected, without closing the overlay. In quota details, **↑/↓** selects Refresh/Back and **Enter** activates it; **Page Up/Down** and **Home/End** scroll long quota data. Switch, set default, and clear default require an **in-screen confirmation** with Cancel selected initially; **Esc** cancels confirmation without closing the overlay. Single blank separators group the confirmation title, complete effects, choices, and instructions; gaps yield on short viewports. Resize if the full confirmation cannot fit—acceptance stays hidden and blocked. Switching through `/osdyConfig` waits for Pi to become idle; Ctrl+Option+O refuses busy account changes. Successful switching activates through the existing backend and refreshes subscription usage. Login remains Pi-owned (`/login`); create/rename/remove remain available in `/osdy-account`. Category navigation never changes profiles or credentials.
 - **Usage** shows the runtime's cached active Codex subscription quota (remaining-capacity bars and percentages, window, reset/fetch times) and the existing local history owner's recorded token/cache totals, cost gaps, and model detail. Select **Range: day/week/month** for the current local calendar period; toggle **Accounts: all/current** for local analytics (unmanaged when no valid current profile exists). Quota always belongs to the active account, not the analytics filter; local token/cost totals never become quota percentages. Select **Refresh quota and local history** explicitly; rendering and filters never fetch. Empty, loading, unavailable, and limited/incomplete coverage are reported honestly. Estimates are not billing or subscription quota. `/usage` remains the subscription dashboard; `/osdy-usage` remains local analytics.
 - **Esc** closes without undoing live or saved changes, except when cancelling a confirmation/input or returning from Account quota details. Account read-only queries are cancelled on Back/Esc, category exit or close; late results are ignored even if cancellation is not honored. Other in-flight operations still finish and are not claimed cancelled. Late results cannot replace a closed overlay or another category. On narrow terminals, categories and details share the viewport; use Tab to switch.
@@ -323,7 +326,7 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 | Status | Six activity labels with compact per-state glyphs and a shared theme-color pulse, responsive footer metrics, dynamic extension statuses, and Codex subscription quota with low-capacity emphasis |
 | Local analytics | Four keyboard-selectable pages with shared filters, token charts, estimated cost, and private metadata-only history from new assistant turns |
 | Git | Working-tree summary and a centered, filterable diff panel |
-| Audio | Optional event sounds on macOS and Windows |
+| Audio | Default-on event sounds on macOS and Windows, with master mute and custom paths |
 
 <img width="1280" height="433" alt="Osdy Pi header and editor" src="https://github.com/user-attachments/assets/20c7624d-9ad8-4494-97fb-6b6d81aaf328" />
 
@@ -554,7 +557,7 @@ Use `working-tree position top` or `bottom` to place the summary above or below 
 
 ## Audio notifications
 
-Osdy Pi can play readable `.mp3` or `.wav` files on macOS and Windows. Other platforms safely skip playback. macOS playback requires the system `afplay` command; Windows playback requires `powershell.exe` and the Windows Media Player COM component (`WMPlayer.OCX`).
+Osdy Pi plays one shared, short, subtle original bundled WAV by default for every unconfigured audio event on macOS and Windows. Automatic audio is enabled by default; mute it in **Sounds** to turn it off without changing visual alerts. Custom readable `.mp3` or `.wav` files can replace the default per event. Other platforms safely skip playback. macOS playback requires the system `afplay` command; Windows playback requires `powershell.exe` and the Windows Media Player COM component (`WMPlayer.OCX`).
 
 | Event | Current meaning |
 | --- | --- |
@@ -563,7 +566,9 @@ Osdy Pi can play readable `.mp3` or `.wav` files on macOS and Windows. Other pla
 | `permission` | Hook is available but dormant until an explicit Pi approval integration uses it. |
 | `question` | Hook is available but dormant until an explicit Pi question integration uses it. |
 
-Run the guided wizard:
+To mute or re-enable automatic audio, open `/osdyConfig` → **Sounds** and select **Mute automatic audio / Enable automatic audio**. Saved paths stay intact; **Test effective** remains available while muted.
+
+Run the guided wizard to configure paths (without changing the master switch):
 
 ```text
 /osdy-pi sound setup
@@ -581,7 +586,7 @@ pi \
   --osdy-pi-sound-question /absolute/path/question.wav
 ```
 
-Precedence is startup flag, then saved global setting, then unconfigured. Empty flags do not override saved settings; relative startup paths resolve from the current working directory, while the wizard saves normalized absolute paths. Missing, unreadable, or unsupported files are skipped safely.
+Path precedence is **startup flag → saved global path → bundled default**. Clearing a saved path (or choosing **Use bundled default** in the wizard) restores the default unless a startup flag overrides. The bundled asset resolves relative to the installed module, not the project directory or home. The master mute suppresses automatic playback from every source; explicit **Test effective** can still play the default while muted. Empty flags do not override saved settings; relative startup paths resolve from the current working directory, while the wizard saves normalized absolute paths. Invalid configured paths (missing, unreadable, or unsupported) are skipped safely **without falling back** to the default.
 
 ## Local install and development
 
@@ -638,9 +643,9 @@ An isolated agent directory does **not** make custom audio paths or real provide
 - Account (manual): with disposable profiles only, check Cancel-first switch/set-default/clear-default confirmations, Esc cancellation, idle switching, and current/default labels. Verify Ctrl+Option+O refuses all three changes while busy, succeeds when idle, and `/osdyConfig` still waits for idle. Check one row per profile with **v/s/d/c** context actions and **Enter** usage fallback, without a second action list. From **v** quota details, check eligible **s Switch** opens the same Cancel-first confirmation, with blank separators between the title/effects, choices, and instructions; Cancel/Esc must retain the quota view and scroll position. Check gaps yield on short viewports without hiding safety content or enabling acceptance when the full confirmation cannot fit. Check remaining-capacity bars, **r Refresh**, **b Back/Esc** returning to the selected profile, long-view scrolling, no query on navigation, no stored-profile polling, and cancellation on exit. Create/rename/remove stay in `/osdy-account`, login in `/login`.
 - Subscription quota (manual): compare **Ctrl+Option+U** and `/usage` (Ctrl+Alt+U on other platforms), including **r Refresh** and Esc/q closing. Verify actual terminal chord delivery; use `/usage` if intercepted or unsupported.
 - Usage (manual): check day/week/month and all/current filters, empty/unavailable/limited states, and explicit refresh. Authenticated quota and post-switch account correctness need an intentionally authorized live provider check; local estimates are not billing.
-- Sounds (manual): use disposable readable `.mp3`/`.wav` files to check configure, cancel, clear, and startup-flag precedence. Only choose **Test effective** when playback is intended; actual macOS/Windows playback still needs a live check.
+- Sounds (manual): use disposable readable `.mp3`/`.wav` files to check configure, cancel, clear, and startup-flag precedence. Only choose **Test effective** when playback is intended. The user reported successful live playback of the bundled default; exhaustive macOS/Windows coverage still needs a live check.
 
-The user confirmed physical Ctrl+Option+O and Ctrl+Option+U delivery on one Mac terminal; other terminals may intercept or not support these chords. Live TUI appearance, real account switching/authenticated quota, and actual audio playback remain unverified; this checklist is not a recorded full pass.
+The user confirmed physical Ctrl+Option+O and Ctrl+Option+U delivery on one Mac terminal; other terminals may intercept or not support these chords. The user also reported that the bundled default audio works correctly in their live session. Other live TUI appearance, real account switching/authenticated quota, and exhaustive audio/platform coverage remain unverified; this checklist is not a recorded full pass.
 
 Install a local checkout into Pi with:
 

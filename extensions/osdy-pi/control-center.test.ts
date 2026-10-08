@@ -276,6 +276,29 @@ void test("Agent direct letters never cross loading, query, save or text input b
 	assert.match(plain(account.panel.render(100)), /Loading stored-profile/); assert.equal(calls, 1); account.dispose();
 });
 
+void test("Sounds master action routes to its service, refreshes live, and never requests reload", async () => {
+	let enabled = true;
+	const actions: ControlCenterServiceAction[] = [];
+	let reloads = 0;
+	const f = fixture(undefined, undefined, { sounds: {
+		read: () => Promise.resolve({ summary: `Automatic audio: ${enabled ? "enabled" : "muted"}`, note: "Explicit tests still play.", rows: [
+			{ label: enabled ? "Mute automatic audio" : "Enable automatic audio", current: false, action: { kind: "sound-enabled", value: !enabled } },
+		] }),
+		apply: action => { actions.push(action); if (action.kind === "sound-enabled") enabled = action.value;
+			return Promise.resolve({ failed: false, message: "Saved globally" }); },
+	} }, () => { reloads++; });
+	for (let i = 0; i < 5; i++) f.panel.handleInput(down);
+	await settle();
+	assert.equal(actions.length, 0);
+	f.panel.handleInput(right); f.panel.handleInput("\r"); await settle();
+	assert.deepEqual(actions, [{ kind: "sound-enabled", value: false }]);
+	assert.match(plain(f.panel.render(100)), /Automatic audio: muted/);
+	f.panel.handleInput("\r"); await settle();
+	assert.deepEqual(actions[1], { kind: "sound-enabled", value: true });
+	assert.equal(reloads, 0);
+	f.dispose();
+});
+
 function fixture(names = ["dark", "light"], preferences?: ControlCenterPreferences,
 	services?: Pick<ControlCenterDependencies, "git" | "sounds" | "account" | "usage" | "todo" | "agents">,
 	reload?: ControlCenterDependencies["reload"]) {
