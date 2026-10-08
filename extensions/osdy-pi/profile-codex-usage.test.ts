@@ -81,6 +81,40 @@ void test("stored profile quota uses only its snapshot and leaves auth, metadata
 	assert.equal(environmentHash(), env);
 });
 
+void test("stored profile passes through optional reset details using only that profile's transport and cancellation", async () => {
+	for (const outcome of ["success", "failure", "cancelled"]) {
+		const controller = new AbortController();
+		const urls: unknown[] = [];
+		let reads = 0;
+		const result = await requestProfileCodexUsage("Work", {
+			readCredentials: name => { reads++; assert.equal(name, "Work"); return Promise.resolve(credential()); },
+			now: () => now, signal: controller.signal,
+			fetch: (url, init) => {
+				urls.push(url);
+				assert.equal(init?.method, "GET"); assert.equal(init?.redirect, "error");
+				const headers = new Headers(init?.headers);
+				assert.equal(headers.get("authorization"), `Bearer ${token()}`);
+				assert.equal(headers.get("chatgpt-account-id"), "acct_stored");
+				if (urls.length === 1) return Promise.resolve(new Response(JSON.stringify({ ...payload, rate_limit_reset_credits: { available_count: 2 } })));
+				if (outcome === "cancelled") controller.abort(sentinel);
+				if (outcome !== "success") return Promise.reject(new Error(sentinel));
+				return Promise.resolve(new Response(JSON.stringify({ available_count: 1, credits: [
+					{ id: "opaque", status: "available", reset_type: "codex_rate_limits", expires_at: "2030-07-17T00:00:00Z" },
+				] })));
+			},
+		});
+		assert.equal(reads, 1);
+		assert.deepEqual(urls, ["https://chatgpt.com/backend-api/wham/usage", "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"]);
+		assert.equal(result.status, outcome === "cancelled" ? "cancelled" : "ready");
+		if (result.status === "ready") {
+			assert.equal(result.quotaSnapshot.bankedResetCount, 2);
+			assert.deepEqual(result.quotaSnapshot.bankedResetDetails, outcome === "success" ? [{ id: "opaque", expiresAt: Date.parse("2030-07-17T00:00:00Z") }] : undefined);
+		}
+		// Backend identity is internal action data, not a rendered label or credential.
+		assert.doesNotMatch(JSON.stringify(result), /SECRET-SENTINEL|signature|acct_stored/);
+	}
+});
+
 void test("invalid profile inputs never read or fetch and never echo input", async () => {
 	for (const name of ["../escape", "default", "Profiles", "auth.json", sentinel, "", null]) {
 		const result = await requestProfileCodexUsage(name, {

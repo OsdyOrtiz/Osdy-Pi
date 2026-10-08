@@ -20,11 +20,21 @@ export type CodexUsageCredits = {
 	resetCreditCount: number | undefined;
 };
 
+export type CodexBankedResetDetail = {
+	/** Exact backend identity for actions; never render this value. */
+	id: string;
+	/** Epoch milliseconds; undefined is unknown, never unlimited validity. */
+	expiresAt: number | undefined;
+};
+
 export type CodexUsageSnapshot = {
 	planType: string | undefined;
 	ordinaryUsageAllowed: boolean | undefined;
 	buckets: CodexUsageBucket[];
 	credits: CodexUsageCredits | undefined;
+	bankedResetCount?: number | undefined;
+	/** Undefined means unavailable; a successful list may be empty or partial. */
+	bankedResetDetails?: CodexBankedResetDetail[] | undefined;
 	fetchedAt: number;
 };
 
@@ -41,6 +51,8 @@ type FetchCodexUsageOptions = {
 };
 
 const USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+const RESET_DETAILS_URL = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits";
+const REQUEST_ABORTED = "Codex usage request timed out or was cancelled";
 const MAX_RESPONSE_BYTES = 1_000_000;
 const DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -75,6 +87,49 @@ function optionalNumber(value: unknown, label: string): number | undefined {
 	if (typeof value !== "number" || !Number.isFinite(value))
 		throw new Error(`Codex usage ${label} is invalid`);
 	return value;
+}
+
+function parseBankedResetCount(value: unknown): number | undefined {
+	if (value === undefined || value === null) return undefined;
+	const summary = asRecord(value, "rate_limit_reset_credits");
+	const label = "rate_limit_reset_credits.available_count";
+	const count = optionalNumber(summary.available_count, label);
+	if (count !== undefined && (!Number.isInteger(count) || count < 0))
+		throw new Error(`Codex usage ${label} is invalid`);
+	return count;
+}
+
+function parseResetExpiry(value: unknown): number | undefined {
+	if (typeof value !== "string") return undefined;
+	const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/.exec(value);
+	if (!match) return undefined;
+	const year = Number(match[1]);
+	const month = Number(match[2]);
+	const day = Number(match[3]);
+	const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+	const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+	// Date.parse rolls some impossible dates forward; never invent an expiry.
+	if (month < 1 || month > 12 || day < 1 || day > (days[month - 1] ?? 0) ||
+		Number(match[4]) > 23 || Number(match[5]) > 59 || Number(match[6]) > 59 ||
+		Number(match[7] ?? 0) > 23 || Number(match[8] ?? 0) > 59) return undefined;
+	const expiresAt = Date.parse(value);
+	return Number.isFinite(expiresAt) ? expiresAt : undefined;
+}
+
+function parseResetDetails(input: unknown): CodexBankedResetDetail[] {
+	const payload = asRecord(input, "reset details");
+	if (!Array.isArray(payload.credits)) throw new Error("Codex reset details are invalid");
+	const details: CodexBankedResetDetail[] = [];
+	const seen = new Set<string>();
+	for (const entry of payload.credits) {
+		if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+		const credit = entry as UnknownRecord;
+		if (credit.status !== "available" || credit.reset_type !== "codex_rate_limits" ||
+			typeof credit.id !== "string" || !credit.id.trim() || seen.has(credit.id)) continue;
+		seen.add(credit.id);
+		details.push({ id: credit.id, expiresAt: parseResetExpiry(credit.expires_at) });
+	}
+	return details;
 }
 
 function parseWindow(
@@ -177,6 +232,7 @@ export function parseCodexUsagePayload(
 		),
 		buckets,
 		credits,
+		bankedResetCount: parseBankedResetCount(payload.rate_limit_reset_credits),
 		fetchedAt,
 	};
 }
@@ -199,26 +255,53 @@ export function extractCodexAccountId(accessToken: string): string {
 	}
 }
 
-async function readBoundedJson(response: Response): Promise<unknown> {
+/** Bound injected transports and body readers even when they ignore abort. */
+async function withAbort<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
+	let onAbort = (): void => {};
+	const aborted = new Promise<never>((_resolve, reject) => {
+		onAbort = () => reject(new Error(REQUEST_ABORTED));
+		signal.addEventListener("abort", onAbort, { once: true });
+		if (signal.aborted) onAbort();
+	});
+	try { return await Promise.race([pending, aborted]); }
+	finally { signal.removeEventListener("abort", onAbort); }
+}
+
+function cancelUnreadBody(response: Response): void {
+	// Never wait on cleanup or replace the original failure.
+	try {
+		void response.body?.cancel().catch(() => {});
+	} catch {
+		// Best effort, including injected streams that throw synchronously.
+	}
+}
+
+async function readBoundedJson(response: Response, signal: AbortSignal): Promise<unknown> {
 	const length = response.headers.get("content-length");
 	if (
 		length !== null &&
 		(!/^\d+$/.test(length) || Number(length) > MAX_RESPONSE_BYTES)
-	)
+	) {
+		cancelUnreadBody(response);
 		throw new Error("Codex usage response is too large");
+	}
 	if (!response.body) throw new Error("Codex usage response is unavailable");
 	const reader = response.body.getReader();
 	const chunks: Uint8Array[] = [];
 	let size = 0;
 	try {
 		while (true) {
-			const next = await reader.read();
+			const next = await withAbort(reader.read(), signal);
 			if (next.done) break;
 			size += next.value.byteLength;
 			if (size > MAX_RESPONSE_BYTES)
 				throw new Error("Codex usage response is too large");
 			chunks.push(next.value);
 		}
+	} catch (error) {
+		// Cancellation must not introduce another wait on an uncooperative stream.
+		void reader.cancel().catch(() => {});
+		throw error;
 	} finally {
 		reader.releaseLock();
 	}
@@ -235,6 +318,88 @@ async function readBoundedJson(response: Response): Promise<unknown> {
 	}
 }
 
+export type ConsumeCodexResetRequest = {
+	/** Caller-owned UUID, reused for the same logical attempt. */
+	requestId: string;
+	/** Exact selected backend ID; never let the backend auto-select. */
+	creditId: string;
+};
+
+export type ConsumeCodexResetOptions = {
+	fetch?: typeof globalThis.fetch;
+	signal?: AbortSignal;
+	timeoutMs?: number;
+};
+
+export type ConsumeCodexResetCode = "reset" | "nothing_to_reset" | "no_credit" | "already_redeemed";
+
+export type ConsumeCodexResetResult =
+	| { kind: "not-sent"; reason: "invalid-request-id" | "invalid-credit-id" | "invalid-auth" | "invalid-timeout" | "aborted" }
+	| { kind: "unknown" }
+	| { kind: "confirmed"; code: ConsumeCodexResetCode; windowsReset: number };
+
+/** One attempt only: dispatch is the boundary beyond which cancellation is uncertain. */
+export async function consumeCodexReset(
+	auth: CodexUsageAuth,
+	request: ConsumeCodexResetRequest,
+	options: ConsumeCodexResetOptions = {},
+): Promise<ConsumeCodexResetResult> {
+	if (typeof request?.requestId !== "string" ||
+		!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(request.requestId))
+		return { kind: "not-sent", reason: "invalid-request-id" };
+	if (typeof request.creditId !== "string" || !request.creditId.trim())
+		return { kind: "not-sent", reason: "invalid-credit-id" };
+	// Visible ASCII only: reject malformed headers rather than relying on fetch to do so.
+	if (typeof auth?.accessToken !== "string" || !/^[\x21-\x7e]+$/.test(auth.accessToken) ||
+		typeof auth.accountId !== "string" || !/^[\x21-\x7e]+$/.test(auth.accountId))
+		return { kind: "not-sent", reason: "invalid-auth" };
+	const timeoutMs = options.timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : options.timeoutMs;
+	// Node timers overflow above the signed 32-bit range.
+	if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647)
+		return { kind: "not-sent", reason: "invalid-timeout" };
+	if (options.signal?.aborted) return { kind: "not-sent", reason: "aborted" };
+	let headers: Headers;
+	try {
+		headers = new Headers({
+			accept: "application/json",
+			"content-type": "application/json",
+			authorization: `Bearer ${auth.accessToken}`,
+			"chatgpt-account-id": auth.accountId,
+			originator: "pi",
+			"user-agent": createPiUserAgent(),
+		});
+	} catch {
+		return { kind: "not-sent", reason: "invalid-auth" };
+	}
+	const timeout = AbortSignal.timeout(timeoutMs);
+	const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+	const init: RequestInit = {
+		method: "POST", headers, redirect: "error", signal,
+		body: JSON.stringify({ redeem_request_id: request.requestId, credit_id: request.creditId }),
+	};
+	if (signal.aborted) return { kind: "not-sent", reason: "aborted" };
+	const fetcher = options.fetch ?? globalThis.fetch;
+	try {
+		// Even a synchronous throw from fetch is conservatively post-dispatch.
+		const response = await withAbort(fetcher(`${RESET_DETAILS_URL}/consume`, init), signal);
+		if (!response.ok || signal.aborted) {
+			cancelUnreadBody(response);
+			return { kind: "unknown" };
+		}
+		const payload = asRecord(await readBoundedJson(response, signal), "reset result");
+		const code = payload.code;
+		if (signal.aborted || (code !== "reset" && code !== "nothing_to_reset" &&
+			code !== "no_credit" && code !== "already_redeemed")) return { kind: "unknown" };
+		const windowsReset = payload.windows_reset === undefined ? 0 : payload.windows_reset;
+		if (typeof windowsReset !== "number" || !Number.isSafeInteger(windowsReset) || windowsReset < 0)
+			return { kind: "unknown" };
+		return { kind: "confirmed", code, windowsReset };
+	} catch {
+		// Never expose raw errors/bodies or tell a caller this is safe to repeat.
+		return { kind: "unknown" };
+	}
+}
+
 export async function fetchCodexUsage(
 	auth: CodexUsageAuth,
 	options: FetchCodexUsageOptions = {},
@@ -244,33 +409,47 @@ export async function fetchCodexUsage(
 	const signal = options.signal
 		? AbortSignal.any([options.signal, timeout])
 		: timeout;
+	const init: RequestInit = {
+		method: "GET",
+		headers: {
+			accept: "application/json",
+			authorization: `Bearer ${auth.accessToken}`,
+			"chatgpt-account-id": auth.accountId,
+			originator: "pi",
+			"user-agent": createPiUserAgent(),
+		},
+		redirect: "error",
+		signal,
+	};
+	if (signal.aborted) throw new Error(REQUEST_ABORTED);
 	let response: Response;
 	try {
-		response = await fetcher(USAGE_URL, {
-			method: "GET",
-			headers: {
-				accept: "application/json",
-				authorization: `Bearer ${auth.accessToken}`,
-				"chatgpt-account-id": auth.accountId,
-				originator: "pi",
-				"user-agent": createPiUserAgent(),
-			},
-			redirect: "error",
-			signal,
-		});
+		response = await withAbort(fetcher(USAGE_URL, init), signal);
 	} catch (error) {
-		if (signal.aborted)
-			throw new Error("Codex usage request timed out or was cancelled");
+		if (signal.aborted) throw new Error(REQUEST_ABORTED);
 		void error;
 		throw new Error("Codex usage is temporarily unavailable");
 	}
+	if (!response.ok) cancelUnreadBody(response);
 	if (response.status === 401)
 		throw new Error("Codex session expired; use /login to sign in again");
 	if (response.status === 403)
 		throw new Error("Codex usage access is unavailable or forbidden");
 	if (!response.ok) throw new Error("Codex usage is temporarily unavailable");
-	return parseCodexUsagePayload(
-		await readBoundedJson(response),
+	const snapshot = parseCodexUsagePayload(
+		await readBoundedJson(response, signal),
 		(options.now ?? Date.now)(),
 	);
+	if ((snapshot.bankedResetCount ?? 0) > 0 && !signal.aborted) {
+		try {
+			// One timeout budget, headers and redirect policy for both account-bound GETs.
+			const details = await withAbort(fetcher(RESET_DETAILS_URL, init), signal);
+			if (details.ok) snapshot.bankedResetDetails = parseResetDetails(await readBoundedJson(details, signal));
+			else cancelUnreadBody(details);
+		} catch {
+			// Optional details never replace the authoritative summary or quotas.
+		}
+	}
+	if (options.signal?.aborted) throw new Error(REQUEST_ABORTED);
+	return snapshot;
 }

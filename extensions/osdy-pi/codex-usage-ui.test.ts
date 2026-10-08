@@ -59,6 +59,30 @@ const {
 	showCodexUsagePanel,
 } = await import("./codex-usage-ui.js");
 
+void test("reset action closes usage overlay before dialogs, reopens, and is opt-in", async () => {
+	for (const enabled of [false, true]) {
+		let overlays = 0;
+		let open = false;
+		let actions = 0;
+		const ctx = { ui: { custom: <T>(factory: (tui: TUI, theme: SimpleTheme, keys: unknown, done: (value: T) => void) => Component) => {
+			open = true; overlays++;
+			let result!: T;
+			const panel = factory({ requestRender: () => {} } as TUI, { fg: (_color, text) => text }, undefined, value => { open = false; result = value; });
+			const rendered = panel.render(120).join("\n");
+			assert.equal(rendered.includes("u use/check reset"), enabled);
+			panel.handleInput?.(overlays === 1 ? "u" : "\x1b");
+			if (!enabled) { assert.equal(open, true); panel.handleInput?.("\x1b"); }
+			assert.equal(open, false, "custom completion must precede action");
+			return Promise.resolve(result);
+		} } };
+		await showCodexUsagePanel(ctx, () => ({ kind: "idle" }), () => Promise.resolve(), {}, enabled ? () => {
+			assert.equal(open, false); actions++; return Promise.resolve(true);
+		} : undefined);
+		assert.equal(actions, enabled ? 1 : 0);
+		assert.equal(overlays, enabled ? 2 : 1);
+	}
+});
+
 const stripLabelSgr = (text: string): string =>
 	text.replaceAll("\u001B[1m", "").replaceAll("\u001B[22m", "");
 
@@ -245,6 +269,111 @@ void test("omits unavailable account fields while preserving defined false and z
 	});
 	assert.ok(definedLines.includes("Availability: not allowed"));
 	assert.ok(definedLines.includes("Credits: 12.50 · Credit resets: 0"));
+});
+
+for (const bankedResetCount of [3, 0]) {
+	void test(`shared usage dashboard displays ${bankedResetCount} banked resets without paid credits`, () => {
+		const theme = { fg: (_name: string, text: string): string => text };
+		const snapshot = { planType: undefined, ordinaryUsageAllowed: undefined,
+			buckets: [], credits: undefined, fetchedAt: 0, bankedResetCount };
+		for (const render of [renderCodexUsageDashboardLines, renderCodexUsageDashboardContentLines]) {
+			const lines = render(theme, snapshot);
+			const index = lines.indexOf(`Banked resets: ${bankedResetCount}`);
+			assert.ok(index > lines.indexOf("Quotas + account"));
+			assert.equal(lines.filter(line => line.includes("Banked resets:")).length, 1);
+		}
+		const legacyOnly = { ...snapshot, bankedResetCount: undefined,
+			credits: { hasCredits: true, unlimited: false, balance: "12.50", resetCreditCount: 9 } };
+		const lines = renderCodexUsageDashboardLines(theme, legacyOnly);
+		assert.ok(lines.includes("Credits: 12.50 · Credit resets: 9"));
+		assert.ok(!lines.some(line => line.includes("Banked resets:")));
+	});
+}
+
+for (const bankedResetCount of [3, 0, undefined]) {
+	void test(`shared dashboards separate team banked resets (${bankedResetCount}) only when defined`, () => {
+		const theme = { fg: (_name: string, text: string): string => `\x1b[32m${text}\x1b[0m` };
+		const snapshot = { planType: "team", ordinaryUsageAllowed: undefined,
+			buckets: [], fetchedAt: 0, bankedResetCount,
+			credits: { hasCredits: true, unlimited: false, balance: "12.50", resetCreditCount: undefined } };
+		for (const render of [renderCodexUsageDashboardLines, renderCodexUsageDashboardContentLines]) {
+			for (const width of [48, 100]) {
+				const lines = render(theme, snapshot, {}, 0, width).map(stripSgr);
+				const planIndex = lines.indexOf("Plan: team");
+				assert.ok(planIndex >= 0);
+				if (bankedResetCount === undefined) {
+					assert.ok(!lines.some(line => line.includes("Banked resets:")));
+					assert.equal(lines[planIndex + 1], "Credits: 12.50");
+				} else {
+					const bankedIndex = lines.indexOf(`Banked resets: ${bankedResetCount}`);
+					assert.ok(bankedIndex > planIndex);
+					assert.equal(lines[bankedIndex - 1], "");
+					assert.equal(bankedIndex, planIndex + 2);
+				}
+			}
+		}
+	});
+}
+
+void test("banked resets follow existing ready, cached error, and loading panel behavior", () => {
+	const theme = { fg: (_name: string, text: string): string => text };
+	const snapshot = { planType: undefined, ordinaryUsageAllowed: undefined,
+		buckets: [], credits: undefined, fetchedAt: 0, bankedResetCount: 3 };
+	for (const kind of ["ready", "error", "loading"] as const) {
+		const state = kind === "error" ? { kind, snapshot, message: "Unavailable" } : { kind, snapshot };
+		const text = renderCodexUsagePanelLines(theme, state, {}, 0, 48).join("\n");
+		assert.equal(text.includes("Banked resets: 3"), kind !== "loading");
+		if (kind === "loading") assert.match(text, /Loading subscription usage/);
+	}
+	const unavailable = renderCodexUsagePanelLines(theme, { kind: "error", snapshot: undefined, message: "Unavailable" });
+	assert.ok(!unavailable.some(line => line.includes("Banked resets:")));
+});
+
+void test("shared dashboards render local reset expiries, unknowns, expired cached dates and partial coverage", () => {
+	const theme = { fg: (_name: string, text: string): string => `\x1b[32m${text}\x1b[0m` };
+	const now = Date.parse("2026-06-17T00:00:00Z");
+	const future = Date.parse("2026-07-17T00:00:00Z");
+	const past = now - 60_000;
+	const snapshot = { planType: undefined, ordinaryUsageAllowed: undefined, buckets: [], credits: undefined,
+		fetchedAt: now, bankedResetCount: 5, bankedResetDetails: [{ id: "opaque-future", expiresAt: future }, { id: "opaque-unknown", expiresAt: undefined }, { id: "opaque-past", expiresAt: past }] };
+	const expected = [`Reset 1: expires ${new Date(future).toLocaleString()} (local time)`,
+		"Reset 2: Expiry not provided", `Reset 3: expired ${new Date(past).toLocaleString()} (cached; local time)`,
+		"Partial expiry details: 3 of 5 resets listed."];
+	for (const render of [renderCodexUsageDashboardLines, renderCodexUsageDashboardContentLines]) {
+		const lines = render(theme, snapshot, {}, now, 120).map(stripSgr);
+		const countIndex = lines.indexOf("Banked resets: 5");
+		assert.deepEqual(lines.slice(countIndex + 1, countIndex + 5), expected);
+		assert.doesNotMatch(lines.join("\n"), /opaque-/);
+	}
+	for (const width of [1, 8, 24, 48, 100]) {
+		const lines = renderCodexUsageDashboardContentLines(theme, snapshot, {}, now, width);
+		assert.ok(lines.every(line => visibleWidth(line) <= width), `expiry width ${width}`);
+		const joined = stripSgr(lines.join("")).replaceAll(" ", "");
+		for (const line of expected) assert.ok(joined.includes(line.replaceAll(" ", "")), line);
+	}
+	const cached = stripSgr(renderCodexUsagePanelLines(theme, { kind: "error", snapshot, message: "Refresh unavailable" }, {}, now, 100).join("\n"));
+	assert.match(cached, /Reset 3: expired/);
+	const footerSnapshot = { ...snapshot, buckets: [{ id: "codex", label: undefined,
+		primary: { usedPercent: 37, windowMinutes: 300, resetsAt: undefined }, secondary: undefined }] };
+	assert.deepEqual(renderCompactCodexQuotaBars(theme, footerSnapshot, 80),
+		renderCompactCodexQuotaBars(theme, { ...footerSnapshot, bankedResetCount: undefined, bankedResetDetails: undefined }, 80));
+});
+
+void test("reset details unavailable, empty, complete and zero stay distinct without fabricated dates", () => {
+	const theme = { fg: (_name: string, text: string): string => text };
+	const snapshot = { planType: undefined, ordinaryUsageAllowed: undefined, buckets: [], credits: undefined, fetchedAt: 0, bankedResetCount: 2 };
+	const unavailable = renderCodexUsageDashboardContentLines(theme, snapshot).join("\n");
+	assert.match(unavailable, /Banked resets: 2\nReset expiry details unavailable\./);
+	const empty = renderCodexUsageDashboardContentLines(theme, { ...snapshot, bankedResetDetails: [] }).join("\n");
+	assert.match(empty, /Partial expiry details: 0 of 2 resets listed\./);
+	assert.doesNotMatch(empty, /unavailable|Reset 1:/);
+	const complete = renderCodexUsageDashboardContentLines(theme, { ...snapshot, bankedResetDetails: [{ id: "opaque-first", expiresAt: undefined }, { id: "opaque-second", expiresAt: undefined }] }).join("\n");
+	assert.match(complete, /Reset 2: Expiry not provided/);
+	assert.doesNotMatch(complete, /Partial|forever|unlimited/);
+	for (const bankedResetCount of [0, undefined]) {
+		const text = renderCodexUsageDashboardContentLines(theme, { ...snapshot, bankedResetCount }).join("\n");
+		assert.doesNotMatch(text, /expiry|Reset 1:/);
+	}
 });
 
 void test("sanitizes presentation provider and model fields in the quota footer", () => {
@@ -1171,7 +1300,7 @@ void test("Pure dashboard content matches /usage groups while leaving caller con
 	const theme: SimpleTheme = { fg: (_color, text) => `${String.fromCharCode(27)}[32m${text}${String.fromCharCode(27)}[0m` };
 	const now = 1_900_000_000_000;
 	const snapshot: CodexUsageSnapshot = { fetchedAt: now, planType: "plus", ordinaryUsageAllowed: false,
-		credits: { hasCredits: true, unlimited: false, balance: "0", resetCreditCount: 0 },
+		credits: { hasCredits: true, unlimited: false, balance: "0", resetCreditCount: 0 }, bankedResetCount: 3,
 		buckets: [
 			{ id: "codex", label: "Codex", primary: { usedPercent: 0, windowMinutes: 300, resetsAt: now / 1000 + 60 },
 				secondary: { usedPercent: 100, windowMinutes: 10080, resetsAt: 0 } },
@@ -1183,11 +1312,12 @@ void test("Pure dashboard content matches /usage groups while leaving caller con
 		const content = renderCodexUsageDashboardContentLines(theme, snapshot, presentation, now, width);
 		const dashboard = renderCodexUsageDashboardLines(theme, snapshot, presentation, now, width);
 		assert.deepEqual(content, dashboard.slice(0, -1), `shared content at width ${width}`);
+		assert.ok(stripSgr(content.join("")).replaceAll(" ", "").includes("Bankedresets:3"), `banked count survives wrapping at width ${width}`);
 		assert.ok(content.every(line => visibleWidth(line) <= width), `ANSI width ${width}: ${JSON.stringify(content.filter(line => visibleWidth(line) > width).map(stripSgr))}`);
 		assert.doesNotMatch(stripSgr(content.join("\n")), /NaN|Invalid Date|esc\/q close/);
 	}
 	const text = stripSgr(renderCodexUsageDashboardContentLines(theme, snapshot, { profile: "personal" }, now, 120).join("\n"));
-	for (const field of ["Session", "Weekly", "100% left", "0% left", "Additional [extra]", "Quotas + account", "Profile: personal", "Plan: plus", "Availability: not allowed", "Credits: 0", "Credit resets: 0", "resets in 1m", "1970-01-01 00:00 UTC", "Reset: unavailable", "unknown", "No quota windows available"]) assert.ok(text.includes(field), field);
+	for (const field of ["Session", "Weekly", "100% left", "0% left", "Additional [extra]", "Quotas + account", "Profile: personal", "Plan: plus", "Availability: not allowed", "Credits: 0", "Credit resets: 0", "Banked resets: 3", "resets in 1m", "1970-01-01 00:00 UTC", "Reset: unavailable", "unknown", "No quota windows available"]) assert.ok(text.includes(field), field);
 	assert.doesNotMatch(text, /Profile: work|openai-codex\/|gpt-/);
 	const unlimited = { ...snapshot, credits: { hasCredits: false, unlimited: true, balance: undefined, resetCreditCount: undefined } };
 	assert.match(stripSgr(renderCodexUsageDashboardContentLines(theme, unlimited, {}, now, 100).join("\n")), /Credits: unlimited/);

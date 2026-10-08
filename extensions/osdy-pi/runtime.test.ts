@@ -49,8 +49,297 @@ registerHooks({
 
 type ShortcutRegistration = Parameters<ExtensionAPI["registerShortcut"]>[1];
 
+async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset-ui-runtime-")),
+	options: Pick<NonNullable<Parameters<typeof registerOsdyPi>[1]>, "fetchCodexUsage"> = {}) {
+	const { registerOsdyPi: registerResetRuntime } = await import("./runtime.js");
+	const previousDir = process.env.PI_CODING_AGENT_DIR;
+	const previousFetch = globalThis.fetch;
+	process.env.PI_CODING_AGENT_DIR = root;
+	const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
+	const events = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>();
+	const posts: Array<Record<string, string>> = [];
+	const dialogs: Array<{ title: string; options: string[] }> = [];
+	const notices: string[] = [];
+	let account = "synthetic-account";
+	let session = "synthetic-session";
+	let open = false;
+	let overlays = 0;
+	let nextAction = true;
+	let beforeAction: () => Promise<void> = () => Promise.resolve();
+	let beforeAuth: () => Promise<void> = () => Promise.resolve();
+	let onRender: (view: string) => void = () => {};
+	let panel: Component | undefined;
+	const shortcuts = new Map<string, ShortcutRegistration>();
+	const views: string[] = [];
+	let quotaReads = 0;
+	let unknown = false;
+	let refreshFails = false;
+	let count = 2;
+	let answer: (title: string, options: string[], index: number) => Promise<string | undefined> = (_title, options) => Promise.resolve(options.at(-1));
+	let onPost: (signal: AbortSignal | undefined) => Promise<void> = () => Promise.resolve();
+	const expiry = "2099-07-17T12:30:00Z";
+	globalThis.fetch = async (input, init) => {
+		const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+		if (url.endsWith("/rate-limit-reset-credits/consume")) {
+			assert.equal(init?.method, "POST");
+			assert.equal(typeof init.body, "string");
+			posts.push(JSON.parse(init.body as string) as Record<string, string>);
+			await onPost(init.signal ?? undefined);
+			if (unknown) throw new Error("private-backend-error");
+			return new Response(JSON.stringify({ code: "reset", windows_reset: 2 }));
+		}
+		assert.notEqual(init?.method, "POST", "all other requests are GET-only");
+		if (refreshFails && posts.length) throw new Error("private-refresh-error");
+		if (url.endsWith("/usage")) { quotaReads++; return new Response(JSON.stringify({ rate_limit: { primary_window: { used_percent: 90, limit_window_seconds: 18000 } }, rate_limit_reset_credits: { available_count: posts.length ? 0 : count } })); }
+		assert.ok(url.endsWith("/rate-limit-reset-credits"), "no unexpected HTTP destinations");
+		return new Response(JSON.stringify({ credits: ["first-credit", "selected-credit"].map(id => ({ id, status: "available", reset_type: "codex_rate_limits", expires_at: expiry })) }));
+	};
+	const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
+		registerShortcut: (key: string, shortcut: ShortcutRegistration) => shortcuts.set(key, shortcut),
+		on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => Promise<void> | void) => {
+			const list = events.get(name) ?? []; list.push(handler); events.set(name, list);
+		}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
+		events: { on: () => () => {} }, exec: () => { throw new Error("external execution forbidden"); },
+	} as unknown as ExtensionAPI;
+	const ctx = { cwd: root, hasUI: true, mode: "tui", model: { provider: "openai-codex", id: "synthetic" }, isIdle: () => true,
+		sessionManager: { getSessionId: () => session }, modelRegistry: { getProviderAuth: async (provider: string) => {
+			assert.equal(provider, "openai-codex");
+			const token = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: account } })).toString("base64url")}.signature`;
+			await beforeAuth();
+			return { auth: { apiKey: token } };
+		} }, ui: { getEditorComponent: () => undefined, setEditorComponent: () => {}, setHeader: () => {}, setFooter: () => {},
+			setWidget: () => {}, setWorkingVisible: () => {}, notify: (text: string) => { notices.push(text); },
+			theme: { name: "dark", appearance: "dark", fg: (_color: string, text: string) => text }, getAllThemes: () => [], setTheme: () => ({ success: false }),
+			select: (title: string, options: string[]) => {
+				assert.equal(open, false, "custom overlay must close BEFORE any workflow dialog");
+				const index = dialogs.length; dialogs.push({ title, options }); return answer(title, options, index);
+			},
+			custom: async (factory: (tui: unknown, theme: unknown, keys: unknown, done: (result: unknown) => void) => Component) => {
+				open = true; overlays++;
+				let result: unknown;
+				const mounted = factory({ terminal: { rows: 40 }, requestRender: () => { if (panel) onRender(panel.render(120).join("\n")); } }, ctx.ui.theme, undefined, value => { result = value; open = false; });
+				panel = mounted;
+				views.push(mounted.render(120).join("\n"));
+				const act = nextAction;
+				nextAction = false;
+				if (act) await beforeAction();
+				if (!act) mounted.handleInput?.("\x1b");
+				else if (mounted.render(120).join("\n").includes("Control Center")) {
+					for (let i = 0; i < 7; i++) mounted.handleInput?.("\x1b[B");
+					for (let i = 0; i < 100 && !mounted.render(120).join("\n").includes("Use or check banked reset"); i++)
+						await new Promise<void>(resolve => setImmediate(resolve));
+					assert.match(mounted.render(120).join("\n"), /Use or check banked reset/);
+					mounted.handleInput?.("\x1b[C"); mounted.handleInput?.("\x1b[H"); mounted.handleInput?.("\x1b[B"); mounted.handleInput?.("\r");
+				} else { assert.match(mounted.render(120).join("\n"), /u use\/check reset/); mounted.handleInput?.("u"); }
+				assert.equal(open, false, "action must produce a completion intent, not nested inline confirmation");
+				return result;
+			},
+		} } as unknown as ExtensionCommandContext;
+	const lifecycle = async (name: string) => {
+		for (const handler of events.get(name) ?? []) if (handler.toString().includes("idleUsageRefresh")) await handler({}, ctx);
+	};
+	try {
+		await registerResetRuntime(pi, { ...options, agentDir: () => root, readActiveProfile: () => Promise.resolve(undefined),
+			editorSettingsStore: { path: "/unused", save: () => Promise.resolve(), load: () => Promise.resolve({
+				version: 1, enabled: false, editorMode: "simple", headerVariant: "osdy-theme", mascot: "current", workingTreeEnabled: false,
+			}) } });
+		await lifecycle("session_start");
+	} catch (error) { globalThis.fetch = previousFetch; if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir; throw error; }
+	return { root, posts, dialogs, notices, views, expiry, quotaReads: () => quotaReads, overlays: () => overlays,
+		open: (surface = "usage") => { nextAction = true; return commands.get(surface)!.handler("", ctx); },
+		view: (shortcut = false) => { nextAction = false; return shortcut
+			? shortcuts.get("ctrl+alt+u")!.handler(ctx) : commands.get("usage")!.handler("", ctx); },
+		panel: () => panel?.render(120).join("\n") ?? "",
+		beforeAuth: (next: typeof beforeAuth) => { beforeAuth = next; },
+		onRender: (next: typeof onRender) => { onRender = next; },
+		beforeAction: (next: typeof beforeAction) => { beforeAction = next; },
+		setAnswer: (next: typeof answer) => { answer = next; }, setAccount: () => { account = "next-account"; },
+		setSession: () => { session = "next-session"; }, setUnknown: () => { unknown = true; },
+		setRefreshFailure: () => { refreshFails = true; }, setCount: (next: number) => { count = next; },
+		setPost: (next: typeof onPost) => { onPost = next; }, shutdown: () => lifecycle("session_shutdown"),
+		replace: () => lifecycle("session_start"),
+		close: async () => { await lifecycle("session_shutdown"); globalThis.fetch = previousFetch;
+			if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir; },
+	};
+}
+
+void test("registered active surfaces select and Cancel-first confirm before exactly one mocked POST", async () => {
+	for (const surface of ["usage", "osdyConfig"]) {
+		const f = await resetRuntimeFixture();
+		try {
+			await f.open(surface);
+			assert.equal(f.posts.length, 1, JSON.stringify({ surface, dialogs: f.dialogs, notices: f.notices }));
+			assert.equal(f.posts[0]?.credit_id, "selected-credit");
+			assert.match(f.posts[0]?.redeem_request_id ?? "", /^[0-9a-f-]{36}$/i);
+			assert.deepEqual(f.dialogs[1]?.options, ["Cancel", "Use reset"]);
+			assert.match(f.dialogs[1]?.title ?? "", /active Codex account.*one banked reset/i);
+			assert.ok(f.dialogs[1]?.title.includes(new Date(f.expiry).toLocaleString()));
+			assert.doesNotMatch(JSON.stringify(f.dialogs) + f.notices.join(""), /synthetic-account|selected-credit|redeem_request|private-/);
+			assert.ok(f.quotaReads() >= 3, "fresh pre-confirm/post-confirm/result snapshots");
+			assert.equal(f.overlays(), surface === "usage" ? 2 : 1);
+		} finally { await f.close(); }
+	}
+});
+
+void test("registered Cancel and ESC at either dialog never POST", async () => {
+	for (const cancelAt of [0, 1]) for (const answer of [undefined, "Cancel"]) {
+		const f = await resetRuntimeFixture();
+		try { f.setAnswer((_title, options, index) => Promise.resolve(index === cancelAt ? answer : options.at(-1))); await f.open(); assert.equal(f.posts.length, 0); }
+		finally { await f.close(); }
+	}
+});
+
+
 const profileLabels = await import("./profile-label.js");
 const { showControlCenter } = await import("./control-center.js");
+
+void test("unknown pending across registration reload only checks the same durable request after explicit confirmation", async () => {
+	const first = await resetRuntimeFixture();
+	first.setUnknown();
+	try { await first.open(); assert.equal(first.posts.length, 1); assert.match(first.notices.join(""), /Outcome unknown; do not start another reset/); }
+	finally { await first.close(); }
+	const next = await resetRuntimeFixture(first.root);
+	try {
+		next.setCount(0); assert.equal(next.posts.length, 0, "no startup replay");
+		next.setAnswer(() => Promise.resolve("Cancel"));
+		await next.open(); assert.equal(next.posts.length, 0);
+		assert.deepEqual(next.dialogs[0]?.options, ["Cancel", "Check pending attempt"]);
+		next.setAnswer((_title, options) => Promise.resolve(options[1]));
+		await next.open("osdyConfig");
+		assert.deepEqual(next.posts, first.posts, "same UUID and selected credit, not a new attempt");
+		assert.equal(next.dialogs.length, 2, "recovery does not select a fresh reset");
+		assert.match(next.dialogs[1]?.title ?? "", /same previous request.*not a new attempt/);
+	} finally { await next.close(); }
+});
+
+void test("active account/session changes at old-panel activation or during confirmation cannot POST", async () => {
+	for (const boundary of ["panel", "confirmation"] as const) for (const change of ["account", "session", "generation"] as const) {
+		const f = await resetRuntimeFixture();
+		const mutate = () => change === "generation" ? f.replace() : Promise.resolve(change === "account" ? f.setAccount() : f.setSession());
+		try {
+			if (boundary === "panel") f.beforeAction(mutate);
+			else f.setAnswer(async (_title, options, index) => { if (index === 1) await mutate(); return options.at(-1); });
+			await f.open(); assert.equal(f.posts.length, 0, `${boundary}/${change}`);
+			assert.equal(f.overlays(), 1, "stale panels exit instead of reopening on new identity");
+		} finally { await f.close(); }
+	}
+});
+
+void test("one registration shares busy guard across Usage and Control Center while human selection awaits", async () => {
+	const f = await resetRuntimeFixture();
+	let finish: () => void = () => {};
+	let entered: () => void = () => {};
+	const reached = new Promise<void>(resolve => { entered = resolve; });
+	f.setAnswer((_title, options, index) => index === 0 ? new Promise(resolve => { finish = () => resolve(options.at(-1)); entered(); }) : Promise.resolve(options.at(-1)));
+	try {
+		const first = f.open(); await reached;
+		await f.open("osdyConfig");
+		assert.equal(f.posts.length, 0); assert.equal(f.dialogs.length, 1);
+		assert.match(f.notices.join(""), /already in progress/);
+		finish(); await first; assert.equal(f.posts.length, 1);
+	} finally { finish(); await f.close(); }
+});
+
+void test("shutdown or new session after dispatch aborts the HTTP attempt as unknown, preserving pending for explicit recovery", async () => {
+	for (const boundary of ["shutdown", "session"] as const) {
+		const f = await resetRuntimeFixture();
+		f.setPost(async signal => { await (boundary === "shutdown" ? f.shutdown() : f.replace()); assert.equal(signal?.aborted, true); throw new Error("private-dispatch-error"); });
+		try { await f.open(); assert.equal(f.posts.length, 1); assert.match(f.notices.join(""), /Outcome unknown.*Quota refresh failed/); assert.equal(f.overlays(), 1); }
+		finally { await f.close(); }
+		const next = await resetRuntimeFixture(f.root);
+		try { next.setAnswer(() => Promise.resolve("Cancel")); await next.open(); assert.deepEqual(next.dialogs[0]?.options, ["Cancel", "Check pending attempt"]); assert.equal(next.posts.length, 0); }
+		finally { await next.close(); }
+	}
+});
+
+void test("confirmed result refreshes the reopened view; failed refresh cannot turn it into failure or expose backend errors", async () => {
+	for (const fails of [false, true]) {
+		const f = await resetRuntimeFixture();
+		try {
+			if (fails) f.setRefreshFailure();
+			await f.open();
+			assert.equal(f.posts.length, 1);
+			assert.match(f.notices.join(""), /Banked reset consumed/);
+			if (fails) assert.match(f.notices.join(""), /Quota refresh failed/);
+			else assert.match(f.views.at(-1) ?? "", /Banked resets: 0/);
+			assert.doesNotMatch(f.notices.join("") + f.views.join(""), /private-|reset failed/i);
+		} finally { await f.close(); }
+	}
+});
+
+function runtimeGate() {
+	let resolve: () => void = () => {};
+	const promise = new Promise<void>(done => { resolve = done; });
+	return { promise, resolve };
+}
+
+for (const fails of [false, true]) {
+	void test(`post-reset refresh ${fails ? "error" : "success"} cannot overwrite newer quota after delayed auth revalidation`, async () => {
+		const authEntered = runtimeGate();
+		const releaseAuth = runtimeGate();
+		const currentPublished = runtimeGate();
+		const snapshot = (count: number): CodexUsageSnapshot => ({ fetchedAt: count, planType: "plus",
+			ordinaryUsageAllowed: true, buckets: [], credits: undefined, bankedResetCount: count,
+			bankedResetDetails: count === 2 ? [{ id: "selected-credit", expiresAt: Date.parse("2099-07-17T12:30:00Z") }] : [] });
+		let holdOldResult = true;
+		let oldSignal: AbortSignal | undefined;
+		const f = await resetRuntimeFixture(undefined, { fetchCodexUsage: (_auth, { signal }) => {
+			if (!f.posts.length) return Promise.resolve(snapshot(2));
+			if (holdOldResult) {
+				holdOldResult = false; oldSignal = signal;
+				f.beforeAuth(() => {
+					f.beforeAuth(() => Promise.resolve());
+					authEntered.resolve();
+					return releaseAuth.promise;
+				});
+				return fails ? Promise.reject(new Error("private-old-refresh-error")) : Promise.resolve(snapshot(0));
+			}
+			return Promise.resolve(snapshot(7));
+		} });
+		f.onRender(view => { if (/Banked resets: 7/.test(view)) currentPublished.resolve(); });
+		const old = f.open("osdyConfig");
+		try {
+			await authEntered.promise;
+			assert.equal(oldSignal?.aborted, false, "old refresh reached its awaited publication auth check");
+			await f.view();
+			await currentPublished.promise;
+			assert.equal(oldSignal?.aborted, true, "new usage refresh supersedes the auth-blocked reset refresh");
+			assert.match(f.panel(), /Banked resets: 7/, "new quota is published before old auth resumes");
+			releaseAuth.resolve();
+			await old;
+			assert.match(f.panel(), /Banked resets: 7/, `old ${fails ? "error" : "success"} must not replace current quota`);
+			assert.equal(f.posts.length, 1);
+			assert.match(f.notices.join(""), /Banked reset consumed.*Quota refresh failed/);
+			assert.doesNotMatch(f.notices.join(""), /private-/);
+		} finally { releaseAuth.resolve(); await old; await f.close(); }
+	});
+}
+
+for (const shortcut of [false, true]) for (const boundary of ["replace", "session-id", "shutdown"] as const) {
+	void test(`${shortcut ? "usage shortcut" : "/usage"} cannot mount after ${boundary} during delayed reset binding`, async () => {
+		const f = await resetRuntimeFixture();
+		const authEntered = runtimeGate();
+		const releaseAuth = runtimeGate();
+		f.beforeAuth(() => {
+			f.beforeAuth(() => Promise.resolve());
+			authEntered.resolve();
+			return releaseAuth.promise;
+		});
+		const opening = f.view(shortcut);
+		try {
+			await authEntered.promise;
+			assert.equal(f.overlays(), 0, "binding is held before custom UI mounting");
+			if (boundary === "replace") await f.replace();
+			else if (boundary === "session-id") f.setSession();
+			else await f.shutdown();
+			releaseAuth.resolve();
+			await opening;
+			assert.equal(f.overlays(), 0, "stale opening must not mount an overlay or refresh its quota");
+			assert.equal(f.quotaReads(), 0);
+			assert.equal(f.posts.length, 0);
+		} finally { releaseAuth.resolve(); await opening; await f.close(); }
+	});
+}
 
 void test("registered Account factory isolates profile preview from active quota and cancels SDK overlay requests", async () => {
 	const { bindControlCenterAccount } = await import("./control-center-account.js");

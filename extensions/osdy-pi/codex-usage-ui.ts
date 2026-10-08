@@ -80,6 +80,24 @@ export function renderControlCenterQuotaWindow(theme: SimpleTheme, window: Codex
 	];
 }
 
+/** Shared snapshot-only expiry labels; callers retain their own width wrapping. */
+export function formatBankedResetExpiryLines(snapshot: CodexUsageSnapshot, now = Date.now()): string[] {
+	const count = snapshot.bankedResetCount;
+	if (count === undefined || count <= 0) return [];
+	const details = snapshot.bankedResetDetails;
+	if (details === undefined) return ["Reset expiry details unavailable."];
+	const lines = details.map(({ expiresAt }, index) => {
+		const label = `Reset ${index + 1}:`;
+		const date = expiresAt === undefined ? undefined : new Date(expiresAt);
+		if (!date || !Number.isFinite(date.getTime())) return `${label} Expiry not provided`;
+		return date.getTime() <= now
+			? `${label} expired ${date.toLocaleString()} (cached; local time)`
+			: `${label} expires ${date.toLocaleString()} (local time)`;
+	});
+	if (details.length < count) lines.push(`Partial expiry details: ${details.length} of ${count} resets listed.`);
+	return lines;
+}
+
 function validReset(value: number | undefined): value is number {
 	return value !== undefined && Number.isFinite(value) && !Number.isNaN(new Date(value * 1000).getTime());
 }
@@ -471,6 +489,7 @@ function renderQuotaFooterLines(
 	snapshot: CodexUsageSnapshot,
 	presentation: CodexUsagePresentation,
 	width: number,
+	now: number,
 ): string[] {
 	const lines = [...wrapToVisibleWidth("Quotas + account", width).map(line => theme.fg("accent", line)), divider(theme, width)];
 	const quotaLines: string[] = [];
@@ -549,6 +568,14 @@ function renderQuotaFooterLines(
 			).map((line) => theme.fg("mdLink", line)),
 		);
 	}
+	if (snapshot.bankedResetCount !== undefined)
+		lines.push(
+			"",
+			...wrapToVisibleWidth(`Banked resets: ${snapshot.bankedResetCount}`, width)
+				.map(line => theme.fg("mdLink", line)),
+			...formatBankedResetExpiryLines(snapshot, now).flatMap(line => wrapToVisibleWidth(line, width))
+				.map(line => theme.fg("muted", line)),
+		);
 	if (snapshot.credits) {
 		const creditText = snapshot.credits.unlimited
 			? "unlimited"
@@ -573,8 +600,8 @@ function renderQuotaFooterLines(
 	return lines;
 }
 
-function controlHints(theme: SimpleTheme, width: number): string {
-	const text = "r refresh · esc/q close";
+function controlHints(theme: SimpleTheme, width: number, resetEnabled = false): string {
+	const text = `${resetEnabled ? "u use/check reset · " : ""}r refresh · esc/q close`;
 	return theme.fg(
 		"muted",
 		`${" ".repeat(Math.max(0, width - visibleWidth(text)))}${text}`,
@@ -593,7 +620,7 @@ export function renderCodexUsageDashboardContentLines(
 	for (const bucket of snapshot.buckets)
 		lines.push(...renderQuotaBucketSection(theme, bucket, now, width));
 	lines.push(theme.fg("border", "─".repeat(Math.max(1, width))));
-	lines.push(...renderQuotaFooterLines(theme, snapshot, presentation, width));
+	lines.push(...renderQuotaFooterLines(theme, snapshot, presentation, width, now));
 	return width < 4 ? lines.map(line => truncateToWidth(line, Math.max(1, width), "")) : lines;
 }
 
@@ -603,10 +630,11 @@ export function renderCodexUsageDashboardLines(
 	presentation: CodexUsagePresentation = {},
 	now = Date.now(),
 	width = 94,
+	resetEnabled = false,
 ): string[] {
 	return [
 		...renderCodexUsageDashboardContentLines(theme, snapshot, presentation, now, width),
-		controlHints(theme, width),
+		controlHints(theme, width, resetEnabled),
 	];
 }
 
@@ -616,9 +644,10 @@ export function renderCodexUsagePanelLines(
 	presentation: CodexUsagePresentation = {},
 	now = Date.now(),
 	width = 94,
+	resetEnabled = false,
 ): string[] {
 	const contentWidth = Math.max(1, width - 2);
-	const controls = controlHints(theme, contentWidth);
+	const controls = controlHints(theme, contentWidth, resetEnabled);
 	const content =
 		state.kind === "loading"
 			? [theme.fg("muted", "Loading subscription usage…"), controls]
@@ -632,6 +661,7 @@ export function renderCodexUsagePanelLines(
 									presentation,
 									now,
 									contentWidth,
+									resetEnabled,
 								)
 							: [controls]),
 					]
@@ -642,6 +672,7 @@ export function renderCodexUsagePanelLines(
 							presentation,
 							now,
 							contentWidth,
+							resetEnabled,
 						)
 					: [controls];
 	return doubleBorderBox(theme, width, "Codex subscription usage", content);
@@ -653,6 +684,7 @@ class CodexUsagePanel implements Component {
 	private readonly refresh: CodexUsageRefresh;
 	private readonly presentation: CodexUsagePresentation;
 	private readonly close: () => void;
+	private readonly useReset: (() => void) | undefined;
 	private refreshInFlight = false;
 
 	constructor(
@@ -661,12 +693,14 @@ class CodexUsagePanel implements Component {
 		refresh: CodexUsageRefresh,
 		presentation: CodexUsagePresentation,
 		close: () => void,
+		useReset?: () => void,
 	) {
 		this.theme = theme;
 		this.getState = getState;
 		this.refresh = refresh;
 		this.presentation = presentation;
 		this.close = close;
+		this.useReset = useReset;
 	}
 
 	private async refreshUsage(): Promise<void> {
@@ -681,6 +715,7 @@ class CodexUsagePanel implements Component {
 
 	handleInput(data: string): void {
 		if (matchesKey(data, "escape") || matchesKey(data, "q")) return this.close();
+		if (matchesKey(data, "u") && this.useReset) return this.useReset();
 		if (matchesKey(data, "r")) void this.refreshUsage();
 	}
 
@@ -691,6 +726,7 @@ class CodexUsagePanel implements Component {
 			this.presentation,
 			Date.now(),
 			width,
+			!!this.useReset,
 		);
 	}
 
@@ -723,31 +759,40 @@ export async function showCodexUsagePanel(
 	getState: () => CodexUsageViewState,
 	refresh: CodexUsageRefresh,
 	presentation: CodexUsagePresentation = {},
+	useReset?: () => Promise<boolean>,
 ): Promise<void> {
-	await ctx.ui.custom<void>(
-		(tui, theme, _keybindings, done) => {
-			const initialRefresh = refresh();
-			tui.requestRender();
-			void initialRefresh.finally(() => tui.requestRender());
-			return new CodexUsagePanel(
-				theme,
-				getState,
-				async () => {
-					const pendingRefresh = refresh();
-					tui.requestRender();
-					try {
-						await pendingRefresh;
-					} finally {
+	// A completed custom interaction is disposed before standard dialogs start.
+	let firstOpen = true;
+	while (true) {
+		const intent = await ctx.ui.custom<"reset" | undefined>(
+			(tui, theme, _keybindings, done) => {
+				// The workflow already refreshed the result; do not erase it on reopen.
+				const initialRefresh = firstOpen ? refresh() : Promise.resolve();
+				firstOpen = false;
+				tui.requestRender();
+				void initialRefresh.finally(() => tui.requestRender());
+				return new CodexUsagePanel(
+					theme,
+					getState,
+					async () => {
+						const pendingRefresh = refresh();
 						tui.requestRender();
-					}
-				},
-				presentation,
-				() => done(),
-			);
-		},
-		{
-			overlay: true,
-			overlayOptions: CODEX_USAGE_OVERLAY_OPTIONS,
-		},
-	);
+						try {
+							await pendingRefresh;
+						} finally {
+							tui.requestRender();
+						}
+					},
+					presentation,
+					() => done(undefined),
+					useReset ? () => done("reset") : undefined,
+				);
+			},
+			{
+				overlay: true,
+				overlayOptions: CODEX_USAGE_OVERLAY_OPTIONS,
+			},
+		);
+		if (intent !== "reset" || !useReset || !(await useReset())) return;
+	}
 }
