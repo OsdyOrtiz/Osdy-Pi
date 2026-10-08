@@ -16,7 +16,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 const { createControlCenterSounds } = await import("./control-center-sounds.js");
 
 function fixture(platform: "darwin" | "unsupported" = "darwin") {
-	let settings: GlobalAudioNotificationSettings = { version: 1, sounds: { completion: "/saved.wav" } };
+	let settings: GlobalAudioNotificationSettings = { version: 1, enabled: false, sounds: { completion: "/saved.wav" } };
 	let saveFails = false;
 	let loadFails = false;
 	let playFails = false;
@@ -53,10 +53,12 @@ function fixture(platform: "darwin" | "unsupported" = "darwin") {
 void test("Sounds shows saved/effective paths and flag precedence without playing or saving", async () => {
 	const f = fixture();
 	const view = await f.service.read();
-	assert.match(view.summary, /Master.*unavailable/);
-	assert.match(view.rows[0]?.details?.join(" | ") ?? "", /saved: \/saved.wav.*Effective \(startup-flag\): \/flag.wav/);
+	assert.match(view.summary, /Automatic audio: muted/);
+	assert.match(view.rows[0]?.label ?? "", /Enable automatic audio/);
+	assert.match(view.rows[0]?.details?.join(" | ") ?? "", /explicit.*tests.*play/i);
+	assert.match(view.rows[1]?.details?.join(" | ") ?? "", /saved: \/saved.wav.*Effective \(startup-flag\): \/flag.wav/);
 	assert.match(view.note, /clearing.*does not disable/i);
-	assert.equal(view.rows.length, 12);
+	assert.equal(view.rows.length, 13);
 	assert.deepEqual(f.played, []); assert.deepEqual(f.writes, []);
 });
 
@@ -65,12 +67,27 @@ void test("configure validates before saving and refreshes; clear keeps v1 and o
 	assert.equal((await f.service.apply({ kind: "sound-set", event: "completion", path: "missing.wav" })).failed, true);
 	assert.equal(f.writes.length, 0);
 	assert.equal((await f.service.apply({ kind: "sound-set", event: "question", path: "valid.wav" })).failed, false);
-	assert.deepEqual(f.settings(), { version: 1, sounds: { completion: "/saved.wav", question: "/valid.wav" } });
+	assert.deepEqual(f.settings(), { version: 1, enabled: false, sounds: { completion: "/saved.wav", question: "/valid.wav" } });
 	const clear = await f.service.apply({ kind: "sound-clear", event: "completion" });
 	assert.equal(clear.failed, false);
-	assert.deepEqual(f.settings(), { version: 1, sounds: { question: "/valid.wav" } });
-	assert.match((await f.service.read()).rows[0]?.details?.join(" | ") ?? "", /saved: none.*Effective \(startup-flag\): \/flag.wav/);
+	assert.deepEqual(f.settings(), { version: 1, enabled: false, sounds: { question: "/valid.wav" } });
+	assert.match((await f.service.read()).rows[1]?.details?.join(" | ") ?? "", /saved: none.*Effective \(startup-flag\): \/flag.wav/);
 	assert.deepEqual(f.played, []);
+});
+
+void test("master toggle preserves all paths and exposes the inverse action", async () => {
+	const f = fixture();
+	assert.equal((await f.service.apply({ kind: "sound-enabled", value: true })).failed, false);
+	assert.deepEqual(f.settings(), { version: 1, enabled: true, sounds: { completion: "/saved.wav" } });
+	const view = await f.service.read();
+	assert.match(view.summary, /Automatic audio: enabled/);
+	assert.deepEqual(view.rows[0]?.action, { kind: "sound-enabled", value: false });
+	assert.equal((await f.service.apply({ kind: "sound-enabled", value: false })).failed, false);
+	assert.deepEqual(f.settings(), { version: 1, enabled: false, sounds: { completion: "/saved.wav" } });
+	assert.deepEqual(f.played, []);
+	f.failSave();
+	assert.equal((await f.service.apply({ kind: "sound-enabled", value: true })).failed, true);
+	assert.equal(f.settings().enabled, false);
 });
 
 void test("test playback is explicit, reports unavailable platforms and player failures", async () => {
@@ -95,7 +112,7 @@ void test("save errors and refresh errors never falsely report success", async (
 	const result = await h.service.apply({ kind: "sound-clear", event: "completion" });
 	assert.equal(result.failed, true);
 	assert.match(result.message, /Saved globally, but runtime refresh failed/);
-	assert.deepEqual(h.writes, [{ version: 1, sounds: {} }]);
+	assert.deepEqual(h.writes, [{ version: 1, enabled: false, sounds: {} }]);
 });
 
 void test("default validator rejects missing, unsupported and directory paths without saving", async () => {

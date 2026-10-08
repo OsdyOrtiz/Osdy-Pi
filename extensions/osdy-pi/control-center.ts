@@ -16,6 +16,7 @@ export const CONTROL_CENTER_CATEGORIES = [
 export type ControlCenterCategory = (typeof CONTROL_CENTER_CATEGORIES)[number];
 export type ControlCenterServiceAction =
 	| { kind: "git-enabled"; value: boolean }
+	| { kind: "sound-enabled"; value: boolean }
 	| { kind: "sound-set"; event: AudioNotificationEvent; path: string }
 	| { kind: "sound-clear"; event: AudioNotificationEvent }
 	| { kind: "sound-test"; event: AudioNotificationEvent };
@@ -404,7 +405,7 @@ export class ControlCenter implements Component, Focusable {
 			};
 			return;
 		}
-		if (action.kind === "git-enabled" || action.kind === "sound-set" || action.kind === "sound-clear" || action.kind === "sound-test" || action.kind === "usage-refresh" || action.kind === "usage-range" || action.kind === "usage-account" || action.kind === "usage-detail") {
+		if (action.kind === "git-enabled" || action.kind === "sound-enabled" || action.kind === "sound-set" || action.kind === "sound-clear" || action.kind === "sound-test" || action.kind === "usage-refresh" || action.kind === "usage-range" || action.kind === "usage-account" || action.kind === "usage-detail") {
 			void this.activateService(action);
 			return;
 		}

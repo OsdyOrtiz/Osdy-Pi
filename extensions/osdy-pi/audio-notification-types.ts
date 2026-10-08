@@ -23,10 +23,11 @@ export type AudioNotificationConfig = Partial<
 
 export type GlobalAudioNotificationSettings = {
 	version: 1;
+	enabled: boolean;
 	sounds: AudioNotificationConfig;
 };
 
-export type AudioConfigSource = "startup-flag" | "global" | "unconfigured";
+export type AudioConfigSource = "startup-flag" | "global" | "bundled-default" | "unconfigured";
 
 export type ResolvedSoundFile =
 	| {

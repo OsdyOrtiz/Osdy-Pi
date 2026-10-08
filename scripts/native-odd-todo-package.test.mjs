@@ -29,6 +29,8 @@ test("npm package includes the single native extension entry and session TODO mo
 	for (const path of [
 		"extensions/osdy-pi.ts",
 		"extensions/osdy-pi/runtime.ts",
+		"extensions/osdy-pi/assets/notification-default.wav",
+		"extensions/osdy-pi/assets/PROVENANCE.md",
 		"extensions/osdy-pi/uninstall.ts",
 		"extensions/osdy-pi/agent-coexistence-setup.ts",
   "extensions/osdy-pi/todo-provider-settings.ts",

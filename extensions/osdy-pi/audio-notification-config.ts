@@ -1,6 +1,7 @@
 import { access, constants, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -147,7 +148,10 @@ export function getEffectiveAudioNotificationPath(
 	if (globalPath !== undefined) {
 		return { source: "global", path: globalPath };
 	}
-	return { source: "unconfigured" };
+	return {
+		source: "bundled-default",
+		path: fileURLToPath(new URL("./assets/notification-default.wav", import.meta.url)),
+	};
 }
 
 export async function resolveAudioNotificationSound(
@@ -156,7 +160,16 @@ export async function resolveAudioNotificationSound(
 	event: AudioNotificationEvent,
 	settingsStore: AudioSoundSettingsStore,
 ): Promise<ResolvedSoundFile> {
-	const globalSettings = await settingsStore.load();
+	return resolveAudioNotificationSoundFromSettings(pi, ctx, event, await settingsStore.load());
+}
+
+/** Resolve paths independently of master enablement so explicit tests still play. */
+export async function resolveAudioNotificationSoundFromSettings(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	event: AudioNotificationEvent,
+	globalSettings: GlobalAudioNotificationSettings,
+): Promise<ResolvedSoundFile> {
 	const effectivePath = getEffectiveAudioNotificationPath(
 		pi,
 		globalSettings,

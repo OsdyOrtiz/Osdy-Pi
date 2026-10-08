@@ -14,7 +14,7 @@ const CANCEL_SETUP_OPTION = "Cancel setup";
 const KEEP_CURRENT_OPTION = "Keep current";
 const SET_OR_REPLACE_OPTION = "Set or replace";
 const CLEAR_SAVED_OPTION = "Clear saved sound";
-const LEAVE_UNCONFIGURED_OPTION = "Leave unconfigured";
+const LEAVE_UNCONFIGURED_OPTION = "Use bundled default (startup flags still override)";
 
 function formatValidationReason(reason: AudioPathValidationReason): string {
 	switch (reason) {
@@ -35,7 +35,7 @@ function formatValidationReason(reason: AudioPathValidationReason): string {
 
 function createSummary(settings: AudioNotificationConfig): string {
 	return AUDIO_NOTIFICATION_EVENTS.map((event) => {
-		const value = settings[event] ?? "(unconfigured)";
+		const value = settings[event] ?? "(bundled default; startup flags still override)";
 		return `${event}: ${value}`;
 	}).join("\n");
 }
@@ -144,6 +144,7 @@ async function revalidateStagedSettings(
 
 function createSettingsPayload(
 	stagedSettings: AudioNotificationConfig,
+	enabled: boolean,
 ): GlobalAudioNotificationSettings {
 	const sounds: AudioNotificationConfig = {};
 	for (const event of AUDIO_NOTIFICATION_EVENTS) {
@@ -152,17 +153,18 @@ function createSettingsPayload(
 			sounds[event] = value;
 		}
 	}
-	return { version: 1, sounds };
+	return { version: 1, enabled, sounds };
 }
 
 export async function runSoundSetupWizard(
 	ctx: ExtensionContext,
 	settingsStore: AudioSoundSettingsStore,
 ): Promise<void> {
-	const currentSettings = (await settingsStore.load()).sounds;
+	const settings = await settingsStore.load();
+	const currentSettings = settings.sounds;
 	const stagedSettings: AudioNotificationConfig = { ...currentSettings };
 	ctx.ui.notify(
-		`Osdy Pi sound setup. Supported formats: .mp3 and .wav. Global config: ${settingsStore.path}`,
+		`Osdy Pi sound setup. Supported formats: .mp3 and .wav. No saved path uses the bundled default; startup flags still override. Global config: ${settingsStore.path}`,
 		"info",
 	);
 
@@ -187,7 +189,7 @@ export async function runSoundSetupWizard(
 		}
 		if (selectedAction === CLEAR_SAVED_OPTION) {
 			delete stagedSettings[event];
-			ctx.ui.notify(`Cleared saved ${event} sound.`, "info");
+			ctx.ui.notify(`Cleared saved ${event} sound. Uses bundled default unless a startup flag overrides.`, "info");
 			continue;
 		}
 		if (selectedAction === SET_OR_REPLACE_OPTION) {
@@ -215,6 +217,6 @@ export async function runSoundSetupWizard(
 		return;
 	}
 
-	await settingsStore.save(createSettingsPayload(stagedSettings));
+	await settingsStore.save(createSettingsPayload(stagedSettings, settings.enabled));
 	ctx.ui.notify("Osdy Pi sound settings saved.", "info");
 }

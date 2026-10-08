@@ -33,6 +33,8 @@ void test("Git reads branch/status only and delegates persisted enabled changes 
 		["--no-optional-locks", "status", "--short", "--untracked-files=normal"],
 	]);
 	assert.deepEqual(applied, []);
+	assert.equal((await service.apply({ kind: "sound-enabled", value: false })).failed, true);
+	assert.deepEqual(applied, [], "sound master action cannot change Git preferences");
 	assert.equal((await service.apply({ kind: "git-enabled", value: false })).failed, false);
 	assert.deepEqual(applied, [false]);
 	assert.equal((await service.read()).rows[1]?.current, true);

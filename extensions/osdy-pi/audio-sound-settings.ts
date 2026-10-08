@@ -21,7 +21,7 @@ function getAgentDir(): string {
 }
 
 function createDefaultSettings(): GlobalAudioNotificationSettings {
-	return { version: GLOBAL_SETTINGS_VERSION, sounds: {} };
+	return { version: GLOBAL_SETTINGS_VERSION, enabled: true, sounds: {} };
 }
 
 function isAudioEvent(value: string): value is AudioNotificationEvent {
@@ -58,6 +58,8 @@ function normalizeLoadedSettings(
 
 	return {
 		version: GLOBAL_SETTINGS_VERSION,
+		// Old v1 files and invalid values retain automatic playback by default.
+		enabled: recordValue.enabled !== false,
 		sounds: normalizeSounds(recordValue.sounds),
 	};
 }
