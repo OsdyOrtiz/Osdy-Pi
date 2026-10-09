@@ -6,6 +6,7 @@ type EditorFactory = Exclude<
 	undefined
 >;
 import type { CodexUsageSnapshot } from "./codex-usage.js";
+import type { GenerationReading } from "./generation-meter.js";
 
 export type AnimationMode = "off" | "intro" | "continuous";
 
@@ -58,6 +59,8 @@ export type CodexUsageState =
 
 export type OsdyState = {
 	codexUsage: CodexUsageState;
+	/** Volatile response reading; never persisted as usage or settings. */
+	generation?: GenerationReading;
 	enabled: boolean;
 	/** Actual mounted editor, including while a desired change is deferred. */
 	editorEffective: boolean;

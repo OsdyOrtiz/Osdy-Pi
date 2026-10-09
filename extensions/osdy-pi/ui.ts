@@ -343,7 +343,7 @@ class OsdyFooter implements Component {
 			? renderCompactCodexQuotaBars(this.theme, codexSnapshot, width)
 			: [];
 		const usageLine = truncateToWidth(
-			formatContextUsage(this.theme, contextUsageData(this.ctx), width),
+			formatContextUsage(this.theme, { ...contextUsageData(this.ctx), generation: this.state.generation }, width),
 			width,
 			ellipsis,
 		);
@@ -490,7 +490,7 @@ export function createEditorComponent(
 			const topRight = ctx.ui.theme.fg("muted", layout.topRight);
 			const bottomLeft = formatContextUsage(
 				ctx.ui.theme,
-				contextUsageData(ctx),
+				{ ...contextUsageData(ctx), generation: state.generation },
 				innerWidth,
 			);
 			lines[0] = `${borderColor("╭")}${fitBorder(topLeft, topRight, editorWidth - 2, borderColor)}${borderColor("╮")}`;

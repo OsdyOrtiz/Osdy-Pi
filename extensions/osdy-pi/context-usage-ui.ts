@@ -1,4 +1,5 @@
-import { visibleWidth } from "@earendil-works/pi-tui";
+import type { GenerationReading } from "./generation-meter.js";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { shortNumber } from "./format.js";
 
 export type ContextUsageDisplayData = {
@@ -7,6 +8,7 @@ export type ContextUsageDisplayData = {
 	cacheRead: number;
 	cacheWrite: number;
 	cost: number;
+	generation?: GenerationReading | undefined;
 	percent: number | undefined;
 	contextWindow: number | undefined;
 };
@@ -53,8 +55,17 @@ export function formatContextUsage(
 		usageTone(displayPercent),
 		`[${usageBar(displayPercent)}]`,
 	);
-	const full = `tok ↑${shortNumber(usage.input)} ↓${shortNumber(usage.output)}${cacheLabel} · $${usage.cost.toFixed(4)} · ctx ${bar} ${percentageLabel}%/${contextWindowLabel}`;
+	const generation = usage.generation;
+	const rate = generation?.kind === "complete" || generation?.kind === "streaming"
+		? generation.tokensPerSecond : null;
+	const speed = rate !== null && Number.isFinite(rate) && rate > 0
+		? `${generation?.kind === "streaming" ? "≈" : ""}${rate.toFixed(1)} tok/s`
+		: generation?.kind === "streaming" ? "tok/s …" : "tok/s —";
+	const full = `${speed}${cacheLabel} · $${usage.cost.toFixed(4)} · ctx ${bar} ${percentageLabel}%/${contextWindowLabel}`;
 	if (availableWidth === undefined || visibleWidth(full) <= availableWidth)
 		return full;
-	return `$${usage.cost.toFixed(4)} · ctx ${bar} ${percentageLabel}%`;
+	const compact = `${speed}${cacheLabel} · $${usage.cost.toFixed(4)} · ctx ${bar} ${percentageLabel}%`;
+	if (visibleWidth(compact) <= availableWidth) return compact;
+	const minimal = `${speed} · $${usage.cost.toFixed(4)} · ctx ${percentageLabel}%`;
+	return truncateToWidth(minimal, Math.max(0, availableWidth), "");
 }

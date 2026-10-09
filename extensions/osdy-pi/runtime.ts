@@ -5,6 +5,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
+import { createGenerationMeter, type GenerationReading } from "./generation-meter.js";
 import { createCodexUsageRefresh, type CodexUsageRefreshClock } from "./codex-usage-refresh.js";
 import { createControlCenterTodo } from "./control-center-todo.js";
 import { createControlCenterAgents } from "./control-center-agents.js";
@@ -1122,6 +1123,7 @@ export async function registerOsdyPi(
 		/** Tests inject a synthetic agent-data root; production uses the SDK root. */
 		agentDir?: () => string;
 		codexUsageClock?: CodexUsageRefreshClock;
+		generationClock?: () => number;
 		fetchCodexUsage?: CodexUsageFetcher;
 		accountFactory?: typeof bindControlCenterAccount;
 		editorSettingsStore?: ReturnType<typeof createEditorSettingsStore>;
@@ -1139,6 +1141,12 @@ export async function registerOsdyPi(
 		tui: undefined,
 		workingTreeEnabled: true,
 		workingTreePlacement: "aboveEditor",
+	};
+	const generationMeter = createGenerationMeter(dependencies.generationClock);
+	state.generation = generationMeter.reset();
+	const presentGeneration = (reading: GenerationReading): void => {
+		state.generation = reading;
+		state.tui?.requestRender();
 	};
 	const workingState: WorkingWidgetState = {
 		active: false,
@@ -1306,11 +1314,29 @@ export async function registerOsdyPi(
 		audioRouter,
 	);
 
+	pi.on("message_start", (event) => {
+		if (sessionContext && event.message.role === "assistant") presentGeneration(generationMeter.start());
+	});
+	pi.on("message_update", (event) => {
+		if (!sessionContext || event.message.role !== "assistant") return;
+		const update = event.assistantMessageEvent;
+		if (update.type === "text_delta" || update.type === "thinking_delta" || update.type === "toolcall_delta") {
+			// Count only deltas, not mutable partial snapshots or authoritative block ends.
+			presentGeneration(generationMeter.delta(update.delta));
+		} else if (update.type === "error") presentGeneration(generationMeter.interrupt());
+	});
+	pi.on("message_end", (event) => {
+		if (sessionContext && event.message.role === "assistant") {
+			// message_end precedes persistence. Output already includes reasoning tokens.
+			presentGeneration(generationMeter.finish(event.message.usage?.output, event.message.stopReason));
+		}
+	});
 	pi.on("agent_start", () => {
 		controller.onAgentStart();
 		audioRouter.onAgentStart();
 	});
 	pi.on("agent_end", (_event, ctx) => {
+		presentGeneration(generationMeter.interrupt());
 		controller.onAgentEnd();
 		audioRouter.onAgentEnd(ctx);
 		if (state.enabled) clearGentleShellChangesWidget(ctx);
@@ -1346,6 +1372,7 @@ export async function registerOsdyPi(
 	});
 	pi.on("session_shutdown", () => {
 		usageSettingsReady = false;
+		presentGeneration(generationMeter.reset());
 		idleUsageRefresh.stop();
 		runtimeGeneration++;
 		for (const abort of resetAborts) abort.abort();
@@ -1363,6 +1390,7 @@ export async function registerOsdyPi(
 		sessionContext = undefined;
 	});
 	pi.on("session_start", async (_event, ctx) => {
+		presentGeneration(generationMeter.reset());
 		controller.onShutdown();
 		idleUsageRefresh.stop();
 		codexUsageAbort?.abort();
