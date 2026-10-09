@@ -1,9 +1,22 @@
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, realpath, symlink } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { registerHooks } from "node:module";
+import { fileURLToPath } from "node:url";
+import type { ProfileCodexUsageResult } from "./profile-codex-usage.js";
+import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { type Component, type TUI } from "@earendil-works/pi-tui";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import {
+registerHooks({ resolve(specifier, context, next) {
+	if (specifier.startsWith(".") && specifier.endsWith(".js") && context.parentURL?.endsWith(".ts")) {
+		const url = new URL(`${specifier.slice(0, -3)}.ts`, context.parentURL);
+		if (existsSync(fileURLToPath(url))) return { shortCircuit: true, url: url.href };
+	}
+	return next(specifier, context);
+} });
+const {
 	availableProfiles,
 	manageAccountProfile,
 	manageAccountProfiles,
@@ -14,7 +27,214 @@ import {
 	switchAccountInPlace,
 	// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 	// @ts-ignore Node's native TypeScript runner resolves test-only TypeScript source imports.
-} from "./account-profiles.ts";
+} = await import("./account-profiles.ts");
+
+const down = "\u001b[B";
+const escape = "\u001b";
+
+function customHarness(exercise: (panel: Component) => void): ExtensionContext["ui"]["custom"] {
+	return (factory) => new Promise(resolve => {
+		let completed = false;
+		let renders = 0;
+		const panel = factory(
+			{ terminal: { rows: 30 }, requestRender: () => { renders++; } } as unknown as TUI,
+			{ fg: (_color: string, text: string) => text } as unknown as Theme,
+			{} as Parameters<typeof factory>[2],
+			value => { completed = true; resolve(value); },
+		);
+		assert(!(panel instanceof Promise));
+		exercise(panel);
+		assert(completed, "custom selector must finish through done");
+		assert(renders > 0, "input changes request a render");
+	});
+}
+
+void test("Switch previews every profile but lists only names and markers, with quota details through V", async () => {
+	const previous = process.env.OSDY_PI_PROFILE_NAME;
+	const profiles = ["Work", "work-alt", "expired", "unsupported", "failed"];
+	const requests: string[] = [];
+	const activated: string[] = [];
+	const switchEffects: string[] = [];
+	const usage = async (profile: string): Promise<ProfileCodexUsageResult> => {
+		requests.push(profile);
+		await Promise.resolve();
+		if (profile === "failed") throw new Error("private auth token");
+		if (profile === "expired" || profile === "unsupported")
+			return { status: "unavailable", profile, checkedAt: 0, reason: "stored-credentials-unavailable" };
+		return { status: "ready", profile, checkedAt: 0, quotaSnapshot: {
+			fetchedAt: 0, planType: undefined, credits: undefined, ordinaryUsageAllowed: undefined,
+			buckets: [{ id: "codex", label: undefined,
+				primary: { usedPercent: 25, windowMinutes: 300, resetsAt: 3600 },
+				secondary: { usedPercent: 60, windowMinutes: 10080, resetsAt: 86400 } }],
+		} };
+	};
+	try {
+		await manageAccountProfiles({ isIdle: () => true, ui: {
+			notify: () => undefined, input: () => Promise.resolve(undefined),
+			select: title => {
+				assert.equal(title, "OpenAI account manager", "profile picker must use custom UI");
+				return Promise.resolve("Switch");
+			},
+			custom: customHarness(panel => {
+				assert.deepEqual(requests, profiles);
+				const rows = panel.render(300);
+				assert.deepEqual(rows.slice(1, -1), [
+					"> Work (active) (default)", "  work-alt", "  expired", "  unsupported", "  failed",
+				]);
+				assert.doesNotMatch(rows.join("\n"), /%|resets|unavailable|private|token/);
+				panel.handleInput?.(down);
+				panel.handleInput?.("v");
+				assert.match(panel.render(100).join("\n"), /work-alt/);
+				const details = panel.render(100).join("\n");
+				assert.match(details, /Session/);
+				assert.match(details, /75%/);
+				assert.match(details, /Weekly/);
+				assert.match(details, /40%/);
+				assert.match(details, /reset/i);
+				panel.handleInput?.("\r");
+				panel.handleInput?.("r");
+				panel.handleInput?.("u");
+				assert.deepEqual(activated, []);
+				assert.deepEqual(switchEffects, []);
+				assert.equal(process.env.OSDY_PI_PROFILE_NAME, previous);
+				assert.deepEqual(requests, profiles);
+				panel.handleInput?.(escape);
+				assert.match(panel.render(300).join("\n"), /> work-alt/);
+				panel.handleInput?.("\r");
+			}),
+		} }, { profiles: () => Promise.resolve(profiles), activeProfile: "WORK",
+			run: () => Promise.resolve({ code: 0, stdout: "work", stderr: "" }),
+			previewUsage: usage, activate: profile => { activated.push(profile); return Promise.resolve(); },
+			refreshUsage: () => { switchEffects.push("refresh"); return Promise.resolve(); },
+			requestRender: () => { switchEffects.push("active render"); },
+		});
+		assert.deepEqual(activated, ["work-alt"]);
+		assert.deepEqual(switchEffects, ["active render", "refresh"]);
+	} finally {
+		if (previous === undefined) delete process.env.OSDY_PI_PROFILE_NAME;
+		else process.env.OSDY_PI_PROFILE_NAME = previous;
+	}
+});
+
+void test("Switch cancellation never activates; unavailable details stay safe and selectable", async () => {
+	const previous = process.env.OSDY_PI_PROFILE_NAME;
+	try {
+		for (const choice of ["cancel", "unavailable"] as const) {
+			let menus = 0;
+			const activated: string[] = [];
+			await manageAccountProfiles({ isIdle: () => true, ui: {
+				notify: () => undefined, input: () => Promise.resolve(undefined),
+				select: () => Promise.resolve(menus++ === 0 ? "Switch" : "Cancel"),
+				custom: customHarness(panel => {
+					assert.deepEqual(panel.render(100).slice(1, -1), ["> Work"]);
+					assert.doesNotMatch(panel.render(100).join("\n"), /%|resets|unavailable/);
+					panel.handleInput?.("v");
+					assert.match(panel.render(100).join("\n"), /Work/);
+					assert.match(panel.render(100).join("\n"), /usage unavailable/i);
+					panel.handleInput?.("\r");
+					assert.deepEqual(activated, []);
+					panel.handleInput?.("b");
+					assert.deepEqual(panel.render(100).slice(1, -1), ["> Work"]);
+					panel.handleInput?.(choice === "cancel" ? escape : "\r");
+				}),
+			} }, { profiles: () => Promise.resolve(["Work"]),
+				run: () => Promise.resolve({ code: 0, stdout: "No default account.", stderr: "" }),
+				previewUsage: profile => Promise.resolve({ status: "unavailable", profile, checkedAt: 0, reason: "remote-usage-unavailable" }),
+				activate: profile => { activated.push(profile); return Promise.resolve(); },
+				refreshUsage: () => { assert.equal(choice, "unavailable"); return Promise.resolve(); },
+			});
+			assert.deepEqual(activated, choice === "unavailable" ? ["Work"] : []);
+		}
+	} finally {
+		if (previous === undefined) delete process.env.OSDY_PI_PROFILE_NAME;
+		else process.env.OSDY_PI_PROFILE_NAME = previous;
+	}
+});
+
+void test("Switch bounds concurrent previews and safely handles empty, cancelled and mismatched results", async () => {
+	const profiles = ["one", "two", "three", "four", "five"];
+	const pending: (() => void)[] = [];
+	let active = 0;
+	let maximum = 0;
+	let queried = 0;
+	let menu = 0;
+	const work = manageAccountProfiles({ isIdle: () => true, ui: {
+		notify: () => undefined, input: () => Promise.resolve(undefined),
+		select: () => Promise.resolve(menu++ === 0 ? "Switch" : "Cancel"),
+		custom: customHarness(panel => {
+			assert.equal(queried, profiles.length);
+			assert.equal(active, 0);
+			const rows = panel.render(100);
+			assert.deepEqual(rows.slice(1, -1), profiles.map((profile, index) => `${index === 0 ? ">" : " "} ${profile}`));
+			assert.doesNotMatch(rows.join("\n"), /%|resets|unavailable/);
+			panel.handleInput?.(down);
+			panel.handleInput?.("v");
+			assert.match(panel.render(100).join("\n"), /usage unavailable/i);
+			assert.doesNotMatch(panel.render(100).join("\n"), /other/);
+			panel.handleInput?.(escape);
+			panel.handleInput?.(escape);
+		}),
+	} }, { profiles: () => Promise.resolve(profiles),
+		run: () => Promise.resolve({ code: 0, stdout: "No default account.", stderr: "" }),
+		activate: () => Promise.resolve(assert.fail("preview/cancel cannot activate")),
+		previewUsage: profile => new Promise<ProfileCodexUsageResult>(resolve => {
+			queried++;
+			maximum = Math.max(maximum, ++active);
+			pending.push(() => {
+				active--;
+				resolve(profile === "one" ? { status: "cancelled", profile, checkedAt: 0, reason: "cancelled" }
+					: { status: "ready", profile: profile === "two" ? "other" : profile, checkedAt: 0,
+						quotaSnapshot: { fetchedAt: 0, buckets: [], planType: undefined, credits: undefined, ordinaryUsageAllowed: undefined } });
+			});
+		}),
+	});
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+	assert.equal(queried, 4);
+	while (pending.length) {
+		pending.shift()!();
+		for (let i = 0; i < 8; i++) await Promise.resolve();
+	}
+	await work;
+	assert.equal(maximum, 4);
+});
+
+void test("Switch details remain read-only while busy and confirmation retains idle guarding", async () => {
+	let menu = 0;
+	let waits = 0;
+	const notices: string[] = [];
+	await manageAccountProfiles({ isIdle: () => false,
+		waitForIdle: () => { waits++; return Promise.resolve(); }, ui: {
+			notify: message => notices.push(message), input: () => Promise.resolve(undefined),
+			select: () => Promise.resolve(menu++ === 0 ? "Switch" : "Cancel"),
+			custom: customHarness(panel => {
+				panel.handleInput?.("v");
+				panel.handleInput?.("\r");
+				assert.equal(waits, 0);
+				panel.handleInput?.(escape);
+				panel.handleInput?.("\r");
+			}),
+		} }, { profiles: () => Promise.resolve(["Work"]),
+			run: () => Promise.resolve({ code: 0, stdout: "No default account.", stderr: "" }),
+			activate: () => Promise.resolve(assert.fail("busy confirmation cannot activate")),
+			refreshUsage: () => Promise.resolve(assert.fail("busy confirmation cannot refresh")),
+		});
+	assert.equal(waits, 1);
+	assert.match(notices.join(" "), /require Pi to be idle/);
+});
+
+void test("non-terminal Switch is rejected before reading preview snapshots", async () => {
+	let menu = 0;
+	const notices: string[] = [];
+	await manageAccountProfiles({ mode: "rpc", isIdle: () => true, ui: {
+		notify: message => notices.push(message), input: () => Promise.resolve(undefined),
+		select: () => Promise.resolve(menu++ === 0 ? "Switch" : "Cancel"),
+		custom: () => Promise.resolve(assert.fail("RPC cannot open custom UI")),
+	} }, { profiles: () => Promise.resolve(["Work"]),
+		run: () => Promise.resolve({ code: 0, stdout: "No default account.", stderr: "" }),
+		previewUsage: () => Promise.resolve(assert.fail("RPC cannot query previews")),
+	});
+	assert.match(notices.join(" "), /terminal UI/);
+});
 
 void test("stored credential adapter narrows unknown data and conceals reader paths", async () => {
 	const credential = { profile: "Work", access: "synthetic", expires: 2_000_000_000_000 };

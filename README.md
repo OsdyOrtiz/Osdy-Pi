@@ -238,7 +238,7 @@ For a project-local installation, run `pi remove -l npm:@juicesharp/rpiv-todo` i
 
 **Quick path:** `/osdyConfig` → **Account** → select a profile → **v** (or **Enter**) for quota bars. Use **r Refresh** to query again or **b Back** / **Esc** to return with the profile selected. From the overview or quota dashboard, **s Switch** opens the same Cancel-first confirmation for the eligible inactive profile; cancelling from quota preserves the view and scroll position. From the overview, **d** sets the default and **c** clears an existing default, also with Cancel-first confirmation. The active profile also supports explicit stored-credential queries.
 
-Preview is **Codex only**, a live query using the selected profile's **stored credentials snapshot**, with no automatic refresh or stored-profile polling. Only **View usage** and the quota view's **Refresh** query; profile navigation does not. It never activates, borrows active credentials, refreshes tokens, writes auth, changes models/session state or overwrites active quota. Missing, malformed, expired or remotely rejected snapshots are unavailable—not zero quota. Even the current profile's stored snapshot may be stale: log in and save through the normal account workflow outside preview. Profile labels and decoded JWT claims do not verify human identity or server validity. Local history remains token/cost estimates, not subscription quota. Legacy `/osdy-account`, `/usage` and `/osdy-usage` remain available; Agents configuration remains normal personal Pi only.
+Preview is **Codex only**, a live query using the selected profile's **stored credentials snapshot**, with no automatic refresh or stored-profile polling. In the Control Center, only **View usage** and the quota view's **Refresh** query; profile navigation does not. `/osdy-account` → **Switch** queries all saved profiles before opening the selector, with up to four previews in parallel. It never activates, borrows active credentials, refreshes tokens, writes auth, changes models/session state or overwrites active quota. Missing, malformed, expired or remotely rejected snapshots are unavailable—not zero quota. Even the current profile's stored snapshot may be stale: log in and save through the normal account workflow outside preview. Profile labels and decoded JWT claims do not verify human identity or server validity. Local history remains token/cost estimates, not subscription quota. Legacy `/osdy-account`, `/usage` and `/osdy-usage` remain available; Agents configuration remains normal personal Pi only.
 
 Osdy Pi can keep multiple ChatGPT Plus/Pro accounts authenticated and let you choose which one starts Pi. `personal` and `work` are only examples—you can create as many named profiles as you need.
 
@@ -248,12 +248,16 @@ Osdy Pi can keep multiple ChatGPT Plus/Pro accounts authenticated and let you ch
 
 | Action | Behavior |
 | --- | --- |
-| **Switch** | Waits for idle, safely replaces Pi's canonical auth with the selected profile, and updates active/default together without restarting Pi. |
+| **Switch** | Lists profile names and active/default markers only. Use arrows to highlight, **v** for `/usage`-style quota details, and **Enter from the list only** to switch the exact profile after idle waiting. |
 | **Add** | Creates an isolated profile without restarting or changing the default. Select it with **Switch**, then run `/login`. |
 | **Default** | Shows, changes, or clears the profile used by future plain installed `pi` and `npm run pi:dev` launches. It does not switch the current process. |
 | **Rename** | Renames an inactive profile. The default follows the new name when applicable. |
 | **Remove** | Permanently deletes an inactive profile after exact-name confirmation. Removing the default requires a replacement. |
 | **Account info** | Shows the available profiles and marks the active and default profiles without reading credentials. |
+
+In **Switch**, press **v** on the highlighted profile to explore its saved preview using the same dashboard as `/usage`, without selecting or activating it. Scroll details with **↑/↓**, **Page Up/Down**, or **Home/End**. **Esc** or **b** returns to the same highlighted profile; **Enter does nothing in details**. **Esc from the list** cancels selection.
+
+Switch previews are read-only and never activate accounts, refresh tokens, use resets or persist auth. Quota and **usage unavailable** messaging appear only in **v** details, never in the Switch list. Failed, expired or unsupported profiles remain selectable, including after viewing unavailable details. Opening details reuses the selector's snapshot without another request; reopening **Switch** queries again (up to four in parallel), never polls saved profiles. Reset timings include relative time and UTC timestamps when supplied by Codex. The detailed selector requires Pi's terminal UI.
 
 Pi does not expose a supported API for extensions to invoke its OAuth login dialog. After switching to a newly created profile, run Pi's native `/login` and choose **ChatGPT Plus/Pro (Codex)**. This is the only step that remains a separate Pi command; it does not require leaving Pi or opening another terminal.
 

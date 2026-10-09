@@ -5,6 +5,9 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 
+import type { ProfileCodexUsageResult } from "./profile-codex-usage.js";
+import { selectAccountProfile, type AccountProfileChoice } from "./account-profile-selector.js";
+
 const PROFILE_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,62})$/;
 const RESERVED_PROFILE_NAMES = new Set(["default", "profiles", "auth.json"]);
 
@@ -20,10 +23,12 @@ export type AccountContext = Pick<ExtensionContext, "isIdle"> & {
 		ExtensionCommandContext["sessionManager"],
 		"getSessionFile"
 	>;
-	ui: Pick<ExtensionContext["ui"], "notify" | "select" | "input">;
+	mode?: ExtensionContext["mode"];
+	ui: Pick<ExtensionContext["ui"], "notify" | "select" | "input"> & Partial<Pick<ExtensionContext["ui"], "custom">>;
 };
 
 export interface AccountManagementDependencies {
+	previewUsage?: ((profile: string) => Promise<ProfileCodexUsageResult>) | undefined;
 	profiles(): Promise<string[]>;
 	run(args: string[]): Promise<{ code: number; stdout: string; stderr: string }>;
 	activeProfile?: string | undefined;
@@ -33,6 +38,7 @@ export interface AccountManagementDependencies {
 }
 
 export interface AccountProfilesCommandDependencies {
+	previewUsage?: AccountManagementDependencies["previewUsage"];
 	refreshUsage?: (() => Promise<void>) | undefined;
 	requestRender?: (() => void) | undefined;
 }
@@ -224,6 +230,31 @@ function markedProfiles(
 		(profile) =>
 			`${profile}${sameProfile(profile, activeProfile) ? " (active)" : ""}${sameProfile(profile, defaultProfile) ? " (default)" : ""}`,
 	);
+}
+
+/** Keep identity separate from display text and bound simultaneous stored-profile requests. */
+async function switchProfileChoices(
+	profiles: string[],
+	dependencies: AccountManagementDependencies,
+	defaultProfile: string | undefined,
+): Promise<AccountProfileChoice[]> {
+	const labels = markedProfiles(profiles, dependencies.activeProfile, defaultProfile);
+	const choices: AccountProfileChoice[] = profiles.map((profile, index) => ({ profile, label: labels[index]!, usage: undefined }));
+	let next = 0;
+	await Promise.all(Array.from({ length: Math.min(4, profiles.length) }, async () => {
+		while (next < profiles.length) {
+			const index = next++;
+			const profile = profiles[index]!;
+			try {
+				const result = await dependencies.previewUsage?.(profile);
+				if (result && sameProfile(result.profile, profile)) choices[index]!.usage = result;
+			} catch {
+				// Preview failure never blocks activation or exposes credential/network errors.
+			}
+		}
+		return undefined;
+	}));
+	return choices;
 }
 
 async function currentDefault(
@@ -464,18 +495,13 @@ export async function manageAccountProfiles(
 			ctx.ui.notify("No account profiles are available.", "warning");
 			continue;
 		}
-		const target = await ctx.ui.select(
-			"Switch OpenAI account",
-			markedProfiles(
-				profiles,
-				dependencies.activeProfile,
-				defaultProfile ?? undefined,
-			),
-		);
-		if (target === undefined) continue;
-		const marker = target.indexOf(" (");
-		const profile = marker === -1 ? target : target.slice(0, marker);
-		if (!profiles.includes(profile)) continue;
+		if (!ctx.ui.custom || (ctx.mode !== undefined && ctx.mode !== "tui")) {
+			ctx.ui.notify("Account switching requires Pi's terminal UI.", "warning");
+			continue;
+		}
+		const choices = await switchProfileChoices(profiles, dependencies, defaultProfile);
+		const profile = await selectAccountProfile({ custom: ctx.ui.custom.bind(ctx.ui) }, choices);
+		if (profile === undefined || !profiles.includes(profile)) continue;
 		if (sameProfile(profile, dependencies.activeProfile)) {
 			ctx.ui.notify("That account is already active.", "info");
 			continue;
@@ -528,6 +554,7 @@ export function createAccountManagementDependencies(
 		profiles: async () => availableProfiles(await sharedAgentDir(process.env)),
 		run: runBundledCommand,
 		activeProfile: process.env.OSDY_PI_PROFILE_NAME,
+		previewUsage: options.previewUsage,
 		refreshUsage: options.refreshUsage,
 		requestRender: options.requestRender,
 		activate: async (profile) => {
