@@ -26,7 +26,8 @@ import { createAudioPlaybackAdapter } from "./audio-playback.js";
 import { subscribeQuestionPromptAudioNotification } from "./plugin-events.js";
 import { createAudioSoundSettingsStore } from "./audio-sound-settings.js";
 import { createEditorSettingsStore } from "./editor-settings.js";
-import { registerAccountProfilesCommand } from "./account-profiles.js";
+import { registerAccountProfilesCommand, readStoredProfileCodexCredential, sharedAgentDir } from "./account-profiles.js";
+import { requestProfileCodexUsage } from "./profile-codex-usage.js";
 import {
 	applyOsdyPi,
 	clearGentleShellChangesWidget,
@@ -1269,6 +1270,9 @@ export async function registerOsdyPi(
 		}
 	}, dependencies.codexUsageClock);
 	registerAccountProfilesCommand(pi, {
+		previewUsage: profile => requestProfileCodexUsage(profile, {
+			readCredentials: async name => readStoredProfileCodexCredential(await sharedAgentDir(process.env), name),
+		}),
 		requestRender: () => {
 			state.tui?.requestRender();
 		},
