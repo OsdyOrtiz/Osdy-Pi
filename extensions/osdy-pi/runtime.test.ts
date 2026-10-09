@@ -50,7 +50,7 @@ registerHooks({
 type ShortcutRegistration = Parameters<ExtensionAPI["registerShortcut"]>[1];
 
 async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset-ui-runtime-")),
-	options: Pick<NonNullable<Parameters<typeof registerOsdyPi>[1]>, "fetchCodexUsage"> = {}) {
+	options: Pick<NonNullable<Parameters<typeof registerOsdyPi>[1]>, "fetchCodexUsage" | "generationClock"> = {}) {
 	const { registerOsdyPi: registerResetRuntime } = await import("./runtime.js");
 	const previousDir = process.env.PI_CODING_AGENT_DIR;
 	const previousFetch = globalThis.fetch;
@@ -69,6 +69,10 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 	let beforeAuth: () => Promise<void> = () => Promise.resolve();
 	let onRender: (view: string) => void = () => {};
 	let panel: Component | undefined;
+	let footer: Component | undefined;
+	let renders = 0;
+	let mounts = 0;
+	const tui = { terminal: { columns: 120, rows: 40 }, requestRender: () => { renders++; }, hasOverlay: () => false } as unknown as TUI;
 	const shortcuts = new Map<string, ShortcutRegistration>();
 	const views: string[] = [];
 	let quotaReads = 0;
@@ -99,15 +103,18 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 		on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => Promise<void> | void) => {
 			const list = events.get(name) ?? []; list.push(handler); events.set(name, list);
 		}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
-		events: { on: () => () => {} }, exec: () => { throw new Error("external execution forbidden"); },
+		getThinkingLevel: () => "off", events: { on: () => () => {} }, exec: () => { throw new Error("external execution forbidden"); },
 	} as unknown as ExtensionAPI;
 	const ctx = { cwd: root, hasUI: true, mode: "tui", model: { provider: "openai-codex", id: "synthetic" }, isIdle: () => true,
-		sessionManager: { getSessionId: () => session }, modelRegistry: { getProviderAuth: async (provider: string) => {
+		getContextUsage: () => undefined,
+		sessionManager: { getSessionId: () => session, getEntries: () => [] }, modelRegistry: { getProviderAuth: async (provider: string) => {
 			assert.equal(provider, "openai-codex");
 			const token = `header.${Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: account } })).toString("base64url")}.signature`;
 			await beforeAuth();
 			return { auth: { apiKey: token } };
-		} }, ui: { getEditorComponent: () => undefined, setEditorComponent: () => {}, setHeader: () => {}, setFooter: () => {},
+		} }, ui: { getEditorComponent: () => undefined, setEditorComponent: () => { mounts++; },
+			setHeader: (factory?: (tui: TUI, theme: Theme) => Component & { dispose?(): void }) => { factory?.(tui, ctx.ui.theme).dispose?.(); },
+			setFooter: (factory?: (tui: TUI, theme: Theme, data: unknown) => Component) => { footer = factory?.(tui, ctx.ui.theme, {}); },
 			setWidget: () => {}, setWorkingVisible: () => {}, notify: (text: string) => { notices.push(text); },
 			theme: { name: "dark", appearance: "dark", fg: (_color: string, text: string) => text }, getAllThemes: () => [], setTheme: () => ({ success: false }),
 			select: (title: string, options: string[]) => {
@@ -145,7 +152,11 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 			}) } });
 		await lifecycle("session_start");
 	} catch (error) { globalThis.fetch = previousFetch; if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir; throw error; }
-	return { root, posts, dialogs, notices, views, expiry, quotaReads: () => quotaReads, overlays: () => overlays,
+	return { root, posts, dialogs, notices, views, expiry,
+		emit: async (name: string, event: unknown) => { for (const handler of events.get(name) ?? []) await handler(event, ctx); },
+		enable: () => commands.get("osdy-pi")!.handler("enable", ctx),
+		footer: () => footer?.render(120).join("\n") ?? "", renders: () => renders, mounts: () => mounts,
+		quotaReads: () => quotaReads, overlays: () => overlays,
 		open: (surface = "usage") => { nextAction = true; return commands.get(surface)!.handler("", ctx); },
 		view: (shortcut = false) => { nextAction = false; return shortcut
 			? shortcuts.get("ctrl+alt+u")!.handler(ctx) : commands.get("usage")!.handler("", ctx); },
@@ -162,6 +173,60 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 			if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir; },
 	};
 }
+
+void test("generation lifecycle uses delta-only estimates and final event usage without remounting", async () => {
+	let now = 0;
+	const f = await resetRuntimeFixture(undefined, { generationClock: () => now });
+	const message = { role: "assistant", usage: { output: 80, reasoning: 40 }, stopReason: "stop" };
+	const delta = (type: string, text: string) => f.emit("message_update", {
+		message, assistantMessageEvent: { type, delta: text, partial: message },
+	});
+	try {
+		await f.enable();
+		const mounts = f.mounts();
+		await f.emit("message_start", { message });
+		assert.match(f.footer(), /tok\/s …/);
+		now = 5000; await delta("thinking_delta", "abcd");
+		now = 6000; await delta("text_delta", "abcd");
+		await delta("toolcall_delta", "abcd");
+		assert.match(f.footer(), /≈3\.0 tok\/s/);
+		await delta("text_end", "not counted");
+		assert.match(f.footer(), /≈3\.0 tok\/s/);
+		now = 7000; await f.emit("message_end", { message });
+		assert.match(f.footer(), /40\.0 tok\/s/);
+		assert.doesNotMatch(f.footer(), /≈|tok ↑/);
+		await f.emit("message_start", { message: { role: "toolResult" } });
+		assert.match(f.footer(), /40\.0 tok\/s/);
+		await f.emit("agent_end", {});
+		assert.match(f.footer(), /40\.0 tok\/s/);
+		assert.equal(f.mounts(), mounts);
+		assert.ok(f.renders() > 0);
+		await f.emit("message_start", { message });
+		await delta("text_delta", "abcd"); now += 1000;
+		await f.emit("message_end", { message: { ...message, stopReason: "aborted" } });
+		assert.match(f.footer(), /tok\/s —/);
+		await f.emit("message_start", { message });
+		await delta("text_delta", "abcd"); now += 1000;
+		await delta("error", "ignored");
+		assert.match(f.footer(), /tok\/s —/);
+		await f.emit("message_end", { message });
+		assert.match(f.footer(), /tok\/s —/);
+		await f.emit("message_start", { message });
+		await delta("text_delta", "abcd"); now += 1000;
+		await f.emit("agent_end", {});
+		assert.match(f.footer(), /tok\/s —/);
+		await f.emit("message_start", { message });
+		await delta("text_delta", "abcd"); now += 1000;
+		await f.replace(); await f.enable();
+		await f.emit("message_end", { message });
+		assert.match(f.footer(), /tok\/s —/);
+		await f.emit("message_start", { message });
+		await delta("text_delta", "abcd"); now += 1000;
+		await f.shutdown();
+		await f.emit("message_end", { message });
+		assert.match(f.footer(), /tok\/s —/);
+	} finally { await f.close(); }
+});
 
 void test("registered active surfaces select and Cancel-first confirm before exactly one mocked POST", async () => {
 	for (const surface of ["usage", "osdyConfig"]) {

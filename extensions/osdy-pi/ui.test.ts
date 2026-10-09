@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { KeybindingsManager } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
+import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
+import type { OsdyState } from "./types.js";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { registerHooks } from "node:module";
@@ -392,6 +396,47 @@ void test("places a managed profile beside the model in simple mode and preserve
 		),
 		"gpt-5 · think high",
 	);
+});
+
+void test("one real editor instance and native footer read live/final speed with ANSI-safe resizing", () => {
+	const color = (text: string) => `\u001b[33m${text}\u001b[39m`;
+	const theme = { fg: (_name: string, text: string) => color(text), bold: (text: string) => text };
+	const state: OsdyState = {
+		codexUsage: { kind: "idle" }, enabled: true, editorEffective: true, editorMode: "extended",
+		fallbackEditorFactory: undefined, headerVariant: "osdy-theme", mascot: "current", smallMode: false,
+		tui: undefined, workingTreeEnabled: false, workingTreePlacement: "aboveEditor",
+		generation: { kind: "streaming", tokensPerSecond: 42.3 },
+	};
+	const ctx = { cwd: "/synthetic", ui: { theme }, model: { provider: "test", id: "test", contextWindow: 200000 },
+		getContextUsage: () => ({ percent: 60 }), sessionManager: { getEntries: () => [] },
+	} as unknown as ExtensionContext;
+	const pi = { getThinkingLevel: () => "off" } as ExtensionAPI;
+	const tui = { terminal: { rows: 40, columns: 120 }, requestRender: () => {} } as unknown as TUI;
+	const editorTheme: EditorTheme = { borderColor: color, selectList: {
+		selectedPrefix: color, selectedText: color, description: color, scrollInfo: color, noMatch: color,
+	} };
+	const editor = ui.createEditorComponent(pi, ctx, state)(tui, editorTheme, new KeybindingsManager());
+	for (const reading of [
+		{ kind: "streaming", tokensPerSecond: 42.3 }, { kind: "complete", tokensPerSecond: 50 },
+		{ kind: "streaming", tokensPerSecond: null }, { kind: "unavailable" },
+	] as const) {
+		state.generation = reading;
+		const expected = reading.kind === "complete" ? "50.0 tok/s" : reading.kind === "unavailable" ? "tok/s —"
+			: reading.tokensPerSecond === null ? "tok/s …" : "≈42.3 tok/s";
+		assert.ok(editor.render(120).join("\n").includes(expected));
+		for (const width of [4, 15, 30, 48, 80, 120]) {
+			assert.ok(editor.render(width).every(line => visibleWidth(line) <= width));
+		}
+		state.editorEffective = false;
+		const footer = ui.createFooterComponent(pi, ctx, state, {
+			getGitBranch: () => null, getExtensionStatuses: () => new Map(),
+			getAvailableProviderCount: () => 1, onBranchChange: () => () => {},
+		}, theme);
+		assert.ok(footer.render(120).join("\n").includes(expected));
+		assert.doesNotMatch(footer.render(120).join("\n"), /tok ↑/);
+		assert.ok(footer.render(30).every(line => visibleWidth(line) <= 30));
+		state.editorEffective = true;
+	}
 });
 
 void test("wires themed Codex quota bars below both native footer and extended editor", () => {

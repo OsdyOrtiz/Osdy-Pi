@@ -56,7 +56,7 @@ void test("formats the selected single-line usage shape", () => {
 			percent: 60,
 			contextWindow: 272_000,
 		}),
-		"tok ↑0 ↓0 · $0.0000 · ctx <warning>[██████░░░░]</warning> 60%/272.0k",
+		"tok/s — · $0.0000 · ctx <warning>[██████░░░░]</warning> 60%/272.0k",
 	);
 });
 
@@ -76,14 +76,16 @@ void test("selects the full or compact usage line at the ANSI-aware width bounda
 		contextWindow: 272_000,
 	};
 	const full =
-		"tok ↑0 ↓0 · $0.0000 · ctx \u001B[33m[██████░░░░]\u001B[39m 60%/272.0k";
+		"tok/s — · $0.0000 · ctx \u001B[33m[██████░░░░]\u001B[39m 60%/272.0k";
 
-	assert.equal(visibleWidth(full), 49);
-	assert.equal(formatContextUsage(ansiTheme, usage, 49), full);
-	assert.equal(
-		formatContextUsage(ansiTheme, usage, 48),
-		"$0.0000 · ctx \u001B[33m[██████░░░░]\u001B[39m 60%",
-	);
+	const width = visibleWidth(full);
+	assert.equal(formatContextUsage(ansiTheme, usage, width), full);
+	const compact = formatContextUsage(ansiTheme, usage, width - 1);
+	assert.match(compact, /tok\/s —/);
+	assert.ok(visibleWidth(compact) <= width - 1);
+	for (let columns = 0; columns < width; columns++) {
+		assert.ok(visibleWidth(formatContextUsage(ansiTheme, usage, columns)) <= columns);
+	}
 });
 
 void test("formats a ten-cell green context bar at the inclusive 30% threshold", () => {
@@ -97,7 +99,7 @@ void test("formats a ten-cell green context bar at the inclusive 30% threshold",
 			percent: 30,
 			contextWindow: 272_000,
 		}),
-		"tok ↑0 ↓0 · $0.0000 · ctx <success>[███░░░░░░░]</success> 30%/272.0k",
+		"tok/s — · $0.0000 · ctx <success>[███░░░░░░░]</success> 30%/272.0k",
 	);
 });
 
@@ -112,7 +114,7 @@ void test("uses warning and error colors for higher rounded usage", () => {
 			percent: 30.5,
 			contextWindow: 200_000,
 		}),
-		"tok ↑1.5k ↓2.5m R12 W34 · $1.2000 · ctx <warning>[███░░░░░░░]</warning> 31%/200.0k",
+		"tok/s — R12 W34 · $1.2000 · ctx <warning>[███░░░░░░░]</warning> 31%/200.0k",
 	);
 	assert.equal(
 		formatContextUsage(theme, {
@@ -124,7 +126,7 @@ void test("uses warning and error colors for higher rounded usage", () => {
 			percent: 80.5,
 			contextWindow: 200_000,
 		}),
-		"tok ↑0 ↓0 · $1.2000 · ctx <error>[████████░░]</error> 81%/200.0k",
+		"tok/s — · $1.2000 · ctx <error>[████████░░]</error> 81%/200.0k",
 	);
 });
 
@@ -139,7 +141,7 @@ void test("clamps usage and safely represents missing context usage", () => {
 			percent: -10,
 			contextWindow: 200_000,
 		}),
-		"tok ↑0 ↓0 · $0.0000 · ctx <success>[░░░░░░░░░░]</success> 0%/200.0k",
+		"tok/s — · $0.0000 · ctx <success>[░░░░░░░░░░]</success> 0%/200.0k",
 	);
 	assert.equal(
 		formatContextUsage(theme, {
@@ -151,7 +153,7 @@ void test("clamps usage and safely represents missing context usage", () => {
 			percent: undefined,
 			contextWindow: 272_000,
 		}),
-		"tok ↑0 ↓0 · $0.0000 · ctx <success>[░░░░░░░░░░]</success> ?%/272.0k",
+		"tok/s — · $0.0000 · ctx <success>[░░░░░░░░░░]</success> ?%/272.0k",
 	);
 	assert.equal(
 		formatContextUsage(theme, {
@@ -163,6 +165,6 @@ void test("clamps usage and safely represents missing context usage", () => {
 			percent: undefined,
 			contextWindow: undefined,
 		}),
-		"tok ↑0 ↓0 · $0.0000 · ctx <success>[░░░░░░░░░░]</success> ?%/?",
+		"tok/s — · $0.0000 · ctx <success>[░░░░░░░░░░]</success> ?%/?",
 	);
 });
