@@ -11,6 +11,25 @@ const themeFiles = readdirSync(themesDir).filter((file) => /^osdy-pi-.*\.json$/.
 const spiderNames = ["osdy-pi-spider-man-classic", "osdy-pi-miles-morales", "osdy-pi-spider-verse"];
 const newDarkNames = [...spiderNames, "osdy-pi-gruvbox-dark", "osdy-pi-nord", "osdy-pi-rose-pine", "osdy-pi-daniela-cute", "osdy-pi-halloween", "osdy-pi-halloween-killer"];
 
+test("every bundled theme passes Pi schema validation and loads", async (t) => {
+  const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  assert.deepEqual([...manifest.pi.themes].sort(), themeFiles.map((file) => `./themes/${file}`).sort());
+  const schema = JSON.parse(readFileSync(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-schema.json", import.meta.url), "utf8"));
+  const { Compile } = await import("typebox/compile");
+  const validator = Compile(schema);
+  const { loadThemeFromPath } = await import("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme.js");
+  for (const resource of manifest.pi.themes) {
+    await t.test(resource, () => {
+      const path = fileURLToPath(new URL(`../${resource}`, import.meta.url));
+      const document = JSON.parse(readFileSync(path, "utf8"));
+      // Direct loading alone does not enforce the schema's additionalProperties rules.
+      assert.ok(validator.Check(document),
+        `${resource}: ${validator.Errors(document).map((error) => `${error.instancePath}: ${error.message}`).join("; ")}`);
+      assert.equal(loadThemeFromPath(path, "truecolor").name, document.name);
+    });
+  }
+});
+
 test("new dark themes cover every installed Pi role and load without fallbacks", async () => {
   assert.equal(newDarkNames.length, 9, "cover all newly bundled dark themes");
   const schema = JSON.parse(readFileSync(new URL("../node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/theme/theme-schema.json", import.meta.url), "utf8"));
