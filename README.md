@@ -8,7 +8,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 **Audio notifications share a bundled 180 ms default sound on macOS and Windows**, with a persistent master mute in `/osdyConfig` → **Sounds**. Custom paths take precedence: startup flag → saved global path → bundled default. Muting preserves those paths and visual alerts; explicit **Test effective** still plays while muted. See [Audio notifications](#audio-notifications).
 
-**Local response narration is opt-in on macOS**: `/osdyConfig` → **Speech** offers a one-line installed-voice selector and explicit previews without saving or enabling narration. Stop from chat with **Ctrl+Option+S** or `/osdy-pi speech stop`. Speech stays independent of notification sounds and their mute. See [Response speech](#response-speech).
+**Local response narration is opt-in on macOS**: `/osdyConfig` → **Speech** offers a one-line selector for installed macOS voices and optional local Kokoro voices, with explicit previews without saving or enabling narration. Stop from chat with **Ctrl+Option+S** or `/osdy-pi speech stop`. Speech stays independent of notification sounds and their mute. See [Response speech](#response-speech).
 
 **The Control Center consolidates Osdy controls in `/osdyConfig`**: eleven categories cover appearance, Git, sounds, accounts, usage, TODO/Agents provider settings, and opt-in response speech. Account quota previews query a selected stored Codex profile without switching it. The header shows the installed Osdy package version when it fits; constrained layouts show only the centered mascot. See [Control Center in Pi](#control-center-in-pi) for confirmation and persistence boundaries.
 
@@ -19,7 +19,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 | Area | What ships |
 | --- | --- |
 | Control Center | **Ctrl+Option+O** or `/osdyConfig` opens eleven categories, including confirmed TODO/Agents provider selection, explicit per-profile Codex quota previews, and Speech. |
-| Speech | Default-off local macOS narration, one saved installed voice, explicit draft previews, and chat-accessible Stop. |
+| Speech | Default-off local macOS narration, optional Spanish Kokoro voices, one saved voice, explicit draft previews, and chat-accessible Stop. |
 | Audio | Shared bundled default, per-event custom paths, and persistent automatic-audio mute; [explicit tests remain available](#audio-notifications). |
 | Local analytics (1.10.0) | `/osdy-usage` opens Summary, Profiles, Models, and History pages for recorded tokens and estimated cost—not billing or subscription quota. |
 | Themes introduced in 1.11.0 | Spider-Man Classic, Miles Morales, and Spider-Verse add three distinct dark palettes. |
@@ -590,13 +590,31 @@ From chat, press **Ctrl+Option+S** on macOS (**Ctrl+Alt+S** elsewhere) for the s
 
 Open **`/osdyConfig` → Speech** (the last category) to enable/disable narration, read the last response, stop playback, or select a voice:
 
-1. Use **↑/↓** to reach the single **Voice: ‹ … ›** row. **←/→** browses installed voices, wrapping at both ends. The row marks the draft **saved** or **unsaved**; the summary always identifies the saved voice. Browsing never saves or plays audio.
-2. Select **Preview voice** and press **Enter** to hear a fixed short English sample in the draft voice, independent of the last response. Preview does **not** save the draft or enable narration, and works while narration is disabled. It may replace current playback. Leaving Speech or closing the panel cancels only its preview, not unrelated narration.
+1. Use **↑/↓** to reach the single **Voice: ‹ … ›** row. **←/→** browses installed macOS voices and **Kokoro Dora / Kokoro Alex / Kokoro Santa**, wrapping at both ends. The row marks the draft **saved** or **unsaved**; the summary always identifies the saved voice. Browsing never saves or plays audio.
+2. Select **Preview voice** and press **Enter** to hear a fixed Spanish sample for Kokoro or the existing fixed English sample for native voices, independent of the last response. Preview does **not** save the draft or enable narration, and works while narration is disabled. It may replace current playback. Leaving Speech or closing the panel cancels only its preview, not unrelated narration.
 3. Return to **Voice** and press **Enter** to save the draft for subsequent narration. Preview, other controls, and failed saves preserve the draft. **Read last response** uses the saved voice, not an unsaved draft. Saving never plays audio, enables narration, or changes already-playing audio.
 
 Opening Speech starts at the playback controls; **Home** returns there, **Tab** returns to categories, and arrows outside the Voice row retain normal pane focus behavior. The feminine Paulina voice remains the default until you save another voice.
 
-The panel shows enabled/saved-voice/rate state and offers supported voices already installed on the Pi host; it does not download voices. Empty/unavailable voice lists leave narration controls accessible. Rate tuning is not exposed. Selection saves globally in the independent `<agent-dir>/extensions/osdy-pi/speech.json` store and survives reload/restart; **Sounds mute and event notifications are unchanged and independent**.
+The panel shows enabled/saved-voice/rate state. Native speech uses supported voices already installed on the Pi host and needs no server or model download. Optional **Kokoro** needs a separately started local MLX-Audio server and an explicitly downloaded model; listing or saving a voice does not download anything. See [local Kokoro setup](docs/kokoro.md) for prerequisites and validation status. The extension never installs dependencies or starts the server automatically. Empty/unavailable voice lists leave narration controls accessible. Rate tuning is not exposed; the existing wpm display maps to Kokoro speed as **rate / 180**, not a guarantee of identical spoken wpm. Selection saves globally in the independent `<agent-dir>/extensions/osdy-pi/speech.json` store and survives reload/restart; **Sounds mute and event notifications are unchanged and independent**.
+
+### Optional Kokoro voices
+
+On Apple Silicon Macs, the same selector includes three local Spanish voices:
+
+| Voice | Preset |
+| --- | --- |
+| **Kokoro Dora** | Feminine, `ef_dora` |
+| **Kokoro Alex** | Masculine, `em_alex` |
+| **Kokoro Santa** | Masculine, `em_santa` |
+
+Follow [the Kokoro setup and startup guide](docs/kokoro.md) to prepare the isolated Python environment, explicitly download the free model, and start MLX-Audio on **`http://127.0.0.1:8000`**. Keep that service running while using Kokoro: the extension does **not** start it automatically. A preview reporting **`Kokoro synthesis failed`** can mean the server is stopped; check the service and the optional `OSDY_PI_KOKORO_URL` loopback origin before reinstalling anything. Native voices do not need this service.
+
+After starting it, browse to a Kokoro voice and use **Preview voice** to listen without changing your saved voice or enabling narration. Save only when you want subsequent narration to use that voice. Generation is local, but the complete WAV is produced before playback; this is not streamed narration. Initial model loading is slower than warm requests.
+
+**Known limit:** long Spanish responses may be truncated by the current upstream phonemizer. Osdy normalizes newlines, so adding line breaks is not a workaround in this integration. Prefer an installed native voice for long responses until chunking/completeness is evaluated. The [guide](docs/kokoro.md#observed-local-synthesis) records tested versions and short-sample measurements; these are not quality or latency guarantees.
+
+### Narration lifecycle and compatibility
 
 Automatic narration waits for final settlement, including retries, compaction, and queued continuations—not every message or intermediate agent end. Only successful final text is read, omitting fenced code, tools, thinking, and Markdown noise. Cancelled, failed, empty, and tool-only newest responses never fall back to older text automatically. Explicit replay retains the last successful response only in memory for this session; switching sessions, reload, and shutdown clear it. New input/runs stop narration, and queued follow-ups remain eligible once their final response settles. Explicit **Stop** also cancels pending starts and suppresses automatic narration for the rest of that run; explicit replay remains available when idle. Cancelling post-run compaction discards that run's pending response. Speech launch never waits for the full spoken playback in an agent lifecycle handler.
 
