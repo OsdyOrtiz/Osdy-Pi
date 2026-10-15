@@ -100,7 +100,7 @@ void test("Agents navigation and Cancel never apply; confirmation freezes input 
 			{ label: "Joker", current: false, action: { kind: "agents-provider", mode: "joker" }, details: ["Target: /synthetic/settings.json", "Install Joker if absent; owned filters only. Unrelated resources preserved. Reload; restart if it fails."] },
 		] }), apply: () => { calls++; return new Promise(resolve => { finish = resolve; }); },
 	} }, () => { reloads++; });
-	f.resize(30); f.panel.handleInput("\x1b[F"); await settle();
+	f.resize(30); f.panel.handleInput("\x1b[F"); f.panel.handleInput(up); await settle();
 	assert.match(f.panel.render(120).join("\n"), /Agent mode: gentle/); assert.equal(calls, 0);
 	f.panel.handleInput(right); f.panel.handleInput("\r");
 	assert.match(f.panel.render(120).join("\n"), /> Cancel/);
@@ -124,7 +124,7 @@ void test("Agents failed, rejected and disposed successful responses never reloa
 				{ label: "Gentle", current: false, action: { kind: "agents-provider", mode: "gentle" }, details: ["Owned filters; reload follows."] },
 			] }), apply: () => new Promise((resolve, reject) => { finish = () => outcome === "error" ? reject(new Error("owner failure")) : resolve({ kind: outcome === "disposed" ? "reload" : "rejected", message: "owner failure" }); }),
 		} }, () => { reloads++; });
-		f.panel.handleInput("\x1b[F"); await settle(); f.panel.handleInput(right); f.panel.handleInput("\r");
+		f.panel.handleInput("\x1b[F"); f.panel.handleInput(up); await settle(); f.panel.handleInput(right); f.panel.handleInput("\r");
 		f.panel.render(100); f.panel.handleInput(down); f.panel.handleInput("\r");
 		if (outcome === "disposed") f.dispose();
 		const renders = f.renders(); finish(); await settle();
@@ -146,7 +146,7 @@ void test("Agent letters match visible choices, are lowercase-only and retain fu
 			read: () => Promise.resolve({ summary: "Agent mode: gentle", note: "Configured, not loaded", rows: agentRows() }),
 			apply: action => { calls.push(action); return Promise.resolve({ kind: "rejected", message: "Synthetic rejection" }); },
 		} }, () => { throw new Error("No reload on rejection"); });
-		f.resize(30); f.panel.handleInput("\x1b[F"); await settle();
+		f.resize(30); f.panel.handleInput("\x1b[F"); f.panel.handleInput(up); await settle();
 		f.panel.handleInput(key); assert.doesNotMatch(plain(f.panel.render(120)), /Confirm Agents/);
 		f.panel.handleInput(right);
 		const overview = plain(f.panel.render(120));
@@ -179,7 +179,7 @@ void test("Agent bindings derive only from available typed rows and preserve sel
 		read: () => Promise.resolve({ summary: "Agents", note: "Read only", rows }),
 		apply: () => { throw new Error("Navigation never applies"); },
 	} });
-	f.panel.handleInput("\x1b[F"); await settle(); f.panel.handleInput(right); f.panel.handleInput(up);
+	f.panel.handleInput("\x1b[F"); f.panel.handleInput(up); await settle(); f.panel.handleInput(right); f.panel.handleInput(up);
 	assert.match(plain(f.panel.render(100)), /> \[j\] Joker/);
 	f.panel.handleInput(left); f.panel.handleInput(up); await settle();
 	rows = agentRows().reverse();
@@ -203,7 +203,7 @@ void test("Ambiguous Agent projections expose no colliding letter or manufacture
 		read: () => Promise.resolve({ summary: "Agents", note: "", rows }),
 		apply: () => { throw new Error("Ambiguous binding must not apply"); },
 	} });
-	f.panel.handleInput("\x1b[F"); await settle(); f.panel.handleInput(right);
+	f.panel.handleInput("\x1b[F"); f.panel.handleInput(up); await settle(); f.panel.handleInput(right);
 	assert.doesNotMatch(plain(f.panel.render(100)), /\[j\]|j Joker/);
 	f.panel.handleInput("j"); assert.doesNotMatch(plain(f.panel.render(100)), /Confirm Agents/);
 	f.panel.handleInput("g"); assert.match(plain(f.panel.render(100)), /Select Gentle agents/);
@@ -229,7 +229,7 @@ void test("Agent hints and navigation stay bounded and keys have no profile/glob
 		read: () => Promise.resolve({ summary: "Agents", note: "Inspection only", rows: agentRows() }),
 		apply: () => { throw new Error("No apply without confirmation"); },
 	} });
-	f.panel.handleInput("\x1b[F"); await settle(); f.panel.handleInput(right);
+	f.panel.handleInput("\x1b[F"); f.panel.handleInput(up); await settle(); f.panel.handleInput(right);
 	for (const key of ["v", "s", "d", "c", "r", "b"]) f.panel.handleInput(key);
 	assert.doesNotMatch(plain(f.panel.render(100)), /Confirm Agents/);
 	for (const width of [1, 8, 24, 48, 100]) {
@@ -252,7 +252,7 @@ void test("Agent direct letters never cross loading, query, save or text input b
 		apply: () => { calls++; return new Promise(resolve => { finishSave = () => resolve({ kind: "rejected", message: "Busy finished" }); }); },
 	};
 	const f = fixture(undefined, undefined, { agents }, () => {});
-	f.panel.handleInput("\x1b[F"); f.panel.handleInput(right);
+	f.panel.handleInput("\x1b[F"); f.panel.handleInput(up); f.panel.handleInput(right);
 	for (const key of ["g", "j", "\r"]) f.panel.handleInput(key);
 	assert.equal(calls, 0); assert.doesNotMatch(plain(f.panel.render(100)), /Confirm Agents/);
 	finishRead({ summary: "Agents", note: "", rows: agentRows() }); await settle();
@@ -504,7 +504,7 @@ void test("empty feedback preserves the current theme summary on short terminals
 
 void test("empty feedback preserves focus and position with ANSI colors", () => {
 	const f = fixture();
-	assert.match(f.panel.render(80).join("\n"), /categories: 1\/10/);
+	assert.match(f.panel.render(80).join("\n"), /categories: 1\/11/);
 	f.panel.handleInput(right);
 	assert.match(f.panel.render(80).join("\n"), /detail: 1\/2/);
 	f.panel.handleInput(down);
