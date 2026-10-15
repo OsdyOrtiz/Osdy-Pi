@@ -52,6 +52,28 @@ void test("Speech displays enabled/voice/rate and routes only Enable/Disable, Re
 	assert.deepEqual(actions, ["on", "off", "last", "stop"]);
 	panel.dispose();
 });
+void test("Speech explains native and optional Kokoro previews without adding controls", async () => {
+ const previews: string[] = [];
+ const speech = createControlCenterSpeech({
+  settings: () => Promise.resolve({ version: 1, enabled: false, voice: "Paulina", rate: 180 }),
+  voices: () => Promise.resolve(["Paulina", "Kokoro Dora"]),
+  selectVoice: () => { throw new Error("must not save while browsing or previewing"); },
+  previewVoice: voice => { previews.push(voice); return Promise.resolve({ failed: false, message: "Preview started" }); },
+  stopPreview: () => {}, command: () => { throw new Error("must not enable narration"); },
+ }, {} as ExtensionContext);
+ const initial = await speech.read();
+ assert.match(initial.note, /installed macOS voices/);
+ assert.match(initial.note, /optional Kokoro.*local server/i);
+ assert.equal(initial.rows.length, 5);
+ const draft = speech.moveVoice(1)!;
+ assert.match(draft.summary, /disabled.*Paulina.*180 wpm/);
+ assert.deepEqual(draft.rows[3]?.action, { kind: "speech-voice", voice: "Kokoro Dora" });
+ assert.deepEqual(draft.rows[4]?.action, { kind: "speech-preview", voice: "Kokoro Dora" });
+ assert.match(draft.rows[4]?.details?.join(" ") ?? "", /Spanish.*Kokoro.*English.*native/);
+ await speech.apply({ kind: "speech-preview", voice: "Kokoro Dora" });
+ assert.deepEqual(previews, ["Kokoro Dora"]);
+ assert.match((await speech.read()).rows[3]!.label, /Kokoro Dora.*unsaved/);
+});
 void test("Stale Control Center speech actions cannot launch in a replaced session", async () => {
 	let calls = 0;
 	const speech = createControlCenterSpeech({

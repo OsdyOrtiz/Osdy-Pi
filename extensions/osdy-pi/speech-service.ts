@@ -2,7 +2,7 @@ import type { SpeechResult, SpeechService, SpeechSettings } from "./speech-types
 import type { SpeechAdapter } from "./speech-adapter.js";
 import type { SpeechSettingsStore } from "./speech-settings.js";
 // @ts-expect-error Native Node tests import TypeScript sources.
-import { createNativeSpeechAdapter } from "./speech-adapter.ts";
+import { createLocalSpeechAdapter } from "./kokoro-speech-adapter.ts";
 // @ts-expect-error Native Node tests import TypeScript sources.
 import { createSpeechSettingsStore, defaultSpeechSettings, validateSpeechSettings } from "./speech-settings.ts";
 // @ts-expect-error Native Node tests import TypeScript sources.
@@ -25,7 +25,7 @@ function resolveVoice(installed: readonly string[], requested: string): string |
 }
 
 export function createSpeechService(options: SpeechServiceOptions = {}): SpeechService {
- const adapter = options.adapter ?? createNativeSpeechAdapter();
+ const adapter = options.adapter ?? createLocalSpeechAdapter();
  const store = options.store ?? createSpeechSettingsStore(options.agentDir);
  let generation = 0;
  let active: AbortController | undefined;
@@ -114,7 +114,9 @@ export function createSpeechService(options: SpeechServiceOptions = {}): SpeechS
    configureQueue = update.then(() => {}, () => {});
    return update;
   },
-  preview: voice => launch("Hello! This is a preview of my voice in Osdy Pi.", { voice }),
+  preview: voice => launch(["Kokoro Dora", "Kokoro Alex", "Kokoro Santa"].includes(voice)
+   ? "¡Hola! Esta es una muestra de mi voz en Osdy Pi. Puedo leer tus respuestas en español, con claridad y naturalidad."
+   : "Hello! This is a preview of my voice in Osdy Pi.", { voice }),
   stopPreview() {
    if (activeKind !== "preview") return;
    generation++;
