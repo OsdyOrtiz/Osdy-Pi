@@ -3,6 +3,7 @@ import { Input, Key, matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi
 import { doubleBorderBox, MODAL_OVERLAY_OPTIONS } from "./modal-frame.js";
 import { preferenceDetail, visualPreferenceLabel } from "./control-center-preferences.js";
 import type { ControlCenterPreferences, VisualPreferenceAction } from "./control-center-preferences.js";
+import type { ControlCenterSpeechAction, ControlCenterSpeechService } from "./control-center-speech.js";
 import type { CodexResetAction } from "./codex-reset-ui.js";
 import type { ControlCenterTodoAction, ControlCenterTodoService } from "./control-center-todo.js";
 import type { ControlCenterAgentsAction, ControlCenterAgentsService } from "./control-center-agents.js";
@@ -11,7 +12,7 @@ import type { CodexUsageSnapshot, CodexUsageWindow } from "./codex-usage.js";
 import { renderCodexUsageDashboardContentLines, renderControlCenterQuotaWindow } from "./codex-usage-ui.js";
 
 export const CONTROL_CENTER_CATEGORIES = [
-	"Theme", "Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage", "TODO", "Agents",
+	"Theme", "Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage", "TODO", "Agents", "Speech",
 ] as const;
 export type ControlCenterCategory = (typeof CONTROL_CENTER_CATEGORIES)[number];
 export type ControlCenterServiceAction =
@@ -31,11 +32,11 @@ export type ControlCenterUsageAction =
 	| { kind: "usage-account"; current: boolean }
 	| { kind: "usage-detail" };
 export type ControlCenterAction = { kind: "theme"; name: string } | VisualPreferenceAction
-	| ControlCenterServiceAction | ControlCenterAccountAction | ControlCenterUsageAction | ControlCenterTodoAction | ControlCenterAgentsAction
+	| ControlCenterServiceAction | ControlCenterAccountAction | ControlCenterUsageAction | ControlCenterTodoAction | ControlCenterAgentsAction | ControlCenterSpeechAction
 	| { kind: "sound-configure"; event: AudioNotificationEvent; path: string }
 	| { kind: "account-select"; profile: string }
 	| { kind: "account-back" };
-type InlineServiceAction = ControlCenterServiceAction | ControlCenterAccountAction | ControlCenterUsageAction;
+type InlineServiceAction = ControlCenterServiceAction | ControlCenterAccountAction | ControlCenterUsageAction | ControlCenterSpeechAction;
 export interface ControlCenterDetail { summary: string; note: string; rows: ControlCenterRow[] }
 export interface ControlCenterService<Action = ControlCenterServiceAction> {
 	read(): Promise<ControlCenterDetail>;
@@ -50,6 +51,8 @@ export interface ControlCenterRow {
 	group?: string;
 	quota?: CodexUsageWindow;
 	quotaName?: "Session" | "Weekly";
+	/** Speech selector identity is metadata, never inferred from its visible label. */
+	speechSelector?: boolean;
 }
 export type ControlCenterResult = { kind: "closed" } | { kind: "reload" } | { kind: "codex-reset" };
 export type ProviderApplyResult = { kind: "reload"; message: string } | { kind: "rejected"; message: string };
@@ -61,6 +64,7 @@ export interface ControlCenterDependencies {
 	usage?: (ControlCenterService<ControlCenterUsageAction> & { useReset?: CodexResetAction | undefined }) | undefined;
 	todo?: ControlCenterTodoService | undefined;
 	agents?: ControlCenterAgentsService | undefined;
+	speech?: (ControlCenterService<ControlCenterSpeechAction> & Partial<Pick<ControlCenterSpeechService, "moveVoice" | "stopPreview">>) | undefined;
 	reload?: (result: { kind: "reload" }) => void;
 	external?: (result: { kind: "codex-reset" }) => void;
 	theme: () => Pick<Theme, "name" | "appearance" | "fg">;
@@ -135,6 +139,7 @@ export class ControlCenter implements Component, Focusable {
 			case "Usage": return this.dependencies.usage;
 			case "TODO": return this.dependencies.todo;
 			case "Agents": return this.dependencies.agents;
+			case "Speech": return this.dependencies.speech;
 			default: return undefined;
 		}
 	}
@@ -149,7 +154,8 @@ export class ControlCenter implements Component, Focusable {
 			const view = await service.read();
 			if (this.disposed || generation !== this.readGeneration) return;
 			this.serviceView = view;
-			this.rowIndex = Math.max(0, view.rows.findIndex((row) => row.current));
+			// Start Speech on narration controls, not the saved voice selector.
+			this.rowIndex = this.category === "Speech" ? 0 : Math.max(0, view.rows.findIndex((row) => row.current));
 			if (this.category === "Agents") {
 				const selected = view.rows.findIndex(row => row.action.kind === "agents-provider" && row.action.mode === this.selectedAgent);
 				if (selected >= 0) this.rowIndex = selected;
@@ -173,6 +179,7 @@ export class ControlCenter implements Component, Focusable {
 	}
 
 	private applyService(action: InlineServiceAction) {
+		if (action.kind === "speech-enabled" || action.kind === "speech-last" || action.kind === "speech-stop" || action.kind === "speech-voice" || action.kind === "speech-preview") return this.dependencies.speech?.apply(action);
 		if (action.kind === "usage-reset") return undefined;
 		if (action.kind === "account-usage" || action.kind === "account-switch" || action.kind === "account-default") return this.dependencies.account?.apply(action);
 		if (action.kind === "usage-refresh" || action.kind === "usage-range" || action.kind === "usage-account" || action.kind === "usage-detail") return this.dependencies.usage?.apply(action);
@@ -226,6 +233,7 @@ export class ControlCenter implements Component, Focusable {
 		this.failed = false;
 		this.feedback = category === "Usage" ? "Refreshing usage / read-only view..."
 			: category === "Account" ? "Applying confirmed account action..."
+			: action.kind === "speech-preview" ? "Previewing draft voice..."
 			: action.kind === "sound-test" ? "Testing effective sound..." : "Saving globally...";
 		try {
 			const result = await this.applyService(action);
@@ -405,7 +413,7 @@ export class ControlCenter implements Component, Focusable {
 			};
 			return;
 		}
-		if (action.kind === "git-enabled" || action.kind === "sound-enabled" || action.kind === "sound-set" || action.kind === "sound-clear" || action.kind === "sound-test" || action.kind === "usage-refresh" || action.kind === "usage-range" || action.kind === "usage-account" || action.kind === "usage-detail") {
+		if (action.kind === "speech-enabled" || action.kind === "speech-last" || action.kind === "speech-stop" || action.kind === "speech-voice" || action.kind === "speech-preview" || action.kind === "git-enabled" || action.kind === "sound-enabled" || action.kind === "sound-set" || action.kind === "sound-clear" || action.kind === "sound-test" || action.kind === "usage-refresh" || action.kind === "usage-range" || action.kind === "usage-account" || action.kind === "usage-detail") {
 			void this.activateService(action);
 			return;
 		}
@@ -529,6 +537,15 @@ export class ControlCenter implements Component, Focusable {
 			}
 			this.dependencies.requestRender(); return;
 		}
+		const selectedRow = this.rows()[this.rowIndex];
+		if (this.category === "Speech" && this.focus === "detail" && selectedRow?.speechSelector
+			&& !this.saving && !this.loading && !this.queryingUsage
+			&& (matchesKey(data, Key.left) || matchesKey(data, Key.right))) {
+			const view = this.dependencies.speech?.moveVoice?.(matchesKey(data, Key.left) ? -1 : 1);
+			if (view) this.serviceView = view;
+			this.dependencies.requestRender();
+			return;
+		}
 		// Recompute before navigation too: resize may precede the next render.
 		this.pageSize = this.optionCapacity(this.lastWidth);
 		if (matchesKey(data, Key.tab) || matchesKey(data, Key.shift("tab"))) {
@@ -562,6 +579,7 @@ export class ControlCenter implements Component, Focusable {
 							this.selectedAgent = action?.kind === "agents-provider" ? action.mode : undefined;
 						}
 						if (this.category === "Account") this.leaveQuota();
+						if (this.category === "Speech") this.dependencies.speech?.stopPreview?.();
 					this.queryingUsage = false;
 					this.categoryIndex = index;
 					this.rowIndex = this.category === "Theme" ? this.themeRowIndex
@@ -679,7 +697,9 @@ export class ControlCenter implements Component, Focusable {
 		const agentBindings = this.agentBindings();
 		const agentHints = this.focus === "detail" && agentBindings.length
 			? `${agentBindings.map(({ key }) => width < 30 ? key : `${key} ${key === "g" ? "Gentle" : "Joker"}`).join(" · ")} · Enter ? Esc${width >= 58 ? " · Tab/←/→ focus · ↑/↓" : ""}` : "";
-		const hints = agentHints || accountHints || (width < 30 ? "Enter ? Esc Tab ↑↓"
+		const speechHints = this.category === "Speech" && this.focus === "detail" && rows[this.rowIndex]?.speechSelector
+			? width < 30 ? "←→ draft Enter save Tab Esc" : "←/→ draft · Enter save · Preview voice: sample · Tab categories · ? help · Esc close" : "";
+		const hints = speechHints || agentHints || accountHints || (width < 30 ? "Enter ? Esc Tab ↑↓"
 			: width < 58 ? "Enter select · ? help · Esc close · Tab focus"
 			: "Enter select · ? help · Esc close · Tab/←/→ focus · ↑/↓ PgUp/PgDn Home/End");
 		if (height < 7) {
@@ -733,12 +753,13 @@ export class ControlCenter implements Component, Focusable {
 	dispose(): void {
 		if (this.disposed) return;
 		this.disposed = true;
+		this.dependencies.speech?.stopPreview?.();
 		this.dependencies.account?.cancelUsage?.();
 	}
 }
 
 export async function showControlCenter(ctx: ControlCenterContext, preferences?: ControlCenterPreferences,
-	services?: Pick<ControlCenterDependencies, "git" | "sounds" | "account" | "usage" | "todo" | "agents">): Promise<ControlCenterResult> {
+	services?: Pick<ControlCenterDependencies, "git" | "sounds" | "account" | "usage" | "todo" | "agents" | "speech">): Promise<ControlCenterResult> {
 	if (!ctx.hasUI || ctx.mode !== "tui") {
 		ctx.ui.notify("Osdy Control Center requires the interactive terminal UI; RPC, JSON and print modes are unsupported.", "warning");
 		return { kind: "closed" };

@@ -684,7 +684,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 		} finally {
 			if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
 		}
-		shutdown = () => { void handlers.get("session_shutdown")?.[1]?.({}, runtimeCtx); };
+		shutdown = () => { void handlers.get("session_shutdown")?.[2]?.({}, runtimeCtx); };
 		if (options.shortcut) {
 			try {
 				assert.ok(shortcuts.has("ctrl+alt+o"), "Ctrl+Alt+O must open Control Center");
@@ -694,10 +694,10 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 				assert.equal("waitForIdle" in runtimeCtx, false, "shortcuts cannot wait through command-only hooks");
 			} catch (error) { shutdown(); tui.stop(); throw error; }
 		}
-		await handlers.get("session_start")?.[1]?.({}, runtimeCtx);
+		await handlers.get("session_start")?.[2]?.({}, runtimeCtx);
 		replacements = 0;
 		headerMounts = 0;
-		transition = async () => { await handlers.get("session_start")?.[1]?.({}, runtimeCtx); };
+		transition = async () => { await handlers.get("session_start")?.[2]?.({}, runtimeCtx); };
 		reopen = options.shortcut
 			? async () => { await shortcuts.get("ctrl+alt+o")!.handler(runtimeCtx); }
 			: () => commands.get("osdyConfig")!.handler("", commandCtx);
@@ -925,7 +925,7 @@ for (const shortcut of [false, true]) void test(`registered ${shortcut ? "Ctrl+A
 		for (let i = 0; i < 3; i++) f.send("\x1b[B");
 		f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r"); f.resolveSave(); await flushFocus();
 		assert.equal(f.replacements(), 0);
-		f.send("\x1b[D"); f.send("\x1b[F");
+		f.send("\x1b[D"); f.send("\x1b[F"); f.send("\x1b[A");
 		while (f.text().includes("Loading")) await new Promise<void>(resolve => setImmediate(resolve));
 		assert.match(f.text(), /Agent mode: mixed/);
 		assert.doesNotMatch(readFileSync(path, "utf8"), /-\.\/index.ts/);
@@ -956,7 +956,7 @@ void test("registered Agents isolated navigation exposes the owner block without
 	writeFileSync(path, before); process.env.PI_CODING_AGENT_DIR = agentDir;
 	const f = await focusFixture({ registered: true, todoDir: agentDir });
 	try {
-		f.send("\x1b[F"); await flushFocus();
+		f.send("\x1b[F"); f.send("\x1b[A"); await flushFocus();
 		assert.match(f.text(), /normal personal Pi.*override or isolated/);
 		f.send("\x1b[C"); f.send("g"); f.send("j"); f.send("\r"); await flushFocus();
 		assert.equal(readFileSync(path, "utf8"), before); assert.equal(f.closes(), 0);
@@ -1383,7 +1383,7 @@ void test("registered Ctrl+Alt+O and osdyConfig share the same panel, live value
 		assert.equal(writes.length, before, "status and invalid inputs never save");
 		assert.equal(shortcuts.has("f1"), false);
 		assert.equal(shortcuts.has("f2"), false);
-		assert.deepEqual([...shortcuts.keys()].sort(), ["ctrl+alt+o", "ctrl+alt+u"]);
+		assert.deepEqual([...shortcuts.keys()].sort(), ["ctrl+alt+o", "ctrl+alt+s", "ctrl+alt+u"]);
 		assert.equal("reload" in ctx, false);
 		for (const open of [() => modal.handler("", ctx), () => shortcuts.get("ctrl+alt+o")!.handler(ctx)]) {
 			await legacy.handler("header neon", ctx);
@@ -1439,7 +1439,7 @@ void test("registered shortcuts preserve command no-UI and Control Center mode/e
 		await registerOsdyPi(pi);
 		assert.equal(shortcuts.has("f1"), false);
 		assert.equal(shortcuts.has("f2"), false);
-		assert.deepEqual([...shortcuts.keys()].sort(), ["ctrl+alt+o", "ctrl+alt+u"]);
+		assert.deepEqual([...shortcuts.keys()].sort(), ["ctrl+alt+o", "ctrl+alt+s", "ctrl+alt+u"]);
 		for (const [key, command] of [["ctrl+alt+o", "osdyConfig"], ["ctrl+alt+u", "usage"]] as const) {
 			notices.length = 0;
 			await commands.get(command)!.handler("", commandCtx);
@@ -1499,10 +1499,10 @@ void test("actual factory registers no TODO surfaces by default, and all three o
    assert.ok(commands.includes("osdyConfig"));
    assert.equal(commands.includes("osdy"), false);
    assert.equal(commands.includes("todos"), enabled); assert.equal(tools.includes("todo"), enabled);
-   assert.ok(shortcuts.includes("ctrl+alt+o")); assert.ok(shortcuts.includes("ctrl+alt+u"));
+   assert.ok(shortcuts.includes("ctrl+alt+o")); assert.ok(shortcuts.includes("ctrl+alt+u")); assert.ok(shortcuts.includes("ctrl+alt+s"));
    assert.equal(shortcuts.includes("f1"), false); assert.equal(shortcuts.includes("f2"), false);
    assert.equal(shortcuts.includes("ctrl+shift+t"), enabled);
-   assert.equal(shortcuts.length, enabled ? 3 : 2);
+   assert.equal(shortcuts.length, enabled ? 4 : 3);
    assert.equal(execCalls, probes);
   }
  } finally {
@@ -1536,10 +1536,10 @@ void test("official SDK factory uses SDK cwd, not the safe process cwd, before T
     assert.equal(extension.commands.has("osdy"), false);
     assert.equal(extension.tools.has("todo"), active, cwd);
     assert.equal(extension.commands.has("todos"), active, cwd);
-    assert.ok(extension.shortcuts.has("ctrl+alt+o")); assert.ok(extension.shortcuts.has("ctrl+alt+u"));
+    assert.ok(extension.shortcuts.has("ctrl+alt+o")); assert.ok(extension.shortcuts.has("ctrl+alt+u")); assert.ok(extension.shortcuts.has("ctrl+alt+s"));
     assert.equal(extension.shortcuts.has("f1"), false); assert.equal(extension.shortcuts.has("f2"), false);
     assert.equal(extension.shortcuts.has("ctrl+shift+t"), active, cwd);
-    assert.equal(extension.shortcuts.size, active ? 3 : 2, cwd);
+    assert.equal(extension.shortcuts.size, active ? 4 : 3, cwd);
    } finally { runtime.invalidate(); }
   }
  } finally {
@@ -1567,7 +1567,7 @@ void test("unavailable, failed and invalid SDK cwd probes fail closed", async ()
    } as unknown as ExtensionAPI;
    await registerOsdyPi(pi);
    assert.ok(commands.includes("osdy-pi")); assert.equal(commands.includes("todos"), false);
-   assert.equal(tools.includes("todo"), false); assert.deepEqual(shortcuts.sort(), ["ctrl+alt+o", "ctrl+alt+u"]);
+   assert.equal(tools.includes("todo"), false); assert.deepEqual(shortcuts.sort(), ["ctrl+alt+o", "ctrl+alt+s", "ctrl+alt+u"]);
    assert.equal(shortcuts.includes("f1"), false); assert.equal(shortcuts.includes("f2"), false);
   }
  } finally {
@@ -1708,9 +1708,9 @@ void test("real session_start restores labels before editor mounting and rejects
 				reads++; entered();
 				return scenario === "failure" ? Promise.reject(new Error("read failed")) : pending;
 			} });
-			// Role-marker resets register first; the runtime lifecycle registers second.
-			const start = handlers.get("session_start")?.[1];
-			const shutdown = handlers.get("session_shutdown")?.[1];
+			// Speech and role-marker resets precede the existing visual runtime lifecycle.
+			const start = handlers.get("session_start")?.[2];
+			const shutdown = handlers.get("session_shutdown")?.[2];
 			assert.ok(start); assert.ok(shutdown);
 			try {
 				const startup = start({}, ctx);
