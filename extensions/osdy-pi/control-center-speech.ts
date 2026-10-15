@@ -22,12 +22,12 @@ export function createControlCenterSpeech(speech: ResponseSpeech, ctx: Extension
 	let voices: readonly string[] = [];
 	let savedVoice: string | undefined;
 	let draft: string | undefined;
-	let voiceNote = "No installed voices available.";
+	let voiceNote = "No voices available.";
 	const project = (): ControlCenterDetail => {
 		if (!settings) return { summary: "Speech unavailable", note: voiceNote, rows: [] };
 		return {
 			summary: `Speech: ${settings.enabled ? "enabled" : "disabled"} · Saved voice: ${settings.voice} · Rate: ${settings.rate} wpm`,
-			note: `Local macOS speech; independent of Sounds mute. Read last response uses the saved voice while disabled. ${voiceNote}`,
+			note: `Local speech: installed macOS voices or optional Kokoro (requires a separately started local server). Independent of Sounds mute. Read last response uses the saved voice while disabled. ${voiceNote}`,
 			rows: [
 				{ label: settings.enabled ? "Disable" : "Enable", current: false, action: { kind: "speech-enabled", value: !settings.enabled } },
 				{ label: "Read last response", current: false, action: { kind: "speech-last" } },
@@ -37,7 +37,7 @@ export function createControlCenterSpeech(speech: ResponseSpeech, ctx: Extension
 						action: { kind: "speech-voice" as const, voice: draft }, speechSelector: true,
 						details: ["←/→ browse draft (wraps); Enter saves. Browsing and saving never play audio.", `Saved voice: ${settings.voice}. Preview voice explicitly plays the draft without saving.`] },
 					{ label: "Preview voice", current: false, action: { kind: "speech-preview" as const, voice: draft },
-						details: ["Play a fixed short English sample of the draft voice; does not save or enable narration."] },
+						details: ["Play a fixed sample: Spanish for Kokoro, English for native voices; does not save or enable narration."] },
 				]),
 			],
 		};
@@ -46,7 +46,7 @@ export function createControlCenterSpeech(speech: ResponseSpeech, ctx: Extension
 		async read() {
 			const nextSettings = await speech.settings();
 			let nextVoices: readonly string[] = [];
-			voiceNote = "No installed voices available.";
+			voiceNote = "No voices available.";
 			try {
 				nextVoices = await speech.voices(ctx);
 				if (nextVoices.length) voiceNote = "←/→ on Voice browses; Enter saves; Preview voice plays an explicit sample. Tab returns to categories.";

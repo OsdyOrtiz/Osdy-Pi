@@ -26,6 +26,18 @@ function fixture() {
  const service = createSpeechService({ adapter, store, onError: (error) => { errors.push(error); } });
  return { service, adapter, store, calls, errors, done, stored: () => stored, saves: () => saves };
 }
+void test("production macOS catalog retains native voices and adds optional Kokoro without reading settings", { skip: process.platform !== "darwin" }, async () => {
+ let storeCalls = 0;
+ const service = createSpeechService({ store: {
+  load: () => { storeCalls++; return Promise.reject(new Error("Discovery must not read settings")); },
+  save: () => { storeCalls++; return Promise.reject(new Error("Discovery must not save settings")); },
+ } });
+ const voices = await service.voices();
+ for (const voice of ["Kokoro Dora", "Kokoro Alex", "Kokoro Santa"]) assert.ok(voices.includes(voice), voice);
+ assert.ok(voices.some(voice => !voice.startsWith("Kokoro ")));
+ assert.equal(storeCalls, 0);
+ service.stop();
+});
 void test("off by default; manual uses installed Paulina and returns before playback ends", async () => {
  const f = fixture();
  assert.equal(f.service.available(), true);
@@ -166,6 +178,25 @@ void test("preview uses the explicit installed voice and fixed sample at persist
  assert.equal(f.calls[0]?.text, "Hello! This is a preview of my voice in Osdy Pi.");
  assert.equal(f.calls[0]?.voice, "Jorge"); assert.equal(f.calls[0]?.rate, 215);
  assert.deepEqual(await f.service.settings(), before); assert.equal(f.saves(), saves);
+ f.service.stop(); f.done.resolve();
+});
+void test("only the three fixed Kokoro labels preview Spanish without saving or enabling", async () => {
+ const f = fixture();
+ const kokoro = ["Kokoro Dora", "Kokoro Alex", "Kokoro Santa"];
+ const native = ["Kokoro Dora (Enhanced)", "Kokoro Native", "Jorge"];
+ f.adapter.voices = () => Promise.resolve([...kokoro, ...native]);
+ const before = await f.service.settings();
+ for (const voice of [...kokoro, ...native]) {
+  assert.deepEqual(await f.service.preview(voice), {kind: "started"});
+  assert.equal(f.calls.at(-1)?.text, kokoro.includes(voice)
+   ? "¡Hola! Esta es una muestra de mi voz en Osdy Pi. Puedo leer tus respuestas en español, con claridad y naturalidad."
+   : "Hello! This is a preview of my voice in Osdy Pi.");
+  assert.equal(f.calls.at(-1)?.voice, voice);
+  assert.equal(f.calls.at(-1)?.rate, 180);
+  assert.deepEqual(await f.service.settings(), before);
+  assert.equal(f.saves(), 0);
+ }
+ assert.equal((await f.service.speak("still disabled", {automatic: true})).kind, "disabled");
  f.service.stop(); f.done.resolve();
 });
 void test("preview rejects invalid or uninstalled exact choices without fallback or settings writes", async () => {
