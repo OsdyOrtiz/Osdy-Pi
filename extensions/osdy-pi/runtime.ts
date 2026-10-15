@@ -1,3 +1,7 @@
+import { createSpeechService } from "./speech-service.js";
+import type { SpeechService } from "./speech-types.js";
+import { registerResponseSpeech, type ResponseSpeech } from "./response-speech.js";
+import { createControlCenterSpeech } from "./control-center-speech.js";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type {
 	ExtensionAPI,
@@ -320,6 +324,7 @@ export function getOsdyCommandCompletions(prefix: string) {
 	const parts = parseCommandArgs(trimmed);
 	if (parts.length === 0) {
 		return [
+			"speech",
    "todo",
 			"enable",
 			"disable",
@@ -340,6 +345,11 @@ export function getOsdyCommandCompletions(prefix: string) {
   return ["on", "off", "status"].filter((action) => action.startsWith(parts[1] ?? ""))
    .map((action) => ({ value: `todo ${action}`, label: `todo ${action}` }));
  }
+	if (parts[0] === "speech" && parts.length <= 2) {
+		return ["on", "off", "status", "stop", "last"]
+			.filter(action => action.startsWith(parts[1] ?? ""))
+			.map(action => ({ value: `speech ${action}`, label: `speech ${action}` }));
+	}
 	if (trimmed === "agents") {
 		return ["agents setup", "agents on", "agents off", "agents status"].map((value) => ({ value, label: value }));
 	}
@@ -382,6 +392,7 @@ export function getOsdyCommandCompletions(prefix: string) {
 	if (parts.length === 1) {
 		const valuePrefix = parts[0] ?? "";
 		return [
+			"speech",
    "todo",
 			"enable",
 			"disable",
@@ -911,6 +922,7 @@ function registerCommand(
  refreshUsage: () => Promise<void>,
 	captureCurrentRuntime: () => () => boolean,
 	accountFactory: typeof bindControlCenterAccount,
+	speech: ResponseSpeech,
 	bindReset: (ctx: ExtensionContext) => Promise<CodexResetAction | undefined>,
 ): void {
 	const openControlCenter = async (
@@ -938,6 +950,7 @@ function registerCommand(
 					applyEnabled: (value) => applyWorkingTreeEnabled(value, pi, ctx, state, workingState, workingTreeState, editorSettingsStore),
 				}),
 				sounds: bindControlCenterSounds(pi, ctx, settingsStore, createAudioPlaybackAdapter()),
+				speech: createControlCenterSpeech(speech, ctx, isCurrent),
 				account: accountFactory(ctx, refreshUsage, () => state.tui?.requestRender(), undefined, { isCurrent }),
 				usage: createControlCenterUsage({ quota: () => state.codexUsage, history: readUsageHistory,
 					refresh: refreshUsage, active: readActiveProfileName, useReset }),
@@ -955,7 +968,7 @@ function registerCommand(
 		}
 	};
 	pi.registerCommand("osdyConfig", {
-		description: "Open Osdy Control Center (preferences, Git, Sounds, Account, Usage, TODO and Agents).",
+		description: "Open Osdy Control Center (preferences, Git, Sounds, Account, Usage, TODO, Agents and Speech).",
 		handler: async (_args, ctx) => openControlCenter(ctx, async () => {
 			// Keep reload bound to the command context; never use that context afterward.
 			try { await ctx.reload(); } catch { return; }
@@ -968,9 +981,17 @@ function registerCommand(
 			ctx.ui.notify("Settings saved. Run /reload manually to apply the changes.", "info");
 		}),
 	});
+	pi.registerShortcut("ctrl+alt+s", {
+		description: "Stop pending and active speech without disabling narration.",
+		handler: async (ctx) => {
+			const isCurrent = captureCurrentRuntime();
+			const result = await speech.command(["stop"], ctx);
+			if (isCurrent()) ctx.ui.notify(result.message, result.failed ? "warning" : "info");
+		},
+	});
 	pi.registerCommand("osdy-pi", {
 		description:
-			"Manage Osdy Pi: visual on/off, status, todo on/off/status, agents, mascot, editor, sound, working tree, or diff.",
+			"Manage Osdy Pi: visual on/off, status, todo on/off/status, agents, mascot, editor, sound, speech on|off|status|stop|last, working tree, or diff.",
 		getArgumentCompletions: getOsdyCommandCompletions,
 		handler: async (args, ctx) => {
 			const [action = "status", ...rest] = parseCommandArgs(args);
@@ -1029,6 +1050,12 @@ function registerCommand(
 			}
 			if (action === "status") {
 				notifyStatus(ctx, state);
+				return;
+			}
+			if (action === "speech") {
+				const isCurrent = captureCurrentRuntime();
+				const result = await speech.command(rest, ctx);
+				if (isCurrent()) ctx.ui.notify(result.message, result.failed ? "warning" : "info");
 				return;
 			}
 			if (action === "sound") {
@@ -1092,7 +1119,7 @@ function registerCommand(
 				return;
 			}
 			ctx.ui.notify(
-				`Usage: /osdy-pi todo on|off|status | agents setup|on|off|status | enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | working-tree ... | diff | uninstall`,
+				`Usage: /osdy-pi todo on|off|status | agents setup|on|off|status | enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | speech on|off|status|stop|last | working-tree ... | diff | uninstall`,
 				"warning",
 			);
 		},
@@ -1125,6 +1152,7 @@ export async function registerOsdyPi(
 		codexUsageClock?: CodexUsageRefreshClock;
 		generationClock?: () => number;
 		fetchCodexUsage?: CodexUsageFetcher;
+		speechService?: SpeechService;
 		accountFactory?: typeof bindControlCenterAccount;
 		editorSettingsStore?: ReturnType<typeof createEditorSettingsStore>;
 	} = {},
@@ -1165,6 +1193,9 @@ export async function registerOsdyPi(
 		tui: undefined,
 	};
 	const controller = createWorkingController(state, workingState);
+	const speech = registerResponseSpeech(pi, dependencies.speechService ?? createSpeechService({
+		agentDir: (dependencies.agentDir ?? getAgentDir)(),
+	}));
 	const settingsStore = createAudioSoundSettingsStore();
 	const editorSettingsStore = dependencies.editorSettingsStore ?? createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
@@ -1485,6 +1516,7 @@ export async function registerOsdyPi(
 			return () => generation === runtimeGeneration;
 		},
 		dependencies.accountFactory ?? bindControlCenterAccount,
+		speech,
 		bindReset,
 	);
 }
