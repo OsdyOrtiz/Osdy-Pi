@@ -5,7 +5,7 @@ import type {
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import type { Component, TUI } from "@earendil-works/pi-tui";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import type {
 	SimpleTheme,
 	WorkingTreeFileSummary,
@@ -14,6 +14,7 @@ import type {
 	WorkingWidgetState,
 	WorkingTreePlacement,
 } from "./types.js";
+import type { CompanionWorkspace, WorkspacePanelContent } from "./companion-workspace.js";
 import { fitCenterVisible } from "./utils.js";
 
 const MUTATING_TOOL_NAMES = new Set(["edit", "write", "ast_grep_replace"]);
@@ -253,35 +254,22 @@ class WorkingTreeWidget implements Component {
 		private readonly theme: SimpleTheme,
 	) {}
 
+	private summaryLine(): string | undefined {
+		if (!this.state.enabled || !this.state.visible) return undefined;
+		if (this.state.loading) return this.theme.fg("muted", "Git changes · refreshing...");
+		if (this.state.error) return this.theme.fg("warning", "Git changes unavailable");
+		return this.state.snapshot ? renderSummaryLine(this.state.snapshot, this.theme) : undefined;
+	}
+
 	render(width: number): string[] {
-		if (!this.state.enabled || !this.state.visible) return [];
-		if (this.state.loading) {
-			return [
-				fitCenterVisible(
-					this.theme.fg("muted", "Git changes · refreshing..."),
-					width,
-				),
-			];
-		}
-		if (this.state.error) {
-			return [
-				fitCenterVisible(
-					this.theme.fg("warning", "Git changes unavailable"),
-					width,
-				),
-			];
-		}
-		const snapshot = this.state.snapshot;
-		if (!snapshot) return [];
-		return [
-			fitCenterVisible(
-				truncateToWidth(
-					renderSummaryLine(snapshot, this.theme),
-					Math.max(1, width),
-				),
-				width,
-			),
-		];
+		const line = this.summaryLine();
+		return line ? [fitCenterVisible(truncateToWidth(line, Math.max(1, width)), width)] : [];
+	}
+
+	/** Wrap original summary data, never parse the native renderer's truncation. */
+	renderInline(width: number): WorkspacePanelContent {
+		const line = this.summaryLine();
+		return { lines: line ? wrapTextWithAnsi(line, Math.max(1, width)) : [] };
 	}
 
 	invalidate(): void {}
@@ -291,11 +279,12 @@ export function createWorkingTreeWidgetFactory(
 	state: WorkingTreeState,
 	workingState: WorkingWidgetState,
 	placement: WorkingTreePlacement,
+	workspace?: CompanionWorkspace,
 ) {
 	return (tui: TUI, theme: SimpleTheme): Component => {
 		state.tui = tui;
 		const summary = new WorkingTreeWidget(state, theme);
-		return {
+		const stacked: Component = {
 			render(width: number): string[] {
 				const lines = summary.render(width);
 				if (lines.length === 0) return [];
@@ -305,5 +294,6 @@ export function createWorkingTreeWidgetFactory(
 			},
 			invalidate(): void {},
 		};
+		return workspace?.wrap("git", summary, stacked) ?? stacked;
 	};
 }

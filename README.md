@@ -1,12 +1,12 @@
 # Osdy Pi — a themed, responsive Pi workspace
 
-Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive terminal presentation with selectable headers and mascots, an editor companion, working indicator, and Git view. Visit the [Osdy landing page](https://osdy-pi.vercel.app/).
+Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive terminal presentation with selectable headers and mascots, an adaptive Companion workspace, working indicator, and Git view. Visit the [Osdy landing page](https://osdy-pi.vercel.app/).
 
 <img width="1857" height="847" alt="Osdy Pi interface" src="https://github.com/user-attachments/assets/028eeb14-3f43-4f1c-9603-0c55a8d2856d" />
 
 ## Release highlights
 
-**Visual feature availability:** the four headers, Hoodie Pi startup wave, and six companions below describe the current source; their availability in a published npm artifact has not yet been verified. A source change or successful push alone does not prove release success.
+**The Companion workspace adapts framed cards to available space** above the editor, to the Companion's left: active work stays above the cards, with live location and extension statuses; opt-in TODO, Session/Weekly Usage, and Git share the remaining room. Cards and editor together never exceed the Companion's height; when they cannot fit or Companion is off, the habitual layout returns automatically. In fullscreen Pi, click Usage to open the same `/usage` modal. See [Companion raccoon](#companion-raccoon), [TODO](#first-party-todo-included-starting-in-150), and [subscription usage](#codex-subscription-usage). This describes current source; confirm the resolved npm release includes it. Live artwork fidelity across terminals and fonts remains unverified.
 
 **New visual defaults are Slanted + Hoodie Pi, with Pixel Pal enabled**, only for fresh, missing, or invalid preferences. Valid saved choices—including companion off—remain respected. Use `/osdyConfig` → **Header**, **Mascot**, or **Companion** to choose independently. See [Header, mascot, and animation](#header-mascot-and-animation) and [Companion raccoon](#companion-raccoon).
 
@@ -31,14 +31,16 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 | Themes introduced in 1.8.0 | Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute. |
 | Message cards | Pi-native colored user cards without emojis and plain assistant Markdown preceded by a separate `🦝` transcript row. |
 | Header and mascot | Independent header/mascot choices, an installed-package version label, and mascot-only fallback when full artwork cannot fit. |
+| [Companion workspace](#companion-raccoon) | Adaptive framed TODO (up to three preview tasks), Usage and Git beside the Companion, with top activity, live location/statuses, a combined height limit, and automatic habitual fallback. |
 | Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
-| Quota | **Ctrl+Option+U** or `/usage` opens subscription quota; compact bars emphasize remaining Codex quota at warning (40% or less) and error (15% or less) thresholds. |
+| Quota | **Ctrl+Option+U**, `/usage`, or a fullscreen click on the Companion workspace Usage card opens subscription quota; compact bars emphasize remaining Codex quota at warning (40% or less) and error (15% or less) thresholds. |
 | TODO (starting in 1.5.0, opt-in) | Default-off first-party `todo` snapshots track the Pi session branch; `/todos` reads them without editing. ODD Markdown remains separate. |
 
 ## Prerequisites
 
 - [Pi](https://github.com/earendil-works/pi)
 - Node.js **22.19.0 or later**
+- Pi peer dependencies accept `*`; development and the fullscreen component APIs described here are tested against Pi **0.99.1**, not every peer version.
 - Git, for Osdy Pi's working-tree and diff features (and for Git-based installs)
 
 ## Quick start
@@ -55,7 +57,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
-   Check the resolved npm version: the Spider-Man-inspired themes require 1.11.0 or later; local analytics requires 1.10.0 or later. To pin the historical feature release explicitly, use `pi install npm:osdy-pi@1.11.0` if that version is available on npm; automatic patches may already be newer. For an unpinned installation, run `pi update`, then `/reload` in a running Pi session (or restart Pi) to load the updated resources. Updating does not move a pinned version, so replace an older pin explicitly. First-party TODO is included starting in 1.5.0; `/osdy-pi uninstall` and explicit agent provider modes start in 1.6.0. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
+   Check the resolved npm version and its feature documentation; the current source workspace is not proof that a particular npm artifact includes it. The source manifest and lock roots use `1.11.0` as the CI base; the main-push workflow allocates the published patch. The Spider-Man-inspired themes require 1.11.0 or later; local analytics requires 1.10.0 or later. To pin the historical feature release explicitly, use `pi install npm:osdy-pi@1.11.0` if that version is available on npm; automatic patches may already be newer. For an unpinned installation, run `pi update`, then `/reload` in a running Pi session (or restart Pi) to load the updated resources. Updating does not move a pinned version, so replace an older pin explicitly. First-party TODO is included starting in 1.5.0; `/osdy-pi uninstall` and explicit agent provider modes start in 1.6.0. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
 
 2. Start Pi:
 
@@ -217,7 +219,7 @@ The surfaces below register only after explicit TODO opt-in.
 
 The model-facing `todo` tool supports `create`, `update`, `list`, `get`, `delete`, and `clear`. Tool results carry full task snapshots; Pi's current session branch is the TODO authority. Session switches and compaction replay the latest valid branch snapshot, rather than sharing one project-wide list. `/todos` opens a read-only, grouped modal (pending, in progress, completed) in interactive Pi; scroll with arrow or Page Up/Down keys and close with Esc or q. The refreshed modal adds a completed-task progress meter, theme-aware status groups and a scroll-position footer while keeping every task reachable. It is not an interactive Markdown editor. In non-terminal modes with UI support, it retains notification output. ODD's `odd/tasks/*.md` ledger and Engram are separate orchestration records: there is no automatic sync with these Pi TODOs.
 
-In interactive Pi, the persistent widget appears above the editor while visible tasks exist. Its compact preview shows up to three task rows (excluding heading, overflow hint, and spacer), prioritizes unfinished tasks on overflow, and crosses out completed subjects. In fullscreen Pi, left-click the heading to expand or return to preview; wheel over the expanded widget to move one task at a time beneath the fixed heading. The final task can reach the first task row even in a short dock. A heading-only or hidden dock cannot display tasks; use `/todos` for the full keyboard-accessible list. Regular mode stays compact; Pi's tool-output expansion does not change this widget. `ctrl+shift+t` retains the separate fully collapsed view.
+In interactive Pi, the persistent widget appears above the editor while visible tasks exist. When the Companion is visible, TODO shares its vertical band in a frame beside Usage/Git, below the top activity/location strip and above the editor. Its localized heading/counter becomes the frame title; existing overflow information moves to the bottom border when readable, preserving the three-task preview. It does not also appear in the stacked dock. Companion off or hidden restores the habitual unframed stacked widgets automatically, including the saved Git placement. Neither TODO nor Git is enabled by this layout. Its compact preview shows up to three task rows (excluding heading, overflow hint, and spacer), prioritizes unfinished tasks on overflow, and crosses out completed subjects. In fullscreen Pi, left-click the heading to expand or return to preview; wheel over the expanded widget to move one task at a time beneath the fixed heading. The final task can reach the first task row even in a short dock. A heading-only or hidden dock cannot display tasks; use `/todos` for the full keyboard-accessible list. Regular mode stays compact; Pi's tool-output expansion does not change this widget. `ctrl+shift+t` retains the separate fully collapsed view.
 
 Expansion and scroll position survive same-session refresh, tree navigation, and compaction, with offsets clamped as tasks change. Foreground session replacement and shutdown reset the view; background sessions do not affect it. Task data and `/todos` are unchanged.
 
@@ -343,10 +345,10 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 | --- | --- |
 | Themes | 23 built-in themes, including Osdy, Kanagawa, Dracula, Gruvbox, Nord, Rosé Pine, Daniela Cute, Halloween, Halloween Killer, Catppuccin, Matrix, Lucent Orange, and three Spider-Man-inspired palettes |
 | Header and mascot | Independently selectable `osdy-theme`/`neon`/`block-shadow`/`slanted` headers and `current`/`bts`/`osdy-halloween`/`pi` mascots |
-| Companion raccoon | Six pixel-art companion styles (Pixel Pal, Tiny Doodle, Big Cuddle, Retro Buddy, Slim Ringtail, Pocket Ringtail) beside the framed editor, posed after the working activity |
+| Companion workspace | Six pixel-art styles (Pixel Pal, Tiny Doodle, Big Cuddle, Retro Buddy, Slim Ringtail, Pocket Ringtail) beside adaptive framed TODO/Usage/Git cards and editor; [automatic fallback](#companion-raccoon) when the combined block cannot fit |
 | Messages | Native colored user cards without emojis and plain assistant Markdown with a separate assistant `🦝` row |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
-| Status | Six activity labels with compact per-state glyphs and a shared theme-color pulse, responsive footer metrics, dynamic extension statuses, and Codex subscription quota with low-capacity emphasis |
+| Status | Six activity labels with compact per-state glyphs and a shared theme-color pulse, live location and dynamic extension statuses, responsive metrics, and Codex subscription quota with low-capacity emphasis |
 | Local analytics | Four keyboard-selectable pages with shared filters, token charts, estimated cost, and private metadata-only history from new assistant turns |
 | Git | Working-tree summary and a centered, filterable diff panel |
 | Audio | Default-on event sounds on macOS and Windows, with master mute and custom paths |
@@ -444,7 +446,7 @@ Animation is enabled by default with an intro animation. Configure it through `O
 
 | Terminal mode | Header and mascot | Editor and Git | Footer |
 | --- | --- | --- | --- |
-| Normal | Full selected header and mascot side by side | Auto mode shows the framed editor by default; simple selects Pi's native editor and extended selects the framed editor; Git summary when enabled | Native editor: model/thinking, usage, path/branch, then statuses; framed editor: path/branch then statuses |
+| Normal | Full selected header and mascot side by side | Auto mode shows the framed editor by default; simple selects Pi's native editor and extended selects the framed editor; when it fits, the [Companion workspace](#companion-raccoon) shares framed TODO/Usage/Git cards | Native editor: model/thinking, usage, path/branch, then statuses; framed editor: path/branch and statuses, moved into the Companion workspace when visible |
 | Compact (above the selected header's small-mode cutoff, full artwork does not fit) | Centered mascot only; text art scales proportionally, Hoodie Pi selects a pre-rendered size | Selected editor mode and Git behavior | Same editor-aware footer behavior as normal/small modes |
 | Small (below either cutoff below) | Mascot only, sized to fit | Pi native editor for every editor mode; Git summary hidden | Model + styled thinking level, usage, path/branch, then dynamic extension statuses (except Pi Lens) |
 
@@ -499,7 +501,7 @@ Press **Ctrl+Option+U** or run `/usage` to open the same Codex subscription dash
 
 The main windows are labeled **Session** and **Weekly** (the API/domain remains primary/secondary). Their remaining-capacity bars are full at 100% remaining and empty at 0%; labels use the active theme's bold accent, Session uses the accent fill, Weekly uses `mdLink`, and empty segments are muted. The remaining percentage stays muted above 40%, changes to the theme's warning color at 40% or less, and changes to its error color at 15% or less. The same thresholds apply in the `/usage` dashboard and compact footer/editor quota bars. A double themed frame, section dividers, and spacing separate the display. Detail cards show each duration and relative, local, and UTC reset times. Plan, availability, credits/reset count, and additional buckets appear only when the service supplies them; absent optional values are omitted.
 
-At wide widths, the modal pairs the Session and Weekly detail cards. Below 72 content columns, cards and bars stack and account/model data wraps. The native footer and extended editor also show compact Session/Weekly remaining-capacity bars below model and thinking metadata whenever a current Codex snapshot exists. Wide widths combine those bars; narrow widths stack them. Additional buckets appear in `/usage` and the selected-profile Control Center quota view, not compact editor/footer bars.
+At wide widths, the modal pairs the Session and Weekly detail cards. Below 72 content columns, cards and bars stack and account/model data wraps. The native footer and extended editor also show compact Session/Weekly remaining-capacity bars whenever a current Codex snapshot exists. With Companion visible, both move together into a single **Usage** frame above the editor, without duplicate bars below it. In fullscreen Pi, left-click its title or content to open the same `/usage` modal (not `/osdy-usage` analytics); other mouse gestures retain their normal behavior. In regular mode use **Ctrl+Option+U** (**Ctrl+Alt+U** elsewhere) or `/usage`. Companion off/hidden restores the usual unframed quota placement. Wide widths combine those bars; narrow widths stack them. Additional buckets appear in `/usage` and the selected-profile Control Center quota view, not compact editor/footer bars.
 
 Active quota loads when an enabled session starts and refreshes when **Ctrl+Option+U** or `/usage` opens the dashboard, or `r` is pressed. It also refreshes while idle on a **60-second** schedule, only after settings are loaded, with Osdy enabled, an interactive terminal UI, an `openai-codex` model selected, and no quota request already in flight. Automatic failures double the retry delay up to **10 minutes**; a successful automatic query restores the 60-second interval. This scheduler never polls stored profiles.
 
@@ -562,6 +564,14 @@ In auto or extended mode at a non-small width, the framed editor shows the model
 ### Companion raccoon
 
 A full-body pixel-art raccoon sits in its own rounded box to the right of the framed editor, drawn with half-block characters (two vertical pixels per cell, 24-bit color). The frame has `✦` corners at the top, `╰` and `╯` at the bottom, and the companion's name in a tab on the top edge (`✦─ Pixel Pal ───✦`; a name too long for a narrow box is shortened with `…`). Its border is a static gradient from the active theme: going around the frame, it shifts through `accent`, `mdHeading` and `mdLink`, and the name uses `accent`. The box keeps its own height, independent of the editor; both are bottom-aligned. It is hidden on small terminals, below its minimum size, and while autocomplete is visible.
+
+While Companion is visible, **active work is always topmost**, in a compact themed strip with the current project path/branch from the existing footer provider. Idle does not add an activity label. Location and live extension statuses move here rather than appearing twice. Provider-owned messages retain the footer's existing key order, sanitization and small-mode filtering; they wrap in a compact themed area without rewritten permission/status text, and no empty status area is added. Other footer metadata is unchanged.
+
+The framed TODO, Usage and Git cards adapt to actual content width and remaining height: a small set of one-, two- or three-column arrangements and a TODO/sidebar arrangement is measured on each render. Readable cards share rows instead of blindly stacking; remaining cards claim released width when a sibling disappears. Git wraps its original summary, preserving counts and loading/error/clean states. TODO keeps its three-task preview and localized overflow border, while Usage retains both Session and Weekly bars.
+
+**The entire left block, including the editor, must fit the selected Companion's height.** The three-task preview, localized overflow information, and editor minimum size are preserved. At 120 columns, all cards plus the activity/location strip and editor fit Pixel Pal's 14 rows; a representative 200-column layout also fits all cards and the example provider statuses in those 14 rows. If width, a smaller style, expanded TODO, or a growing editor prevents a readable fit, Companion hides and the exact habitual widgets, quota bars, footer location and truncated native status line return, including saved Git placement. Controllers, preferences, tasks, and editor focus are not reset; sharing resumes when it fits again. Off, small mode, native/simple editor, and autocomplete retain the same habitual fallback.
+
+Fullscreen TODO title-click/wheel and `ctrl+shift+t` remain available. In fullscreen Pi, left-clicking Usage's title/content opens the existing `/usage` modal; `/usage` and Ctrl+Alt+U remain keyboard alternatives. No duplicate quotas or model/context metadata are added. The user confirmed the habitual fallback click/cursor/wrap case manually; broader live terminal/font artwork verification remains pending.
 
 Choose a style (or **off**) in the **Companion** category of `/osdyConfig`, or run `/osdy-pi companion original|drawn|rounded|terminal|slim|slim-small|on|off|toggle|status`. Choosing a style also turns the companion on; the choice applies live and saves globally.
 
@@ -662,7 +672,7 @@ A two-color wave travels across the label: the current letter uses the active th
 
 The working-tree summary is enabled by default. It reads the repository state at session start, including existing changes, and reports staged, unstaged, and untracked counts with total `+/-` changes. It also has clean and unavailable states. `working-tree off` unregisters the widget completely, and a persisted disabled preference leaves it unmounted when the next session starts. `working-tree on` remounts and refreshes it without requiring a restart. After successful `edit`, `write`, `ast_grep_replace`, or `bash` tool execution, it refreshes.
 
-Use `working-tree position top` or `bottom` to place the summary above or below the editor. The widget supplies trailing blank space and adds leading separation when it is below the editor or the spinner is active, keeping the surrounding layout readable without promising a fixed number of blank lines in every state.
+Use `working-tree position top` or `bottom` to place the summary above or below the editor in the habitual layout. When the Companion workspace is visible, Git appears in a shared frame instead; its saved position returns on fallback. The habitual widget supplies trailing blank space and adds leading separation when it is below the editor or the spinner is active, keeping the surrounding layout readable without promising a fixed number of blank lines in every state.
 
 `/osdy-pi diff` opens a centered diff panel. Type to filter paths, then inspect staged, unstaged, or untracked patches for a file.
 

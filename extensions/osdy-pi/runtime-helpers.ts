@@ -2,6 +2,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { companionWorkspace } from "./companion-workspace.js";
 import { asciiAnimationMode } from "./animation.js";
 import { WORKING_TREE_WIDGET_KEY, WORKING_WIDGET_KEY } from "./constants.js";
 import { modelLabel, usageLabel } from "./metrics.js";
@@ -147,6 +148,7 @@ export function syncWorkingTreeWidget(
 			workingTreeState,
 			workingState,
 			state.workingTreePlacement,
+			companionWorkspace(ctx.ui),
 		),
 		{ placement: state.workingTreePlacement },
 	);
@@ -169,7 +171,7 @@ export function mountOsdyUi(
 	clearGentleShellChangesWidget(ctx);
 	ctx.ui.setWidget(
 		WORKING_WIDGET_KEY,
-		createWorkingWidgetFactory(workingState),
+		createWorkingWidgetFactory(workingState, companionWorkspace(ctx.ui)),
 		{ placement: "aboveEditor" },
 	);
 	syncWorkingTreeWidget(ctx, state, workingState, workingTreeState);

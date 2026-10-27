@@ -1,6 +1,7 @@
 // Widget behavior adapted independently from @juicesharp/rpiv-todo@2.11.0 (MIT); see root LICENSE.
 import type { ExtensionAPI, ExtensionContext, ExtensionUIContext, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type TUI, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
+import { companionWorkspace, type WorkspacePanel } from "./companion-workspace.js";
 import { COLLAPSE_KEY_OFF, getMaxWidgetLines, loadTodoConfig, resolveCollapseKey, type TodoConfig } from "./todo-config.js";
 import type { TodoTask } from "./todo-domain.js";
 import { todoI18n, type TodoI18n } from "./todo-i18n.js";
@@ -40,13 +41,16 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
  let foreground: string | undefined;
  let ui: ExtensionUIContext | undefined;
  let mounted = false;
+ let mountToken: object | undefined;
+ let presentation: { dispose(): void } | undefined;
+ const detach = () => { mountToken = undefined; presentation?.dispose(); presentation = undefined; };
  let tui: TUI | undefined;
  let collapsed = false;
  let expanded = false;
  let offset = 0;
  const clampOffset = (length: number) => { offset = Math.max(0, Math.min(offset, length - 1)); };
  const visible = () => store.get(foreground ?? "").tasks.filter((task) => task.status !== "deleted");
- const render = (theme: Theme, width: number): string[] => {
+ const render = (theme: Theme, width: number, inline?: { footer?: string }): string[] => {
   const tasks = visible();
   if (!isEnabled() || !tasks.length) return [];
   const trunc = (line: string) => truncateToWidth(line, width, "…");
@@ -73,7 +77,9 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
   }
   if (completed + pending > 0) {
    const parts = [completed ? `${completed} ${i18n.status("completed")}` : "", pending ? `${pending} ${i18n.status("pending")}` : ""].filter(Boolean);
-   lines.push(trunc(`${theme.fg("dim", "└─")} ${theme.fg("dim", `+${completed + pending} ${i18n.t("overlay.more", "more")} (${parts.join(", ")})`)}`));
+   const overflow = theme.fg("dim", `+${completed + pending} ${i18n.t("overlay.more", "more")} (${parts.join(", ")})`);
+   if (inline) inline.footer = overflow;
+   else lines.push(trunc(`${theme.fg("dim", "└─")} ${overflow}`));
   } else {
    const last = lines.length - 1;
    lines[last] = lines[last]?.replace("├─", "└─") ?? "";
@@ -99,11 +105,24 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
   clampOffset(visible().length);
   if (!ui) return;
   if (!isEnabled() || !visible().length) {
-   if (mounted) { ui.setWidget(KEY, undefined); mounted = false; tui = undefined; }
+   if (mounted) { detach(); ui.setWidget(KEY, undefined); mounted = false; tui = undefined; }
   } else if (!mounted) {
+   const owner = ui;
+   const token = {};
+   mountToken = token;
    ui.setWidget(KEY, (host, theme) => {
+    if (mountToken !== token) return { render: () => [], invalidate() {} };
     tui = host;
-    return { render: (width: number) => render(ui?.theme ?? theme, width), handleMouse, invalidate() {} };
+    const component: WorkspacePanel = { render: (width: number) => mountToken === token ? render(owner.theme ?? theme, width) : [],
+     renderInline: width => {
+      const inline: { footer?: string } = {};
+      const lines = mountToken === token ? render(owner.theme ?? theme, width, inline) : [];
+      return { lines, ...inline };
+     },
+     handleMouse: (event: TuiMouseEvent) => mountToken === token ? handleMouse(event) : undefined, invalidate() {} };
+    const wrapper = companionWorkspace(owner).wrap("todo", component);
+    presentation = wrapper;
+    return wrapper;
    }, { placement: "aboveEditor" });
    mounted = true;
   } else tui?.requestRender();
@@ -117,7 +136,7 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
   // UI reused for a new session is replacement; tree/compact keep preference.
   if (foreground !== undefined && foreground !== session && ctx.ui !== ui) return;
   if (foreground !== session) { collapsed = false; expanded = false; offset = 0; }
-  if (ui && ui !== ctx.ui && mounted) ui.setWidget(KEY, undefined);
+  if (ui && ui !== ctx.ui && mounted) { detach(); ui.setWidget(KEY, undefined); }
   if (ui !== ctx.ui) { mounted = false; tui = undefined; }
   foreground = session; ui = ctx.ui; refresh();
  });
@@ -125,6 +144,7 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
  pi.on("session_tree", (_event, ctx) => { if (foregroundEvent(ctx)) refresh(); });
  pi.on("session_shutdown", (_event, ctx) => {
   if (!foregroundEvent(ctx)) return;
+  detach();
   if (mounted) ui?.setWidget(KEY, undefined);
   mounted = false; tui = undefined; ui = undefined; foreground = undefined; collapsed = false; expanded = false; offset = 0;
  });

@@ -864,14 +864,14 @@ function registerUsageCommand(
 		getSessionContext,
 		startRefresh,
 	);
-	const openUsagePanel = async (ctx: ExtensionContext): Promise<void> => {
+	const openUsagePanel = async (ctx: ExtensionContext, canOpen: () => boolean = () => true): Promise<void> => {
 		if (!ctx.hasUI || ctx.mode !== "tui") {
 			ctx.ui.notify("Codex usage requires the interactive UI", "warning");
 			return;
 		}
 		const isCurrent = captureCurrentRuntime();
 		const useReset = await bindReset(ctx);
-		if (!isCurrent()) return;
+		if (!isCurrent() || !canOpen()) return;
 		await showCodexUsagePanel(
 			ctx,
 			() => state.codexUsage,
@@ -883,6 +883,21 @@ function registerUsageCommand(
 			},
 			useReset,
 		);
+	};
+	let mouseOpenInFlight = false;
+	state.openUsage = async () => {
+		const ctx = getSessionContext();
+		const canOpen = () => !state.tui?.hasOverlay() && !state.editorMountHold?.count;
+		if (!ctx || mouseOpenInFlight || !canOpen()) return;
+		mouseOpenInFlight = true;
+		const isCurrent = captureCurrentRuntime();
+		try {
+			await openUsagePanel(ctx, canOpen);
+		} catch (error) {
+			if (isCurrent()) ctx.ui.notify(`Codex usage failed: ${error instanceof Error ? error.message : "unknown error"}`, "error");
+		} finally {
+			mouseOpenInFlight = false;
+		}
 	};
 	pi.registerCommand("usage", {
 		description: "Show current Codex subscription usage.",

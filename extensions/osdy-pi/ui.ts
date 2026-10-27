@@ -8,10 +8,13 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import {
 	type Component,
+	type TuiMouseEvent,
+	type TuiMouseEventResult,
 	type EditorTheme,
 	type TUI,
 	truncateToWidth,
 	visibleWidth,
+	wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 import {
 	animateAsciiLine,
@@ -26,6 +29,7 @@ import {
 	resolveMascotPose,
 	shouldShowCompanion,
 } from "./companion-panel.js";
+import { companionWorkspace, type CompanionWorkspace, type WorkspaceMouseTarget, type WorkspaceLayout } from "./companion-workspace.js";
 import { formatContextUsage } from "./context-usage-ui.js";
 import {
 	renderCompactCodexQuotaBars,
@@ -327,6 +331,9 @@ class OsdyFooter implements Component {
 	private readonly state: OsdyState;
 	private readonly footerData: ReadonlyFooterDataProvider;
 	private readonly theme: SimpleTheme;
+	private readonly workspace: CompanionWorkspace;
+	private readonly location: Component;
+	private readonly statuses: Component;
 
 	constructor(
 		pi: ExtensionAPI,
@@ -340,30 +347,44 @@ class OsdyFooter implements Component {
 		this.state = state;
 		this.footerData = footerData;
 		this.theme = theme;
+		this.workspace = companionWorkspace(ctx.ui);
+		this.location = { render: width => [this.renderLocation(width)], invalidate() {} };
+		this.workspace.location = this.location;
+		this.statuses = { render: width => {
+			const text = this.renderStatuses();
+			return text ? wrapTextWithAnsi(text, width) : [];
+		}, invalidate() {} };
+		this.workspace.statuses = this.statuses;
 	}
 
-	render(width: number): string[] {
+	private renderLocation(width: number): string {
 		const ellipsis = this.theme.fg("dim", "...");
 		let location = formatPath(this.ctx.cwd);
 		const branch = this.footerData.getGitBranch?.();
 		if (branch) location = `${location} (${branch})`;
-		const locationLine = truncateToWidth(
-			this.theme.fg("dim", location),
-			width,
-			ellipsis,
-		);
+		return truncateToWidth(this.theme.fg("dim", location), width, ellipsis);
+	}
+
+	private renderStatuses(): string {
 		const statuses = this.footerData.getExtensionStatuses?.() ?? new Map();
 		const statusEntries = Array.from(statuses.entries()).filter(
 			([key]) => !this.state.smallMode || key !== PI_LENS_STATUS_KEY,
 		);
-		const statusLine = statusEntries
+		return statusEntries
 			.sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
 			.map(([, text]) => sanitizeStatusText(text))
 			.join(" ");
+	}
+
+	render(width: number): string[] {
+		const ellipsis = this.theme.fg("dim", "...");
+		const shared = this.workspace.available(width);
+		const locationLines = shared ? [] : [this.renderLocation(width)];
+		const statusLine = shared ? "" : this.renderStatuses();
 		if (!shouldShowFooterMetadata(this.state.editorEffective)) {
 			return statusLine
-				? [locationLine, truncateToWidth(statusLine, width, ellipsis)]
-				: [locationLine];
+				? [...locationLines, truncateToWidth(statusLine, width, ellipsis)]
+				: locationLines;
 		}
 		const thinkingLevel = this.pi.getThinkingLevel();
 		const baseMetadata = formatModelMetadata(
@@ -389,13 +410,18 @@ class OsdyFooter implements Component {
 			width,
 			ellipsis,
 		);
-		const lines = [thinkingLine, ...quotaLines, usageLine, locationLine];
+		const lines = [thinkingLine, ...quotaLines, usageLine, ...locationLines];
 		return statusLine
 			? [...lines, truncateToWidth(statusLine, width, ellipsis)]
 			: lines;
 	}
 
 	invalidate(): void {}
+
+	dispose(): void {
+		if (this.workspace.location === this.location) this.workspace.location = undefined;
+		if (this.workspace.statuses === this.statuses) this.workspace.statuses = undefined;
+	}
 }
 
 class OsdyWorkingWidget implements Component {
@@ -477,10 +503,11 @@ export function createFooterComponent(
 	return new OsdyFooter(pi, ctx, state, footerData, theme);
 }
 
-export function createWorkingWidgetFactory(workingState: WorkingWidgetState) {
+export function createWorkingWidgetFactory(workingState: WorkingWidgetState, workspace?: CompanionWorkspace) {
 	return (tui: TUI, theme: SimpleTheme): Component => {
 		workingState.tui = tui;
-		return new OsdyWorkingWidget(workingState, theme);
+		const component = new OsdyWorkingWidget(workingState, theme);
+		return workspace?.wrap("working", component) ?? component;
 	};
 }
 
@@ -493,8 +520,10 @@ export function createEditorComponent(
 	theme: EditorTheme,
 	keybindings: KeybindingsManager,
 ) => CustomEditor {
+	const workspace = companionWorkspace(ctx.ui);
 	class OsdyEditor extends CustomEditor {
 		private readonly tuiRef: TUI;
+		private mouseLayout: { width: number; editorY: number; editorHeight: number; panels: WorkspaceMouseTarget[] } | undefined;
 
 		constructor(
 			tuiRef: TUI,
@@ -503,20 +532,66 @@ export function createEditorComponent(
 		) {
 			super(tuiRef, theme, keybindings, { paddingX: 1 });
 			this.tuiRef = tuiRef;
+			workspace.available = width => this.prepareWorkspace(width) !== undefined;
+		}
+
+		private renderQuotaLines(width: number): string[] {
+			const snapshot = state.codexUsage.kind === "idle" ? undefined : state.codexUsage.snapshot;
+			return ctx.model?.provider === "openai-codex" && snapshot
+				? renderCompactCodexQuotaBars(ctx.ui.theme, snapshot, width) : [];
+		}
+
+		/** The same live measurement is used by native wrappers, even before this editor renders. */
+		private prepareWorkspace(width: number): { editorWidth: number; panels: WorkspaceLayout } | undefined {
+			const style = state.companionStyle ?? "original";
+			if (!state.enabled || state.visualsEnabled === false || !state.editorEffective || this.isShowingAutocomplete()
+				|| !shouldShowCompanion({ style, enabled: state.companionEnabled !== false,
+					smallMode: state.smallMode, width, terminalRows: this.tuiRef.terminal.rows })) return undefined;
+			const companion = companionLayout(style);
+			const editorWidth = width - companion.columns;
+			const editorHeight = Math.max(super.render(editorWidth - 2).length, internalLineTarget(this.tuiRef) + 2);
+			const usage: Component = {
+				render: width => this.renderQuotaLines(width),
+				handleMouse: event => {
+					if (this.tuiRef.mode !== "fullscreen" || this.tuiRef.hasOverlay()
+						|| event.type !== "click" || event.button !== "left" || !state.openUsage) return undefined;
+					void state.openUsage();
+					return { handled: true };
+				},
+				invalidate() {},
+			};
+			const panels = workspace.render(editorWidth, ctx.ui.theme, usage, companion.boxHeight - editorHeight);
+			if (editorHeight + panels.lines.length <= companion.boxHeight) return { editorWidth, panels };
+			// Restore native editor hit-test/wrapping metadata after a rejected narrow
+			// measurement; below-editor widgets can ask for availability after render.
+			super.render(Math.max(1, width - 2));
+			return undefined;
+		}
+
+		override handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {
+			const layout = this.mouseLayout;
+			if (!layout) return super.handleMouse(event);
+			if (event.x >= layout.width) return undefined; // Companion and gap are not editable.
+			for (const panel of layout.panels) {
+				if (event.x >= panel.x && event.x < panel.x + panel.width
+					&& event.y >= panel.y && event.y < panel.y + panel.height) {
+					return panel.component.handleMouse?.({ ...event, x: event.x - panel.x,
+						y: event.y - panel.y, width: panel.width, height: panel.height });
+				}
+			}
+			if (event.y < layout.editorY || event.y >= layout.editorY + layout.editorHeight) return undefined;
+			// super.render receives the inner width; preserve absolute screen coordinates.
+			return super.handleMouse({ ...event, x: Math.max(0, event.x - 1), y: event.y - layout.editorY,
+				width: layout.width - 2, height: layout.editorHeight });
 		}
 
 		override render(width: number): string[] {
+			this.mouseLayout = undefined;
 			if (width < 4 || this.isShowingAutocomplete()) return super.render(width);
 			const companionStyle = state.companionStyle ?? "original";
 			const companion = companionLayout(companionStyle);
-			const showCompanion = shouldShowCompanion({
-				style: companionStyle,
-				enabled: state.companionEnabled !== false,
-				smallMode: state.smallMode,
-				width,
-				terminalRows: this.tuiRef.terminal.rows,
-			});
-			const editorWidth = showCompanion ? width - companion.columns : width;
+			const shared = this.prepareWorkspace(width);
+			const editorWidth = shared?.editorWidth ?? width;
 			const innerWidth = Math.max(1, editorWidth - 2);
 			const lines = super.render(innerWidth);
 			if (lines.length < 2) return lines;
@@ -540,10 +615,6 @@ export function createEditorComponent(
 				"mdLink",
 				` ${resolveEditorTitleLabel(resolveActiveProfileLabel())} `,
 			);
-			const cachedCodexUsage =
-				state.codexUsage.kind === "idle" ? undefined : state.codexUsage.snapshot;
-			const codexSnapshot =
-				ctx.model?.provider === "openai-codex" ? cachedCodexUsage : undefined;
 			const thinkingLevel = pi.getThinkingLevel();
 			const modelAndThinking = `${modelLabel(ctx)} · think ${ctx.ui.theme.bold(thinkingLevel)}`;
 			const layout = resolveCodexUsageLayout(topLeft, ` ${modelAndThinking} `);
@@ -556,17 +627,20 @@ export function createEditorComponent(
 			lines[0] = `${borderColor("╭")}${fitBorder(topLeft, topRight, editorWidth - 2, borderColor)}${borderColor("╮")}`;
 			lines[bottomIndex] =
 				`${borderColor("╰")}${fitBorder(bottomLeft, "", editorWidth - 2, borderColor)}${borderColor("╯")}`;
-			const quotaLines = codexSnapshot
-				? renderCompactCodexQuotaBars(ctx.ui.theme, codexSnapshot, editorWidth)
-				: [];
-			if (!showCompanion) return [...lines, ...quotaLines];
+			if (!shared) return [...lines, ...this.renderQuotaLines(editorWidth)];
 			const box = renderCompanionBox(
 				companionStyle,
 				resolveMascotPose(state.working),
 				state.working?.frame ?? 0,
 				ctx.ui.theme,
 			);
-			return [...composeWithCompanion(lines, editorWidth, box, companion.boxWidth), ...quotaLines];
+			const panels = shared.panels;
+			const topPadding = Math.max(0, box.length - panels.lines.length - lines.length);
+			this.mouseLayout = {
+				width: editorWidth, editorY: topPadding + panels.lines.length, editorHeight: lines.length,
+				panels: panels.targets.map(target => ({ ...target, y: target.y + topPadding })),
+			};
+			return composeWithCompanion([...panels.lines, ...lines], editorWidth, box, companion.boxWidth);
 		}
 	}
 

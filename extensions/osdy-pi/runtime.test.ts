@@ -3,17 +3,18 @@ import { existsSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DefaultPackageManager, SettingsManager, type ExtensionAPI, type Theme } from "@earendil-works/pi-coding-agent";
+import { KeybindingsManager } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/keybindings.js";
 import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import ts from "typescript";
-import type { OsdyState, WorkingTreeState, WorkingWidgetState, GlobalEditorSettings } from "./types.js";
+import type { OsdyState, WorkingTreeState, WorkingWidgetState, GlobalEditorSettings, SimpleTheme } from "./types.js";
 import type { VisualPreferenceAction } from "./control-center-preferences.js";
 import type { ProfileCodexUsageResult } from "./profile-codex-usage.js";
 import type { CodexUsageRefreshClock, CodexUsageRefreshTimer } from "./codex-usage-refresh.js";
 import type { CodexUsageSnapshot } from "./codex-usage.js";
-import { Container, TuiMainScreen, type Component, type OverlayHandle, type Terminal, type TUI } from "@earendil-works/pi-tui";
+import { Container, TuiMainScreen, type Component, type OverlayHandle, type Terminal, type TUI, type TuiMouseEvent } from "@earendil-works/pi-tui";
 
 registerHooks({
 	resolve(specifier, context, nextResolve) {
@@ -2334,7 +2335,7 @@ class IdleQuotaClock implements CodexUsageRefreshClock {
 	}
 }
 
-async function idleQuotaFixture(visualsEnabled = true) {
+async function idleQuotaFixture(visualsEnabled = true, workspaceEditor = false) {
 	const clock = new IdleQuotaClock();
 	const shortcuts = new Map<string, ShortcutRegistration>();
 	const authSessions: number[] = [];
@@ -2344,10 +2345,19 @@ async function idleQuotaFixture(visualsEnabled = true) {
 	let enabled = true; let hasUI = true; let idle = true; let provider = "openai-codex"; let mode = "tui";
 	let session = 0; let authCalls = 0; let panel: Component | undefined;
 	let visualMounts = 0;
+	let editor: Component | undefined;
+	let overlay = false; let holdPanel = false; let failPanel = false; let overlays = 0;
+	let closePanel: (() => void) | undefined;
+	const notices: string[] = [];
+	const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
+	const identity = (text: string) => text;
+	const tui = { mode: "fullscreen", terminal: { columns: 120, rows: 40 }, requestRender() {}, hasOverlay: () => overlay } as unknown as TUI;
 	const writes: GlobalEditorSettings[] = [];
 	const snapshot = (fetchedAt: number): CodexUsageSnapshot => ({ fetchedAt, planType: "plus", ordinaryUsageAllowed: true,
-		buckets: [], credits: undefined });
-	const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
+		buckets: workspaceEditor ? [{ id: "codex", label: undefined,
+			primary: { usedPercent: 25, windowMinutes: 300, resetsAt: undefined },
+			secondary: { usedPercent: 60, windowMinutes: 10080, resetsAt: undefined } }] : [], credits: undefined });
+	const pi = { getThinkingLevel: () => "off", registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
 		registerShortcut: (key: string, shortcut: ShortcutRegistration) => shortcuts.set(key, shortcut),
 		on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => Promise<void> | void) => {
 			const list = handlers.get(name) ?? []; list.push(handler); handlers.set(name, list);
@@ -2359,13 +2369,27 @@ async function idleQuotaFixture(visualsEnabled = true) {
 		const generation = session;
 		return ({ cwd: "/synthetic-idle-quota", get hasUI() { return hasUI; }, get mode() { return mode; },
 		get model() { return { provider, id: "fake-codex", name: `session-${session}` }; }, isIdle: () => idle,
+		getContextUsage: () => undefined,
+		...(workspaceEditor ? { sessionManager: { getSessionId: () => `session-${generation}`, getEntries: () => [] } } : {}),
 		getThinkingLevel: () => "off", modelRegistry: { getProviderAuth: () => {
 			authCalls++; authSessions.push(generation); return Promise.resolve({ auth: { apiKey: accessToken } });
-		} }, ui: { getEditorComponent: () => undefined, setEditorComponent: () => { visualMounts++; }, setHeader: () => { visualMounts++; }, setFooter: () => { visualMounts++; },
-			setWidget: () => { visualMounts++; }, setWorkingVisible: () => { visualMounts++; }, notify: () => {},
+		} }, ui: { theme, getEditorComponent: () => undefined,
+			setEditorComponent: (factory: Parameters<ExtensionContext["ui"]["setEditorComponent"]>[0]) => {
+				visualMounts++;
+				if (workspaceEditor && factory) editor = factory(tui, { borderColor: identity, selectList: {
+					selectedPrefix: identity, selectedText: identity, description: identity, scrollInfo: identity, noMatch: identity,
+				} }, new KeybindingsManager());
+			},
+			setHeader: (factory?: (tui: TUI, theme: SimpleTheme) => Component & { dispose?(): void }) => {
+				visualMounts++; if (workspaceEditor) factory?.(tui, theme).dispose?.();
+			}, setFooter: () => { visualMounts++; },
+			setWidget: () => { visualMounts++; }, setWorkingVisible: () => { visualMounts++; }, notify: (message: string) => { notices.push(message); },
 			custom: (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component) => {
-				panel = factory({ requestRender: () => {} }, { fg: (_color: string, text: string) => text }, undefined, () => {});
-				return Promise.resolve();
+				overlays++; if (failPanel) throw new Error("overlay failed");
+				panel = factory({ requestRender: () => {} }, theme, undefined, () => { overlay = false; closePanel?.(); });
+				if (!holdPanel) return Promise.resolve();
+				overlay = true;
+				return new Promise<void>(resolve => { closePanel = resolve; });
 			},
 		},
 		}) as unknown as ExtensionContext;
@@ -2378,7 +2402,7 @@ async function idleQuotaFixture(visualsEnabled = true) {
 		await registerOsdyPi(pi, { readActiveProfile: () => Promise.resolve(undefined), codexUsageClock: clock,
 			fetchCodexUsage: (_auth, { signal }) => new Promise((resolve, reject) => { requests.push({ signal, resolve, reject }); }),
 			editorSettingsStore: { path: "/unused", save: settings => { writes.push(settings); return Promise.resolve(); }, load: () => Promise.resolve({
-				version: 1, enabled, visualsEnabled, editorMode: "simple", headerVariant: "osdy-theme", mascot: "current", workingTreeEnabled: false,
+				version: 1, enabled, visualsEnabled, editorMode: workspaceEditor ? "extended" : "simple", headerVariant: "osdy-theme", mascot: "current", workingTreeEnabled: false,
 			}) },
 		});
 	} finally {
@@ -2390,7 +2414,9 @@ async function idleQuotaFixture(visualsEnabled = true) {
 		assert.ok(handler, `runtime ${name} handler must be registered`);
 		await handler({}, ctx); await clock.advance(0);
 	};
-	return { clock, requests, snapshot, authSessions, writes, commands, visualMounts: () => visualMounts, authCalls: () => authCalls, context: () => ctx,
+	return { clock, requests, snapshot, authSessions, writes, commands, notices, editor: () => editor!, overlays: () => overlays,
+		hold: () => { holdPanel = true; }, fail: (value: boolean) => { failPanel = value; }, overlay: (value: boolean) => { overlay = value; },
+		dismiss: () => panel?.handleInput?.("\x1b"), visualMounts: () => visualMounts, authCalls: () => authCalls, context: () => ctx,
 		start: () => lifecycle("session_start"), stop: () => lifecycle("session_shutdown"), settle: () => lifecycle("agent_settled"),
 		replace: async () => { session++; ctx = makeContext(); await lifecycle("session_start"); },
 		manual: async () => { await commands.get("usage")!.handler("", ctx as ExtensionCommandContext); await clock.advance(0); },
@@ -2447,6 +2473,44 @@ void test("registered idle quota runtime respects timing, in-flight manual reque
 		assert.equal(f.authCalls(), 5, "only active auth is queried");
 		assert.equal(f.clock.jobs.size, 0, "timer is suspended while idle query is pending");
 	} finally { await f.stop(); }
+});
+
+void test("workspace Usage left-click opens the existing live /usage modal once and follows the foreground context", async () => {
+ const f = await idleQuotaFixture(true, true);
+ const click = (editor = f.editor(), change: Partial<TuiMouseEvent> = {}) => {
+  const lines = editor.render(120);
+  const y = lines.findIndex(line => line.includes("Session"));
+  assert.ok(y >= 0, "applicable quota content must remain visible");
+  return editor.handleMouse?.({ type: "click", button: "left", x: 5, y, screenX: 15, screenY: y + 20,
+   width: 120, height: lines.length, shift: false, alt: false, ctrl: false, ...change });
+ };
+ try {
+  await f.start(); await f.complete(0);
+  for (const change of [{ button: "right" }, { type: "press" }, { type: "release" }, { type: "drag" }, { type: "wheel" }] as const)
+   assert.equal(click(f.editor(), change), undefined);
+  assert.equal(f.overlays(), 0);
+  f.hold();
+  assert.equal(click()?.handled, true, "a quota left-click must call the shared modal opener");
+  click(); await f.clock.advance(0);
+  assert.equal(f.overlays(), 1);
+  assert.match(f.panel(), /Codex subscription usage/);
+  assert.match(f.panel(), /u use\/check reset/, "mouse preserves reset binding, not a replacement modal");
+  await f.complete(1); f.dismiss(); await f.clock.advance(0);
+  f.fail(true); click(); await f.clock.advance(0);
+  assert.match(f.notices.join("\n"), /overlay failed/);
+  f.fail(false); click(); await f.clock.advance(0);
+  assert.equal(f.overlays(), 3, "error releases the opening guard");
+  await f.complete(2); f.dismiss(); await f.clock.advance(0);
+  const oldEditor = f.editor();
+  await f.replace(); await f.complete(3);
+  click(oldEditor); await f.clock.advance(0);
+  assert.equal(f.authSessions.at(-1), 1, "stale editor uses current foreground auth/context");
+  await f.complete(4);
+  f.dismiss(); await f.clock.advance(0);
+  f.overlay(true); const count = f.overlays(); click(); await f.clock.advance(0);
+  assert.equal(f.overlays(), count, "existing overlay is not replaced by a workspace click");
+  f.overlay(false);
+ } finally { f.dismiss(); await f.stop(); }
 });
 
 void test("Ctrl+Alt+U opens the usage command panel and refreshes the latest session from a base context", async () => {

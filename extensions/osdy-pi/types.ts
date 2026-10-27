@@ -95,6 +95,8 @@ export type CodexUsageState =
 
 export type OsdyState = {
 	codexUsage: CodexUsageState;
+	/** Presentation entrypoint; resolves the current foreground context on every click. */
+	openUsage?: () => Promise<void>;
 	/** Volatile response reading; never persisted as usage or settings. */
 	generation?: GenerationReading;
 	enabled: boolean;
