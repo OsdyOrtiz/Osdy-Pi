@@ -1,6 +1,6 @@
 {
 	"name": "osdy-pi",
-	"version": "1.11.0",
+	"version": "2.0.0",
 	"description": "Osdy Pi package: themes, header, and custom editor for Pi.",
 	"license": "MIT",
 	"type": "module",
@@ -23,6 +23,7 @@
 	"files": [
 		"README.md",
 		"docs/kokoro.md",
+		"docs/images",
 		"LICENSE",
 		"bin",
 		"scripts/osdy-pi-account-profiles.mjs",

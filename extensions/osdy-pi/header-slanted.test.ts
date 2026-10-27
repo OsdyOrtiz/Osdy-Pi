@@ -45,6 +45,18 @@ const TAGS = /<\/?[A-Za-z0-9]+>/g;
 
 const taggedTheme: Theme = { fg: (color, text) => `<${color}>${text}</${color}>` };
 
+// Goldens were captured with this version label; its length fixes the right-alignment padding.
+const REFERENCE_VERSION = "1.11.0";
+const VERSION_LABEL = /( *)((?:<[A-Za-z0-9]+>)?)osdy-pi v([0-9A-Za-z.+-]+)/;
+
+/** Neutralises the version text and the padding derived from its length; other columns stay intact. */
+function normalizeVersionRow(line: string): string {
+	return line.replace(VERSION_LABEL, (_match, padding: string, open: string, version: string) => {
+		const referencePadding = Math.max(0, padding.length + version.length - REFERENCE_VERSION.length);
+		return `${" ".repeat(referencePadding)}${open}osdy-pi vX`;
+	});
+}
+
 /** Renders the real header component the way the TUI does, with the version row neutralised. */
 function renderFullHeader(
 	variant: HeaderVariantName,
@@ -64,7 +76,7 @@ function renderFullHeader(
 			state,
 		)({ terminal: { columns: width, rows }, requestRender() {} } as unknown as Parameters<Factory>[0], theme);
 		try {
-			return component.render(width).map((line) => line.replaceAll(/osdy-pi v[0-9A-Za-z.+-]+/g, "osdy-pi vX"));
+			return component.render(width).map((line) => normalizeVersionRow(line));
 		} finally {
 			component.dispose();
 		}
@@ -192,6 +204,13 @@ void test("slanted adapts to the theme without changing glyphs", () => {
 		assert.deepEqual(strip(first), strip(second));
 		assert.ok(second.join("").includes("38;2;255;120;80"));
 	}
+});
+
+void test("version row normalization ignores version length but not other geometry", () => {
+	const row = (version: string, width: number): string =>
+		`${" ".repeat(width - `osdy-pi v${version}`.length)}<accent>osdy-pi v${version}</accent>`;
+	assert.equal(normalizeVersionRow(row("2.0.0", 140)), normalizeVersionRow(row("1.11.22", 140)));
+	assert.notEqual(normalizeVersionRow(row("2.0.0", 140)), normalizeVersionRow(row("2.0.0", 141)));
 });
 
 void test("animated slanted shifts the three roles over time and differs from static", () => {

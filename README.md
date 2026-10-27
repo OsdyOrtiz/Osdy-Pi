@@ -4,6 +4,19 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 <img width="1857" height="847" alt="Osdy Pi interface" src="https://github.com/user-attachments/assets/028eeb14-3f43-4f1c-9603-0c55a8d2856d" />
 
+### Companion workspace in a terminal
+
+<img width="800" alt="Osdy Pi on a wide terminal showing a large pixel-art raccoon beside the Osdy-Pi logo, with TODO and Usage cards, an editor, and a small Pixel Pal companion at the bottom" src="https://raw.githubusercontent.com/OsdyOrtiz/Osdy-Pi/main/docs/images/companion-workspace-landscape.jpg" />
+
+Screenshot of the Companion workspace running osdy-pi v1.11.22. The version label shows the release installed when the capture was taken, not the current npm version.
+
+<details>
+<summary>Portrait capture of the same session</summary>
+
+<img width="560" alt="Osdy Pi on a tall terminal showing a centered pixel-art raccoon above TODO and Usage cards, an editor, and a small Pixel Pal companion" src="https://raw.githubusercontent.com/OsdyOrtiz/Osdy-Pi/main/docs/images/companion-workspace-portrait.jpg" />
+
+</details>
+
 ## Release highlights
 
 **The Companion workspace adapts framed cards to available space** above the editor, to the Companion's left: active work stays above the cards, with live location and extension statuses; opt-in TODO, Session/Weekly Usage, and Git share the remaining room. Cards and editor together never exceed the Companion's height; when they cannot fit or Companion is off, the habitual layout returns automatically. In fullscreen Pi, click Usage to open the same `/usage` modal. See [Companion raccoon](#companion-raccoon), [TODO](#first-party-todo-included-starting-in-150), and [subscription usage](#codex-subscription-usage). This describes current source; confirm the resolved npm release includes it. Live artwork fidelity across terminals and fonts remains unverified.
@@ -57,7 +70,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
-   Check the resolved npm version and its feature documentation; the current source workspace is not proof that a particular npm artifact includes it. The source manifest and lock roots use `1.11.0` as the CI base; the main-push workflow allocates the published patch. The Spider-Man-inspired themes require 1.11.0 or later; local analytics requires 1.10.0 or later. To pin the historical feature release explicitly, use `pi install npm:osdy-pi@1.11.0` if that version is available on npm; automatic patches may already be newer. For an unpinned installation, run `pi update`, then `/reload` in a running Pi session (or restart Pi) to load the updated resources. Updating does not move a pinned version, so replace an older pin explicitly. First-party TODO is included starting in 1.5.0; `/osdy-pi uninstall` and explicit agent provider modes start in 1.6.0. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
+   Check the resolved npm version and its feature documentation; the current source workspace is not proof that a particular npm artifact includes it. The source manifest and lock roots use `2.0.0` as the CI base; the main-push workflow allocates the published patch. The Spider-Man-inspired themes require 1.11.0 or later; local analytics requires 1.10.0 or later. To pin the historical feature release explicitly, use `pi install npm:osdy-pi@1.11.0` if that version is available on npm; automatic patches may already be newer. For an unpinned installation, run `pi update`, then `/reload` in a running Pi session (or restart Pi) to load the updated resources. Updating does not move a pinned version, so replace an older pin explicitly. First-party TODO is included starting in 1.5.0; `/osdy-pi uninstall` and explicit agent provider modes start in 1.6.0. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
 
 2. Start Pi:
 
