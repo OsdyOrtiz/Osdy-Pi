@@ -144,9 +144,22 @@ export function inspectTodoProvider(options: TodoProviderOptions): TodoProviderS
   return { target, configured, active: true, reason: "Explicit opt-in with supported profile filtering." };
  } catch (error) { return { target, configured, active: false, reason: error instanceof Error ? error.message : "Invalid settings." }; }
 }
-export function selectTodoProvider(options: TodoProviderOptions & { mode: "on" | "off" }): { changed: boolean } {
- const path = join(options.agentDir, "settings.json");
- const settings = load(path); const prior = selection(settings, options.mode === "off");
+export { load as loadTodoSettings };
+export function prepareAppearanceTodo(settings: Settings, options: TodoProviderOptions): Settings {
+ const selected = selection(settings);
+ if (selected && (Object.keys(selected).some((key) => !["version", "enabled", "ownedExclusions"].includes(key)) ||
+  selected.ownedExclusions.some((owned) => Object.keys(owned).some((key) => !["index", "source", "wasString", "hadExtensions"].includes(key)) ||
+   (owned.wasString && owned.hadExtensions)))) throw new Error("Invalid appearance TODO ownership metadata.");
+ if (!selected?.enabled) return settings;
+ const flags = flagsFor(settings, options);
+ if (selected.ownedExclusions.some((owned) => !flags[owned.index]) ||
+  flags.some((flag, index) => flag && !hasExclusion(settings.packages![index])))
+  throw new Error("Active TODO ownership or filtering is unsafe; nothing changed.");
+ return prepareTodoProvider(settings, { ...options, mode: "off" });
+}
+/** Validated snapshot preparation; never writes or installs. */
+export function prepareTodoProvider(settings: Settings, options: TodoProviderOptions & { mode: "on" | "off" }): Settings {
+ const prior = selection(settings, options.mode === "off");
  const packages = [...(settings.packages ?? [])];
  const ownedExclusions = [...(prior?.ownedExclusions ?? [])];
  if (options.mode === "on") {
@@ -180,6 +193,12 @@ export function selectTodoProvider(options: TodoProviderOptions & { mode: "on" |
  }
  const next = { ...settings, ...(settings.packages !== undefined || packages.length ? { packages } : {}),
   [TODO_PROVIDER_KEY]: { version: 1, enabled: options.mode === "on", ownedExclusions } };
+ return next;
+}
+export function selectTodoProvider(options: TodoProviderOptions & { mode: "on" | "off" }): { changed: boolean } {
+ const path = join(options.agentDir, "settings.json");
+ const settings = load(path);
+ const next = prepareTodoProvider(settings, options);
  if (JSON.stringify(next) === JSON.stringify(settings)) return { changed: false };
  // Recheck immediately before replacement. No startup defaults, migrations, or history writes.
  const latest = load(path);

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { lstat, readFile, realpath, rename, unlink, writeFile } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -80,7 +80,7 @@ async function regularSettings(path: string): Promise<Settings> {
 	return value;
 }
 
-async function assertNoProjectGentle(cwd: string, home: string): Promise<void> {
+async function assertNoProjectGentle(cwd: string, home: string, appearance = false): Promise<void> {
 	let directory = resolve(cwd);
 	while (true) {
 		const local = join(directory, ".pi", "settings.json");
@@ -101,7 +101,11 @@ async function assertNoProjectGentle(cwd: string, home: string): Promise<void> {
 		catch { throw new Error(`Project settings invalid at ${local}; cannot guarantee Gentle filtering.`); }
 		if (!object(settings) || (settings.packages !== undefined && !Array.isArray(settings.packages)))
 			throw new Error(`Project settings invalid at ${local}; cannot guarantee Gentle filtering.`);
+		if (appearance && settings.extensions !== undefined && (!Array.isArray(settings.extensions) ||
+			!settings.extensions.every((item: unknown) => typeof item === "string" && item.startsWith("-"))))
+			throw new Error(`Project direct agents unsupported at ${local}.`);
 		for (const entry of settings.packages ?? []) {
+			if (appearance && joker(entry)) throw new Error(`Project Joker override at ${local}; nothing changed.`);
 			if (await gentle(entry, dirname(local), home)) throw new Error(`Project-local Gentle package at ${local} can override the personal filter.`);
 		}
 		const parent = dirname(directory);
@@ -210,6 +214,41 @@ async function validateTarget(options: Omit<SetupOptions, "install">): Promise<s
 		throw new Error("Agents setup requires the normal personal Pi agent directory, not an isolated profile.");
 	await assertNoProjectGentle(options.cwd, home);
 	return target;
+}
+
+/** Appearance suspension has no installer and permits an absent Gentle fallback. */
+export async function prepareAppearanceAgents(settings: Settings, options: Omit<SetupOptions, "install">): Promise<Settings> {
+ const packages = settings.packages ?? [];
+ validatePackages(packages);
+ if (settings[OWNED] !== undefined && settings[OWNED] !== true) throw new Error("Invalid Joker ownership marker.");
+ if (settings[OWNED] === true && !packages.some((entry) => joker(entry) && hasFilter(entry, JOKER_EXCLUSION)))
+  throw new Error("Joker ownership marker does not match settings.");
+ const active = packages.find((entry) => joker(entry) && !hasFilter(entry, JOKER_EXCLUSION) &&
+  !(object(entry) && (entry.autoload === false || (Array.isArray(entry.extensions) && !entry.extensions.length))));
+ if (!active) return settings;
+ const target = await validateTarget({ ...options, env: options.env ?? process.env });
+ await assertNoProjectGentle(options.cwd, options.home ?? homedir(), true);
+ if (settings.extensions !== undefined && (!Array.isArray(settings.extensions) ||
+  !settings.extensions.every((item: unknown) => typeof item === "string" && item.startsWith("-"))))
+  throw new Error("Direct agent settings are unsupported for appearance suspension.");
+ const direct = await readdir(join(target, "extensions")).catch((error: unknown) => {
+  if (object(error) && error.code === "ENOENT") return [];
+  throw error;
+ });
+ if (direct.some((name) => /gentle.*agents|joker|subagents/i.test(name))) throw new Error("Direct agents are unsupported.");
+ if (!allowsAgent(active, "./index.ts")) throw new Error("Unsupported Joker allowlist.");
+ const flags = await Promise.all(packages.map((entry) => gentle(entry, target, options.home ?? homedir())));
+ assertAgentAllowlists(packages, flags, "off");
+ const updated = packages.map((entry, index) => {
+  if (!joker(entry) && !(flags[index] && hasFilter(entry, GENTLE_EXCLUSION))) return entry;
+  const item = typeof entry === "string" ? { source: entry } : entry as Record<string, unknown>;
+  const filters = item.extensions as string[] | undefined;
+  const next = { ...item, extensions: joker(entry) ? [...(filters ?? []), JOKER_EXCLUSION] : filters!.filter((value) => value !== GENTLE_EXCLUSION) };
+  if (next.extensions.length) return next;
+  const rest: Record<string, unknown> = { ...next }; delete rest.extensions;
+  return Object.keys(rest).length === 1 ? rest.source : rest;
+ });
+ return { ...settings, packages: updated, [OWNED]: true };
 }
 
 export async function setupJokerAgents(options: SetupOptions): Promise<{ installed: boolean; changed: boolean; gentleCount: number }> {

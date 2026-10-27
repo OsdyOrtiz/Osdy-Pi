@@ -9,7 +9,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   return { shortCircuit: true, url: new URL("./todo-provider-settings.ts", context.parentURL).href };
  return nextResolve(specifier, context);
 } });
-const { inspectTodoProvider, selectTodoProvider, todoAgentDir } = await import("./todo-provider-settings.js");
+const { inspectTodoProvider, selectTodoProvider, todoAgentDir, prepareTodoProvider } = await import("./todo-provider-settings.js");
 
 const FILTER = "-extensions/gentle-todo.ts";
 function fixture(settings?: unknown) {
@@ -140,6 +140,14 @@ void test("reordered owned packages fail closed and off preserves settings bytes
  assert.equal(inspectTodoProvider(f).active, false);
  assert.throws(() => selectTodoProvider({ ...f, mode: "off" }), /positions|ownership/i);
  assert.equal(readFileSync(f.path, "utf8"), before);
+});
+
+void test("snapshot preparation does not change legacy off's explicit false selection or write", () => {
+ const f = fixture({ theme: "mine" }); const before = readFileSync(f.path, "utf8");
+ const next = prepareTodoProvider({ theme: "mine" }, { ...f, mode: "off" });
+ assert.equal(readFileSync(f.path, "utf8"), before);
+ selectTodoProvider({ ...f, mode: "off" });
+ assert.deepEqual(saved(f), next);
 });
 
 void test("symlink settings are not followed or overwritten", () => {

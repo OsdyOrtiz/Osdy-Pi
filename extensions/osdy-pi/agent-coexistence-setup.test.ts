@@ -11,7 +11,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 		return { shortCircuit: true, url: new URL("./agent-coexistence-setup.ts", context.parentURL).href };
 	return nextResolve(specifier, context);
 } });
-const { setupJokerAgents, switchAgentMode, inspectJokerAgents } = await import("./agent-coexistence-setup.js");
+const { setupJokerAgents, switchAgentMode, inspectJokerAgents, prepareAppearanceAgents } = await import("./agent-coexistence-setup.js");
 
 async function fixture() {
 	const root = await mkdtemp(join(tmpdir(), "osdy-joker-"));
@@ -312,6 +312,16 @@ void test("rejects alternate agent directories and project-local Gentle override
 	await writeFile(join(project, ".pi", "settings.json"), '{"packages":["npm:gentle-pi"]}');
 	await assert.rejects(setupJokerAgents({ ...base(f), cwd: project, install }), /project|Gentle/i);
 	assert.equal(calls, 0);
+});
+
+void test("appearance preparation permits no fallback without weakening standalone off", async () => {
+ const f = await fixture(); const settings = { packages: ["npm:pi-subagents-j0k3r"] };
+ await writeFile(f.settingsPath, JSON.stringify(settings));
+ const before = await readFile(f.settingsPath, "utf8");
+ assert.equal((await prepareAppearanceAgents(settings, base(f))).osdyPiJokerExclusionOwned, true);
+ assert.equal(await readFile(f.settingsPath, "utf8"), before);
+ await assert.rejects(switchAgentMode({ ...base(f), mode: "off" }), /Gentle/i);
+ assert.equal(await readFile(f.settingsPath, "utf8"), before);
 });
 
 void test("failed installer or malformed latest settings cannot rewrite personal settings", async () => {
