@@ -18,6 +18,16 @@ const { preferenceDetail } = await import("./control-center-preferences.js");
 const snapshot: VisualPreferenceSnapshot = { enabled: true, headerVariant: "osdy-theme", mascot: "current",
 	editorMode: "auto", editorEffective: true, smallMode: false };
 
+void test("Visuals help states reversible Osdy-only suspension, fallback and atomic profile limits", () => {
+	const detail = preferenceDetail("Visuals", snapshot);
+	assert.ok(detail);
+	assert.match(detail.note, /Off suspends Osdy visuals, TODO and Joker; on restores prior selections/);
+	assert.match(detail.note, /Gentle fallback allowed, never installed or required/);
+	assert.match(detail.note, /Notifications, accounts, speech and analytics stay independent/);
+	assert.match(detail.note, /Active Joker requires normal personal Pi: custom\/project\/direct\/ambiguous active configurations refuse atomically/);
+	assert.match(detail.note, /shortcut: run \/reload manually/);
+});
+
 void test("preference rows expose every catalog value and exactly one current indicator", () => {
 	for (const [category, field, values] of [
 		["Header", "headerVariant", ["osdy-theme", "neon"]],

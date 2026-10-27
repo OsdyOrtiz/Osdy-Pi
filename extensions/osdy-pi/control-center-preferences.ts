@@ -13,7 +13,7 @@ export type VisualPreferenceSnapshot = Pick<OsdyState,
 
 export interface ControlCenterPreferences {
 	snapshot(): VisualPreferenceSnapshot;
-	/** Per-visual choices apply live; the visuals switch saves transactionally before reload. */
+	/** Per-visual choices apply live; Visuals commits appearance and provider settings before reload. */
 	apply(action: VisualPreferenceAction): Promise<boolean>;
 }
 
@@ -35,7 +35,7 @@ export function preferenceDetail(category: ControlCenterCategory, state: VisualP
 	if (category === "Visuals") return {
 		rows: [true, false].map(value => ({ label: value ? "on — save and reload" : "off — save and reload", current: (state.visualsEnabled !== false) === value, action: { kind: "visuals", value } })),
 		summary: `Current: ${state.visualsEnabled !== false ? "on" : "off"}${state.enabled ? "" : " | Legacy master off; use /osdy-pi on to enable it."}`,
-		note: "Visuals only; notifications, accounts, speech and tools stay active. Saves then reloads via /osdyConfig; shortcut: run /reload manually. Keeps theme and visual selections.",
+		note: "Off suspends Osdy visuals, TODO and Joker; on restores prior selections, not forced opt-in. Gentle fallback allowed, never installed or required. Notifications, accounts, speech and analytics stay independent. Active Joker requires normal personal Pi: custom/project/direct/ambiguous active configurations refuse atomically. Saves then reloads via /osdyConfig; shortcut: run /reload manually. Keeps theme and visual selections.",
 	};
 	let actions: VisualPreferenceAction[];
 	let current: string;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
+import { DefaultPackageManager, SettingsManager, type ExtensionAPI, type Theme } from "@earendil-works/pi-coding-agent";
 import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -553,7 +553,9 @@ void test("shared visual actions apply immediately, save the complete settings, 
 const { isSmallResponsiveMode } = await import("./utils.js");
 const { createResponsiveCoordinator, reconcileResponsiveUi, disableOsdyPi } = await import("./runtime-helpers.js");
 
-async function focusFixture(options: { boundary?: boolean; throwApply?: boolean; synchronousThrow?: boolean; underlyingOverlay?: boolean; startupFailure?: boolean; registered?: boolean; shortcut?: boolean; idle?: boolean; todoDir?: string; reloadFails?: boolean; visualsEnabled?: boolean; legacyEnabled?: boolean;
+const { setAppearanceProviders, inspectAppearanceSettings } = await import("./appearance-provider-settings.js");
+
+async function focusFixture(options: { appearance?: { agentDir: string; home: string }; boundary?: boolean; throwApply?: boolean; synchronousThrow?: boolean; underlyingOverlay?: boolean; startupFailure?: boolean; registered?: boolean; shortcut?: boolean; idle?: boolean; todoDir?: string; reloadFails?: boolean; visualsEnabled?: boolean; legacyEnabled?: boolean;
 	accountFactory?: NonNullable<Parameters<typeof registerOsdyPi>[1]>["accountFactory"] } = {}) {
 	let input: (data: string) => void = () => {};
 	const columns = options.boundary
@@ -596,14 +598,20 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 	let complete: (result?: unknown) => void = () => {};
 	let current = true;
 	let headerMounts = 0;
+	let startupHeaderMounts = 0;
 	const writes: GlobalEditorSettings[] = [];
+	const appearanceWrites: boolean[] = [];
+	let appearanceSettled = Promise.resolve();
+	const tools: string[] = [];
+	const registeredCommands: string[] = [];
+	const registeredShortcuts: string[] = [];
 	let replacements = 0;
 	let closes = 0;
 	const notices: string[] = [];
 	const theme = { name: "dark", appearance: "dark" as const, fg: (_color: string, text: string) => text };
 	const lifecycle: string[] = [];
 	let idle = options.idle ?? true;
-	const ctx = { cwd: options.todoDir ?? "/synthetic", isIdle: () => idle,
+	const ctx = { cwd: options.appearance?.home ?? options.todoDir ?? "/synthetic", isIdle: () => idle,
 		hasUI: true, mode: "tui", modelRegistry: { getProviderAuth: () => Promise.resolve(undefined) }, ui: {
 		theme, getAllThemes: () => [{ name: "dark", path: undefined }],
 		setTheme: () => { theme.name = "light"; panel.invalidate(); return { success: true }; },
@@ -656,6 +664,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 				throw new Error("UI apply failed");
 			}
 			if (options.throwApply) return Promise.reject(new Error("UI apply failed"));
+			if (action.kind === "visuals") throw new Error("Appearance requires the registered runtime transaction");
 			return applyVisualPreference(action, {} as ExtensionAPI, runtimeCtx, state, working, tree, store);
 		},
 	}); }, () => current);
@@ -667,24 +676,46 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 		const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
 		const shortcuts = new Map<string, ShortcutRegistration>();
 		const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>();
-		const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
-			registerShortcut: (key: string, shortcut: ShortcutRegistration) => shortcuts.set(key, shortcut),
+		const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => { registeredCommands.push(name); commands.set(name, command); },
+			registerShortcut: (key: string, shortcut: ShortcutRegistration) => { registeredShortcuts.push(key); shortcuts.set(key, shortcut); },
 			on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => Promise<void> | void) => {
 				const registered = handlers.get(name) ?? []; registered.push(handler); handlers.set(name, registered);
 			},
 			registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {}, events: { on: () => () => {} },
+			registerTool: (tool: { name: string }) => tools.push(tool.name),
+			exec: () => Promise.resolve({ code: 0, killed: false, stderr: "", stdout: JSON.stringify(ctx.cwd) }),
 		} as unknown as ExtensionAPI;
 		const previousDir = process.env.PI_CODING_AGENT_DIR;
-		process.env.PI_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "osdy-modal-runtime-"));
+		const previousConfig = process.env.XDG_CONFIG_HOME;
+		mkdirSync(".pi-dev", { recursive: true });
+		const syntheticAgentDir = mkdtempSync(join(process.cwd(), ".pi-dev", "osdy-modal-runtime-"));
+		process.env.PI_CODING_AGENT_DIR = syntheticAgentDir;
+		process.env.XDG_CONFIG_HOME = syntheticAgentDir;
 		try {
-			await registerOsdyPi(pi, { ...(options.accountFactory ? { accountFactory: options.accountFactory } : {}), readActiveProfile: () => Promise.resolve(undefined), editorSettingsStore: {
+			await registerOsdyPi(pi, { ...(options.accountFactory ? { accountFactory: options.accountFactory } : {}),
+				agentDir: () => options.appearance?.agentDir ?? syntheticAgentDir,
+				inspectAppearanceSettings: options.appearance ? inspectAppearanceSettings : () => undefined,
+				setAppearanceProviders: options.appearance
+					? value => {
+						const applying = setAppearanceProviders({ ...value, home: options.appearance!.home, env: {} });
+						appearanceSettled = applying.then(() => {}, () => {});
+						return applying;
+					}
+					: value => new Promise((resolve, reject) => {
+						appearanceWrites.push(value.visualsEnabled);
+						resolveSave = () => resolve({ changed: true }); rejectSave = () => reject(new Error("disk full"));
+					}),
+				readActiveProfile: () => Promise.resolve(undefined), editorSettingsStore: {
 				...store, load: () => Promise.resolve({ version: 1, enabled: options.legacyEnabled ?? true, visualsEnabled: options.visualsEnabled ?? true, editorMode: "auto", headerVariant: "osdy-theme",
 					mascot: "current", workingTreeEnabled: false }),
 			} });
 		} finally {
 			if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
+			if (previousConfig === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = previousConfig;
 		}
-		shutdown = () => { void handlers.get("session_shutdown")?.[2]?.({}, runtimeCtx); };
+		// TODO contributes a lifecycle listener before runtime; do not mistake it for startup.
+		const runtimeLifecycleIndex = tools.includes("todo") ? 3 : 2;
+		shutdown = () => { void handlers.get("session_shutdown")?.[runtimeLifecycleIndex]?.({}, runtimeCtx); };
 		if (options.shortcut) {
 			try {
 				assert.ok(shortcuts.has("ctrl+alt+o"), "Ctrl+Alt+O must open Control Center");
@@ -694,10 +725,11 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 				assert.equal("waitForIdle" in runtimeCtx, false, "shortcuts cannot wait through command-only hooks");
 			} catch (error) { shutdown(); tui.stop(); throw error; }
 		}
-		await handlers.get("session_start")?.[2]?.({}, runtimeCtx);
+		await handlers.get("session_start")?.[runtimeLifecycleIndex]?.({}, runtimeCtx);
+		startupHeaderMounts = headerMounts;
 		replacements = 0;
 		headerMounts = 0;
-		transition = async () => { await handlers.get("session_start")?.[2]?.({}, runtimeCtx); };
+		transition = async () => { await handlers.get("session_start")?.[runtimeLifecycleIndex]?.({}, runtimeCtx); };
 		reopen = options.shortcut
 			? async () => { await shortcuts.get("ctrl+alt+o")!.handler(runtimeCtx); }
 			: () => commands.get("osdyConfig")!.handler("", commandCtx);
@@ -705,7 +737,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 	if (options.underlyingOverlay) otherHandle = tui.showOverlay({ render: () => ["Other overlay"], invalidate: () => {} });
 	const showing = reopen();
 	await Promise.resolve();
-	return { tui, showing, state, tree, notices, writes, lifecycle, editorFactories, fallback, shutdown, transition, reopen, resize: (columns: number) => { width = columns; }, headerMounts: () => headerMounts,
+	return { tui, showing, state, tree, notices, writes, appearanceWrites, tools, registeredCommands, registeredShortcuts, lifecycle, editorFactories, fallback, shutdown, transition, reopen, resize: (columns: number) => { width = columns; }, headerMounts: () => headerMounts, startupHeaderMounts,
 		failFactory: () => withEditorMountHold({} as ExtensionAPI, runtimeCtx, state, tree,
 			() => ctx.ui.custom(() => { throw new Error("factory callback failed"); }, { overlay: true })),
 		invalidateRuntime: () => { current = false; state.editorMountHold = undefined; state.editorReconcilePending = false; coordinator.stop(); },
@@ -713,7 +745,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 		reconcile: () => reconcileResponsiveUi({} as ExtensionAPI, runtimeCtx, state, tree), send: (data: string) => input(data), text: () => panel.render(100).join("\n"),
 		focused: () => handle.isFocused(), replacements: () => replacements, closes: () => closes,
 		resolveSave: () => resolveSave(), rejectSave: () => rejectSave(), complete: (result?: unknown) => complete(result),
-		setIdle: (value: boolean) => { idle = value; },
+		setIdle: (value: boolean) => { idle = value; }, settleAppearance: () => appearanceSettled,
 		editors, mountedEditor: () => editors.find(candidate => editorArea.children.includes(candidate))!,
 		other: () => otherHandle, cleanup: () => { shutdown(); coordinator.stop(); panel?.dispose?.(); handle?.hide(); otherHandle?.hide(); tui.stop(); } };
 }
@@ -907,16 +939,103 @@ for (const shortcut of [false, true]) for (const initial of [true, false]) void 
 		assert.match(f.text(), /Control Center \/ Visuals/);
 		assert.equal(f.writes.length, 0, "inspection never saves");
 		f.send("\x1b[C"); f.send(initial ? "\x1b[F" : "\x1b[H"); f.send("\r");
-		assert.equal(f.writes.at(-1)?.visualsEnabled, !initial);
+		assert.equal(f.appearanceWrites.at(-1), !initial);
+		assert.equal(f.writes.length, 0, "appearance never writes editor settings");
 		assert.deepEqual(f.lifecycle, [], "pending save neither closes nor reloads");
 		f.send("\x1b"); f.send("\r");
 		assert.equal(f.closes(), 0, "transactional visual switch keeps the panel until save finishes");
-		assert.equal(f.writes.length, 1, "duplicate input cannot save twice");
+		assert.equal(f.appearanceWrites.length, 1, "duplicate input cannot save twice");
 		f.resolveSave(); await f.showing;
 		assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed", ...(initial ? ["editor-mount"] : []), ...(shortcut ? [] : ["reload"])]);
-		assert.deepEqual(f.writes.at(-1), { version: 1, enabled: true, visualsEnabled: !initial, editorMode: "auto", headerVariant: "osdy-theme", mascot: "current", workingTreeEnabled: false });
+		assert.equal(f.writes.length, 0, "service owns the sole root transaction");
 		if (shortcut) assert.match(f.notices.join("\n"), /saved.*\/reload.*manually/i);
 		else assert.deepEqual(f.notices, []);
+	} finally { f.cleanup(); }
+});
+
+function appearanceFixture(optedIn = true) {
+	mkdirSync(".pi-dev", { recursive: true });
+	const home = mkdtempSync(join(process.cwd(), ".pi-dev", "appearance-integration-"));
+	const agentDir = join(home, ".pi", "agent"); mkdirSync(agentDir, { recursive: true });
+	const path = join(agentDir, "settings.json");
+	const joker = join(agentDir, "npm", "node_modules", "pi-subagents-j0k3r"); mkdirSync(joker, { recursive: true });
+	writeFileSync(join(joker, "package.json"), JSON.stringify({ name: "pi-subagents-j0k3r", version: "1.0.0", pi: { extensions: ["./index.ts"] } }));
+	writeFileSync(join(joker, "index.ts"), 'throw new Error("fixture must never execute");');
+	writeFileSync(path, JSON.stringify({ packages: ["npm:pi-subagents-j0k3r"],
+		osdyPiTodoProvider: { version: 1, enabled: optedIn, ownedExclusions: [] }, unrelated: { keep: true } }));
+	return { home, agentDir, path };
+}
+function switchVisuals(f: Awaited<ReturnType<typeof focusFixture>>, enabled: boolean) {
+	for (let i = 0; i < 9; i++) f.send("\x1b[B");
+	f.send("\x1b[C"); f.send(enabled ? "\x1b[H" : "\x1b[F"); f.send("\r");
+}
+for (const optedIn of [true, false]) void test(`registered appearance transaction restores TODO opt-in=${optedIn} across registration and sibling saves`, async () => {
+	const appearance = appearanceFixture(optedIn);
+	const original = JSON.parse(readFileSync(appearance.path, "utf8")) as Record<string, unknown>;
+	for (const enabled of [false, true]) {
+		const f = await focusFixture({ registered: true, appearance, visualsEnabled: true });
+		try {
+			assert.equal(f.tools.includes("todo"), !enabled && optedIn, "factory TODO follows committed provider selection");
+			f.lifecycle.length = 0;
+			switchVisuals(f, enabled); await f.showing;
+			assert.equal(inspectAppearanceSettings(appearance.agentDir), enabled);
+			assert.ok(f.lifecycle.indexOf("reload") > f.lifecycle.indexOf("disposed"));
+			assert.equal(f.writes.length, 0);
+		} finally { f.cleanup(); }
+		const next = await focusFixture({ registered: true, appearance, visualsEnabled: !enabled });
+		try {
+			assert.equal(next.tools.includes("todo"), enabled && optedIn, "new factory restores prior TODO selection, never forces opt-in");
+			assert.equal(next.registeredCommands.includes("todos"), enabled && optedIn);
+			assert.equal(next.registeredShortcuts.includes("ctrl+shift+t"), enabled && optedIn);
+			assert.equal(next.startupHeaderMounts > 0, enabled, "startup respects the root visual override");
+			const beforeSibling = readFileSync(appearance.path, "utf8");
+			chooseVisual(next, 1); next.resolveSave(); await flushFocus();
+			assert.equal(readFileSync(appearance.path, "utf8"), beforeSibling, "sibling preferences leave override and undo untouched");
+			next.send("\x1b[D"); for (let i = 0; i < 8; i++) next.send("\x1b[B");
+			assert.match(next.text(), enabled ? /Current: on/ : /Current: off/, "root overrides conflicting editor v1");
+			next.send("\x1b"); await next.showing;
+		} finally { next.cleanup(); }
+		const saved = JSON.parse(readFileSync(appearance.path, "utf8")) as Record<string, unknown>;
+		assert.deepEqual(saved.packages, enabled ? original.packages : [{ source: "npm:pi-subagents-j0k3r", extensions: ["-./index.ts"] }]);
+		assert.deepEqual(saved.unrelated, original.unrelated);
+		const settings = SettingsManager.inMemory({ packages: saved.packages as Array<string | { source: string; extensions?: string[] }> });
+		const resources = await new DefaultPackageManager({ ...appearance, cwd: appearance.home, settingsManager: settings }).resolve(() => {
+			throw new Error("fixture must never install missing packages");
+		});
+		assert.equal(resources.extensions.find(item => item.path.endsWith("/pi-subagents-j0k3r/index.ts"))?.enabled, enabled,
+			"public SDK resource filters suspend/restore Joker without executing it");
+	}
+});
+void test("registered appearance refuses active Joker in a custom root without redirecting or reloading", async () => {
+	const appearance = appearanceFixture();
+	const custom = join(appearance.home, "custom"); mkdirSync(custom);
+	const path = join(custom, "settings.json");
+	const before = readFileSync(appearance.path, "utf8"); writeFileSync(path, before);
+	const f = await focusFixture({ registered: true, appearance: { ...appearance, agentDir: custom } });
+	try {
+		switchVisuals(f, false);
+		await f.settleAppearance(); await flushFocus();
+		assert.match(f.text(), /normal personal Pi/i);
+		assert.match(f.text(), /Current: on/);
+		assert.equal(readFileSync(path, "utf8"), before);
+		assert.equal(readFileSync(appearance.path, "utf8"), before, "no redirect to personal root");
+		assert.equal(f.closes(), 0); assert.ok(!f.lifecycle.includes("reload"));
+		f.send("\x1b"); await f.showing;
+	} finally { f.cleanup(); }
+});
+void test("registered appearance rejection leaves root, current preference, overlay and reload untouched", async () => {
+	const appearance = appearanceFixture();
+	writeFileSync(appearance.path, JSON.stringify({ packages: ["npm:pi-subagents-j0k3r"], osdyPiAppearance: { version: 999 } }));
+	const before = readFileSync(appearance.path, "utf8");
+	const f = await focusFixture({ registered: true, appearance, visualsEnabled: false });
+	try {
+		assert.match(f.notices.join("\n"), /appearance.*invalid/i, "invalid startup metadata is explicit without blocking command registration");
+		switchVisuals(f, false); await flushFocus();
+		assert.match(f.text(), /invalid.*metadata/i);
+		assert.match(f.text(), /Current: on/);
+		assert.equal(f.closes(), 0); assert.ok(!f.lifecycle.includes("reload"));
+		assert.equal(readFileSync(appearance.path, "utf8"), before); assert.equal(f.writes.length, 0);
+		f.send("\x1b"); await f.showing;
 	} finally { f.cleanup(); }
 });
 
@@ -926,13 +1045,13 @@ void test("registered visuals save failure preserves preference, panel and legac
 		for (let i = 0; i < 9; i++) f.send("\x1b[B");
 		assert.match(f.text(), /master.*off/i);
 		f.send("\x1b[C"); f.send("\x1b[H"); f.send("\r");
-		assert.equal(f.writes.at(-1)?.enabled, false);
+		assert.deepEqual(f.appearanceWrites, [true]);
 		f.rejectSave(); await flushFocus();
 		assert.match(f.text(), /not saved.*reload not requested/i);
 		assert.match(f.text(), /Current: off/);
 		assert.equal(f.closes(), 0);
 		f.send("\r"); f.resolveSave(); await f.showing;
-		assert.equal(f.writes.at(-1)?.enabled, false, "visual preference never overrides master off");
+		assert.equal(f.writes.length, 0, "visual preference never writes legacy master");
 		assert.ok(f.lifecycle.includes("reload"));
 	} finally { f.cleanup(); }
 });
@@ -943,7 +1062,7 @@ void test("registered visuals stale save completion cannot mutate live preferenc
 		try {
 			for (let i = 0; i < 9; i++) f.send("\x1b[B");
 			f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r");
-			assert.equal(f.writes.at(-1)?.visualsEnabled, false);
+			assert.deepEqual(f.appearanceWrites, [false]);
 			if (transition === "replacement") await f.transition();
 			else f.shutdown();
 			f.complete({ kind: "closed" }); await f.showing;

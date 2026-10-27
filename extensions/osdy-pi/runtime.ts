@@ -31,6 +31,7 @@ import { createAudioPlaybackAdapter } from "./audio-playback.js";
 import { subscribeQuestionPromptAudioNotification } from "./plugin-events.js";
 import { createAudioSoundSettingsStore } from "./audio-sound-settings.js";
 import { createEditorSettingsStore } from "./editor-settings.js";
+import { inspectAppearanceSettings, setAppearanceProviders } from "./appearance-provider-settings.js";
 import { registerAccountProfilesCommand, readStoredProfileCodexCredential, sharedAgentDir } from "./account-profiles.js";
 import { requestProfileCodexUsage } from "./profile-codex-usage.js";
 import {
@@ -167,24 +168,16 @@ async function saveVisualSettings(
 	}
 }
 
-/** Per-visual choices apply live; the visual-only switch commits after saving. */
+/** Sibling visual choices apply live; appearance/provider transactions are coordinated separately. */
 export async function applyVisualPreference(
-	action: VisualPreferenceAction,
+	action: Exclude<VisualPreferenceAction, { kind: "visuals" }>,
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
 	state: OsdyState,
 	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
 	settingsStore: ReturnType<typeof createEditorSettingsStore>,
-	isCurrent: () => boolean = () => true,
 ): Promise<boolean> {
-	if (action.kind === "visuals") {
-		// Persist a candidate first: failed saves leave both live and stored preference unchanged.
-		const candidate = { ...state, visualsEnabled: action.value };
-		if (!await saveVisualSettings(candidate, settingsStore) || !isCurrent()) return false;
-		state.visualsEnabled = action.value;
-		return true;
-	}
 	switch (action.kind) {
 		case "header": state.headerVariant = action.value; break;
 		case "mascot": state.mascot = action.value; break;
@@ -934,6 +927,8 @@ function registerCommand(
 	accountFactory: typeof bindControlCenterAccount,
 	speech: ResponseSpeech,
 	bindReset: (ctx: ExtensionContext) => Promise<CodexResetAction | undefined>,
+	agentDir: string,
+	setAppearance: typeof setAppearanceProviders,
 ): void {
 	const openControlCenter = async (
 		ctx: ExtensionContext,
@@ -950,11 +945,12 @@ function registerCommand(
 				snapshot: () => state,
 				apply: (action) => {
 					if (!isCurrent()) return Promise.resolve(false);
-					const applying = applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore, isCurrent);
-					if (action.kind !== "visuals") return applying;
-					return applying.then(saved => {
-						if (saved && isCurrent()) visualsSaved = true;
-						return saved;
+					if (action.kind !== "visuals") return applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore);
+					return setAppearance({ agentDir, cwd: ctx.cwd, env: process.env, isCurrent, visualsEnabled: action.value }).then(() => {
+						if (!isCurrent()) return false;
+						state.visualsEnabled = action.value;
+						visualsSaved = true;
+						return true;
 					});
 				},
 			}, {
@@ -1151,8 +1147,7 @@ function registerCommand(
 	});
 }
 
-async function sdkTodoActive(pi: ExtensionAPI): Promise<boolean> {
- const agentDir = todoAgentDir();
+async function sdkTodoActive(pi: ExtensionAPI, agentDir: string): Promise<boolean> {
  if (!todoProviderConfigured(agentDir)) return false;
  try {
   // No pure cwd getter exists during factory loading; getSettings is not bound yet.
@@ -1180,6 +1175,8 @@ export async function registerOsdyPi(
 		speechService?: SpeechService;
 		accountFactory?: typeof bindControlCenterAccount;
 		editorSettingsStore?: ReturnType<typeof createEditorSettingsStore>;
+		setAppearanceProviders?: typeof setAppearanceProviders;
+		inspectAppearanceSettings?: typeof inspectAppearanceSettings;
 	} = {},
 ): Promise<void> {
 	const state: OsdyState = {
@@ -1218,13 +1215,14 @@ export async function registerOsdyPi(
 		tui: undefined,
 	};
 	const controller = createWorkingController(state, workingState);
+	const agentDir = (dependencies.agentDir ?? getAgentDir)();
 	const speech = registerResponseSpeech(pi, dependencies.speechService ?? createSpeechService({
 		agentDir: (dependencies.agentDir ?? getAgentDir)(),
 	}));
 	const settingsStore = createAudioSoundSettingsStore();
 	const editorSettingsStore = dependencies.editorSettingsStore ?? createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
- const todoActive = await sdkTodoActive(pi);
+ const todoActive = await sdkTodoActive(pi, agentDir);
  const todoStore = todoActive ? createTodoSessionStore() : undefined;
  if (todoStore) {
   registerTodoTool(pi, todoStore);
@@ -1480,8 +1478,15 @@ export async function registerOsdyPi(
 		const editorSettings = await editorSettingsStore.load();
 		if (sessionContext !== ctx) return;
 		state.fallbackEditorFactory = ctx.ui.getEditorComponent();
-		if (editorSettings.visualsEnabled === undefined) delete state.visualsEnabled;
-		else state.visualsEnabled = editorSettings.visualsEnabled;
+		try {
+			const rootVisuals = (dependencies.inspectAppearanceSettings ?? inspectAppearanceSettings)(agentDir);
+			const visuals = rootVisuals === undefined ? editorSettings.visualsEnabled : rootVisuals;
+			if (visuals === undefined) delete state.visualsEnabled;
+			else state.visualsEnabled = visuals;
+		} catch (error) {
+			// Invalid root metadata is not permission to apply a legacy fallback.
+			ctx.ui.notify(`Appearance settings not applied: ${error instanceof Error ? error.message : "invalid metadata"}`, "error");
+		}
 		state.enabled = editorSettings.enabled;
 		usageSettingsReady = true;
 		idleUsageRefresh.start();
@@ -1547,5 +1552,7 @@ export async function registerOsdyPi(
 		dependencies.accountFactory ?? bindControlCenterAccount,
 		speech,
 		bindReset,
+		agentDir,
+		dependencies.setAppearanceProviders ?? setAppearanceProviders,
 	);
 }

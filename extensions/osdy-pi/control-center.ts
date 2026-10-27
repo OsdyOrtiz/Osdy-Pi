@@ -343,7 +343,9 @@ export class ControlCenter implements Component, Focusable {
 		} catch (error) {
 			if (this.disposed) return;
 			this.failed = true;
-			this.feedback = `Preference failed: ${errorMessage(error)}. Not saved.`;
+			this.feedback = action.kind === "visuals"
+				? `Appearance failed: ${errorMessage(error)}. Not saved; reload not requested.`
+				: `Preference failed: ${errorMessage(error)}. Not saved.`;
 		} finally {
 			if (!this.disposed) {
 				this.saving = false;
