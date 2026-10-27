@@ -12,7 +12,7 @@ import type { CodexUsageSnapshot, CodexUsageWindow } from "./codex-usage.js";
 import { renderCodexUsageDashboardContentLines, renderControlCenterQuotaWindow } from "./codex-usage-ui.js";
 
 export const CONTROL_CENTER_CATEGORIES = [
-	"Theme", "Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage", "TODO", "Visuals", "Agents", "Speech",
+	"Theme", "Header", "Mascot", "Editor", "Companion", "Git", "Sounds", "Account", "Usage", "TODO", "Visuals", "Agents", "Speech",
 ] as const;
 export type ControlCenterCategory = (typeof CONTROL_CENTER_CATEGORIES)[number];
 export type ControlCenterServiceAction =

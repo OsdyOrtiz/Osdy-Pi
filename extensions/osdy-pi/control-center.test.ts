@@ -31,7 +31,7 @@ void test("Usage reset returns external intent without generic inline approval o
 			{ label: "Use or check banked reset", current: false, action: { kind: "usage-reset" } },
 		] }), apply: () => { applies++; return Promise.resolve({ failed: false, message: "" }); } },
 	});
-	for (let i = 0; i < 7; i++) panel.handleInput(down);
+	for (let i = 0; i < 8; i++) panel.handleInput(down);
 	await settle(); panel.handleInput(right); panel.handleInput("\r");
 	assert.deepEqual(intent, { kind: "codex-reset" });
 	assert.equal(applies, 0);
@@ -51,7 +51,7 @@ void test("TODO confirmation is Cancel-first, blocks navigation while saving, an
 			{ label: "Opt in", current: false, action: { kind: "todo-provider", mode: "on" }, details: ["Owned filters only. Reload follows."] },
 		] }), apply: () => { calls++; return new Promise(resolve => { complete = resolve; }); } },
 	});
-	for (let i = 0; i < 8; i++) panel.handleInput(down);
+	for (let i = 0; i < 9; i++) panel.handleInput(down);
 	await Promise.resolve();
 	panel.handleInput(right); panel.handleInput("\r");
 	assert.match(panel.render(100).join("\n"), /> Cancel/);
@@ -78,7 +78,7 @@ void test("TODO failure stays in-panel and disposed completions never close or r
 					{ label: "on", current: false, action: { kind: "todo-provider", mode: "on" }, details: ["Reload follows"] },
 				] }), apply: () => new Promise((success, fail) => { resolve = success; reject = fail; }),
 			} }, () => { reloads++; });
-			for (let i = 0; i < 8; i++) f.panel.handleInput(down);
+			for (let i = 0; i < 9; i++) f.panel.handleInput(down);
 			await Promise.resolve();
 			f.panel.handleInput(right); f.panel.handleInput("\r"); f.panel.render(100);
 			f.panel.handleInput(down); f.panel.handleInput("\r");
@@ -216,7 +216,7 @@ void test("Profile selection survives category navigation without usage or colli
 		defaultProfile: () => Promise.resolve(undefined), switch: () => { throw new Error("No switch"); },
 		setDefault: () => { throw new Error("No default write"); }, usage: () => { throw new Error("No query"); } });
 	const f = fixture(undefined, undefined, { account });
-	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right); f.panel.handleInput(down);
 	for (const key of ["g", "j"]) f.panel.handleInput(key);
 	f.panel.handleInput(left); f.panel.handleInput(down); await settle();
@@ -270,7 +270,7 @@ void test("Agent direct letters never cross loading, query, save or text input b
 		read: () => Promise.resolve({ summary: "Accounts", note: "", rows: [{ label: "work", current: false, action: { kind: "account-select", profile: "work" } }] }),
 		apply: () => new Promise(() => {}),
 	}, agents });
-	for (let i = 0; i < 6; i++) account.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) account.panel.handleInput(down);
 	await settle(); account.panel.handleInput(right); account.panel.handleInput("\r");
 	for (const key of ["g", "j"]) account.panel.handleInput(key);
 	assert.match(plain(account.panel.render(100)), /Loading stored-profile/); assert.equal(calls, 1); account.dispose();
@@ -287,7 +287,7 @@ void test("Sounds master action routes to its service, refreshes live, and never
 		apply: action => { actions.push(action); if (action.kind === "sound-enabled") enabled = action.value;
 			return Promise.resolve({ failed: false, message: "Saved globally" }); },
 	} }, () => { reloads++; });
-	for (let i = 0; i < 5; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
 	await settle();
 	assert.equal(actions.length, 0);
 	f.panel.handleInput(right); f.panel.handleInput("\r"); await settle();
@@ -346,7 +346,7 @@ const left = "\x1b[D";
 void test("categories and detail have separate keyboard focus and honest placeholders", () => {
 	const f = fixture();
 	assert.match(f.panel.render(80).join("\n"), /Theme/);
-	for (const category of ["Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage"]) {
+	for (const category of ["Header", "Mascot", "Editor", "Companion", "Git", "Sounds", "Account", "Usage"]) {
 		f.panel.handleInput(down);
 		assert.match(f.panel.render(80).join("\n"), new RegExp(`${category}: not yet available`));
 		f.panel.handleInput(right);
@@ -377,8 +377,8 @@ function preferenceFixture() {
 void test("inline preferences show all supported values and live current/effective indicators without saving", () => {
 	const f = preferenceFixture();
 	for (const [category, choices, current] of [
-		["Header", ["osdy-theme", "neon"], "osdy-theme"],
-		["Mascot", ["current", "Bts", "Osdy-Halloween"], "current"],
+		["Header", ["osdy-theme", "neon", "block-shadow", "slanted"], "osdy-theme"],
+		["Mascot", ["Cozy Bandit", "Lavender Bandit", "Little Vampire", "Hoodie Pi"], "Cozy Bandit"],
 		["Editor", ["auto", "extended", "simple"], "auto"],
 	] as const) {
 		f.panel.handleInput(down);
@@ -398,12 +398,13 @@ void test("Mascot selects Osdy-Halloween and reports its exact saved label", asy
 	f.panel.handleInput(down);
 	f.panel.handleInput(right);
 	f.panel.handleInput("\x1b[F");
+	f.panel.handleInput(up);
 	f.panel.handleInput("\r");
 	assert.deepEqual(f.applied, [{ kind: "mascot", value: "osdy-halloween" }]);
-	assert.match(f.panel.render(100).join("\n"), /Saving.*Osdy-Halloween/);
+	assert.match(f.panel.render(100).join("\n"), /Saving.*Little Vampire/);
 	f.complete(true);
 	await Promise.resolve();
-	assert.match(f.panel.render(100).join("\n"), /Saved globally: Osdy-Halloween/);
+	assert.match(f.panel.render(100).join("\n"), /Saved globally: Little Vampire/);
 });
 
 void test("changing categories resets selection to their current row, even after a longer theme list", () => {
@@ -413,7 +414,7 @@ void test("changing categories resets selection to their current row, even after
 	f.panel.handleInput(left);
 	f.panel.handleInput(down);
 	f.panel.handleInput(right);
-	assert.match(f.panel.render(100).join("\n"), /detail: 1\/2/);
+	assert.match(f.panel.render(100).join("\n"), /detail: 1\/4/);
 	f.panel.handleInput(down);
 	f.panel.handleInput("\r");
 	assert.deepEqual(f.applied, [{ kind: "header", value: "neon" }]);
@@ -483,7 +484,7 @@ void test("inline preference rendering stays bounded at narrow widths and differ
 		f.panel.handleInput(down);
 		f.panel.handleInput(right);
 		f.panel.handleInput("\x1b[F");
-		assert.match(f.panel.render(48).join("\n"), new RegExp(`> ${["neon", "Osdy-Halloween", "simple"][category]}`));
+		assert.match(f.panel.render(48).join("\n"), new RegExp(`> ${["slanted", "Hoodie Pi", "simple"][category]}`));
 		for (const height of [1, 4, 7, 9, 18]) {
 			f.resize(height);
 			for (const width of [1, 8, 24, 48, 80]) {
@@ -504,7 +505,7 @@ void test("empty feedback preserves the current theme summary on short terminals
 
 void test("empty feedback preserves focus and position with ANSI colors", () => {
 	const f = fixture();
-	assert.match(f.panel.render(80).join("\n"), /categories: 1\/12/);
+	assert.match(f.panel.render(80).join("\n"), /categories: 1\/13/);
 	f.panel.handleInput(right);
 	assert.match(f.panel.render(80).join("\n"), /detail: 1\/2/);
 	f.panel.handleInput(down);
@@ -693,7 +694,7 @@ void test("Stored-profile view uses dashboard groups, account summary and pinned
 		read: () => Promise.resolve({ summary: "Active", note: "", rows: [] }),
 		apply: () => Promise.resolve({ failed: false, message: "" }),
 	} }); f.resize(100);
-	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right); f.panel.handleInput(down); f.panel.handleInput("v"); await settle();
 	const view = plain(f.panel.render(120));
 	for (const text of ["Session", "Weekly", "100% left", "0% left", "Additional [extra]", "Quotas + account", "Credits: 10", "Credit resets: 2", "Plan: plus", "Checked:", "Updated:", "Profile: personal"]) assert.ok(view.includes(text), text);
@@ -786,7 +787,7 @@ void test("help does not intercept confirmation, text input, saving or loading",
 			{ label: "Switch", current: false, action: { kind: "account-switch", profile: "work" }, details: ["Full effect. Preserve unrelated state."] },
 		] }), apply: () => Promise.resolve({ failed: false, message: "Switched" }),
 	} });
-	for (let i = 0; i < 6; i++) p.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) p.panel.handleInput(down);
 	const loading = plain(p.panel.render(100)); p.panel.handleInput("?"); assert.equal(plain(p.panel.render(100)), loading);
 	await settle(); p.panel.handleInput(right); p.panel.handleInput("\r");
 	const confirmation = plain(p.panel.render(100));
@@ -817,7 +818,7 @@ async function quotaSwitchFixture(initialActive = "work", projection: "available
 		quotaDetails: profile => [`Profile: ${profile}`, "Checked: synthetic", ...Array.from({ length: 30 }, (_, i) => `Quota line ${i}`)],
 	} });
 	f.resize(18);
-	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right); f.panel.handleInput(down); f.panel.handleInput("v"); await settle();
 	return { ...f, requests, switches, reads: () => reads, setCurrent: (value: boolean) => { current = value; },
 		setProfiles: (value: string[]) => { profiles = value; }, setActive: (value: string) => { active = value; } };
@@ -920,7 +921,7 @@ void test("Quota switch never crosses loading, query or saving boundaries", asyn
 		}, quotaDetails: profile => [`Profile: ${profile}`, "Checked: synthetic"],
 	} });
 	f.resize(30);
-	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 	f.panel.handleInput(right); f.panel.handleInput("s"); assert.deepEqual(actions, []);
 	assert.doesNotMatch(plain(f.panel.render(120)), /Confirm account/);
 	finishRead(); await settle(); f.panel.handleInput("v");
@@ -946,7 +947,7 @@ void test("Spaced confirmations preserve ANSI safety text and fit guard across n
 					{ label: "Switch", current: false, action: { kind: "account-switch", profile: "personal" }, details: [safety] },
 				] }), apply: () => { calls++; return Promise.resolve({ failed: true, message: "Synthetic rejection" }); },
 			} });
-			for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+			for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 			await settle(); f.panel.handleInput(right); f.panel.handleInput("\r"); f.resize(height);
 			const lines = f.panel.render(width);
 			assert.ok(lines.length <= height); assert.ok(lines.every(line => visibleWidth(line) <= width));
@@ -968,7 +969,7 @@ void test("Account explicit preview precedes independent Cancel-first activation
 		defaultProfile: () => Promise.resolve(undefined), switch: profile => { switches.push(profile); return Promise.resolve(true); },
 		setDefault: () => Promise.resolve(true), usage: profile => { requests.push(profile); return Promise.resolve({ status: "unavailable", profile, checkedAt: 1000, reason: "stored-credentials-unavailable" }); } });
 	const f = fixture(undefined, undefined, { account }); f.resize(30);
-	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right); f.panel.handleInput(down); f.panel.handleInput(up);
 	assert.deepEqual(requests, []); assert.deepEqual(switches, []);
 	assert.doesNotMatch(f.panel.render(120).join("\n"), /Actions \/|> View usage|Switch to work/);
@@ -996,7 +997,7 @@ void test("Pending profile reads block duplicate Enter but exit, disposal and st
 				finish = () => resolve({ status: "ready", profile, checkedAt: 1000, quotaSnapshot: { fetchedAt: 1000, buckets: [], credits: undefined, planType: undefined, ordinaryUsageAllowed: undefined } });
 			}); } });
 		const f = fixture(undefined, undefined, { account });
-		for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+		for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 		await settle(); f.panel.handleInput("v"); assert.equal(calls, 0, "category focus owns letter input");
 		f.panel.handleInput(right); f.panel.handleInput("v"); await settle();
 		for (const key of ["\r", "v", "r", "s", "d", "c"]) f.panel.handleInput(key);
@@ -1031,7 +1032,7 @@ void test("Profile selection survives confirmed operations and quota refresh/bac
 					primary: { usedPercent: 25, windowMinutes: 300, resetsAt: undefined }, secondary: undefined })) } }); },
 	});
 	const f = fixture(undefined, undefined, { account }); f.resize(30);
-	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right); f.panel.handleInput(down);
 	assert.deepEqual(requests, []);
 	f.panel.handleInput("s"); f.panel.render(120);
@@ -1091,7 +1092,7 @@ void test("Direct profile keys isolate selection and stay blocked during metadat
 		usage: profile => { calls.push(`usage:${profile}`); return Promise.resolve({ status: "unavailable", profile, checkedAt: 1000, reason: "stored-credentials-unavailable" }); },
 	});
 	const f = fixture(undefined, undefined, { account }); f.resize(30);
-	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 	f.panel.handleInput(right);
 	for (const key of ["v", "s", "d", "c"]) f.panel.handleInput(key);
 	assert.deepEqual(calls, []);
@@ -1128,7 +1129,7 @@ void test("Usage renders shared cached capacity bars separately from local range
 		history: () => Promise.resolve({ records: [], warnings: [], limited: false, missing: true }),
 		refresh: () => { refreshes++; return Promise.resolve(); }, active: () => "work" });
 	const f = fixture(undefined, undefined, { usage }); f.resize(30);
-	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 8; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right);
 	const text = plain(f.panel.render(120));
 	assert.match(text, /Quota \/ Session 5h 0% left ░+/);
@@ -1141,7 +1142,7 @@ void test("Usage renders shared cached capacity bars separately from local range
 });
 
 async function openSounds(f: ReturnType<typeof serviceFixture>) {
-	for (let i = 0; i < 5; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right);
 }
 
@@ -1196,7 +1197,7 @@ void test("Account switch has inline cancel-default confirmation and busy guardi
 		] }),
 		apply: action => { actions.push(action); return new Promise(resolve => { complete = () => resolve({ failed: false, message: "Switched" }); }); },
 	} });
-	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 	await settle();
 	assert.match(f.panel.render(100).join("\n"), /Current: work/);
 	assert.equal(actions.length, 0);
@@ -1217,7 +1218,7 @@ void test("Usage loading and late results cannot replace a different category", 
 			read: () => new Promise((resolve, reject) => { finish = () => failure ? reject(new Error("late usage")) : resolve({ summary: "Late quota", note: "Read-only", rows: [] }); }),
 			apply: () => Promise.resolve({ failed: false, message: "Refreshed" }),
 		} });
-		for (let i = 0; i < 7; i++) f.panel.handleInput(down);
+		for (let i = 0; i < 8; i++) f.panel.handleInput(down);
 		assert.match(f.panel.render(80).join("\n"), /Loading/);
 		f.panel.handleInput(up); finish(); await settle();
 		assert.doesNotMatch(f.panel.render(80).join("\n"), /late usage|Late quota/);
@@ -1230,7 +1231,7 @@ void test("Account default clear confirmation supports Escape and narrow bounded
 		read: () => Promise.resolve({ summary: "Default: work", note: "Metadata only", rows: [{ label: "Clear default", current: false, action: { kind: "account-default", profile: undefined } }] }),
 		apply: action => { actions.push(action); return Promise.resolve({ failed: false, message: "Default saved" }); },
 	} });
-	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right); f.panel.handleInput("\r");
 	for (const width of [1, 8, 24, 48]) assert.ok(f.panel.render(width).every(line => visibleWidth(line) <= width));
 	f.panel.handleInput("\x1b"); assert.equal(f.closes(), 0); assert.equal(actions.length, 0);
@@ -1246,7 +1247,7 @@ void test("late action refresh errors are suppressed after changing categories",
 			: new Promise((_resolve, reject) => { rejectRead = () => reject(new Error("old refresh")); }),
 		apply: () => Promise.resolve({ failed: false, message: "Refreshed" }),
 	} });
-	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 8; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right); f.panel.handleInput("\r"); await settle();
 	f.panel.handleInput(left); f.panel.handleInput(up); rejectRead(); await settle();
 	assert.doesNotMatch(f.panel.render(80).join("\n"), /old refresh/);
@@ -1258,7 +1259,7 @@ void test("Account cannot confirm when the terminal hides confirmation choices",
 		read: () => Promise.resolve({ summary: "Accounts", note: "Metadata", rows: [{ label: "Switch", current: false, action: { kind: "account-switch", profile: "long-profile-name" } }] }),
 		apply: () => { calls++; return Promise.resolve({ failed: false, message: "Switched" }); },
 	} });
-	for (let i = 0; i < 6; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right); f.panel.handleInput("\r");
 	f.resize(3); f.panel.render(8); f.panel.handleInput(down); f.panel.handleInput("\r");
 	assert.equal(calls, 0);
@@ -1270,7 +1271,7 @@ void test("Usage refresh is honestly read-only while pending and cannot duplicat
 		read: () => Promise.resolve({ summary: "Local analytics", note: "Read-only", rows: [{ label: "Refresh", current: false, action: { kind: "usage-refresh" } }] }),
 		apply: () => { calls++; return new Promise(() => {}); },
 	} });
-	for (let i = 0; i < 7; i++) f.panel.handleInput(down);
+	for (let i = 0; i < 8; i++) f.panel.handleInput(down);
 	await settle(); f.panel.handleInput(right); f.panel.handleInput("\r");
 	assert.match(f.panel.render(80).join("\n"), /Refreshing usage/);
 	assert.doesNotMatch(f.panel.render(80).join("\n"), /Saving globally/);
@@ -1284,7 +1285,7 @@ void test("disposed overlays ignore late category reads, including errors", asyn
 			read: () => new Promise((resolve, reject) => { finish = () => fails ? reject(new Error("late")) : resolve({ summary: "Branch main", note: "Read-only", rows: [] }); }),
 			apply: () => Promise.resolve({ failed: false, message: "Saved globally" }),
 		} });
-		for (let i = 0; i < 4; i++) f.panel.handleInput(down);
+		for (let i = 0; i < 5; i++) f.panel.handleInput(down);
 		f.dispose(); const renders = f.renders(); finish(); await settle();
 		assert.equal(f.renders(), renders);
 	}

@@ -132,7 +132,7 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 				if (act) await beforeAction();
 				if (!act) mounted.handleInput?.("\x1b");
 				else if (mounted.render(120).join("\n").includes("Control Center")) {
-					for (let i = 0; i < 7; i++) mounted.handleInput?.("\x1b[B");
+					for (let i = 0; i < 8; i++) mounted.handleInput?.("\x1b[B");
 					for (let i = 0; i < 100 && !mounted.render(120).join("\n").includes("Use or check banked reset"); i++)
 						await new Promise<void>(resolve => setImmediate(resolve));
 					assert.match(mounted.render(120).join("\n"), /Use or check banked reset/);
@@ -425,7 +425,7 @@ void test("registered Account factory isolates profile preview from active quota
 		custom: async (factory: (tui: unknown, theme: unknown, keys: unknown, done: (result: unknown) => void) => Component & { handleInput(data: string): void }) => {
 			let result: unknown;
 			const panel = factory({ terminal: { rows: 40 }, requestRender: () => { renderCount++; } }, undefined, undefined, value => { result = value; });
-			for (let i = 0; i < 6; i++) panel.handleInput("\x1b[B");
+			for (let i = 0; i < 7; i++) panel.handleInput("\x1b[B");
 			for (let i = 0; i < 16; i++) await Promise.resolve();
 			panel.handleInput("\x1b[C"); views.push(panel.render(140).join("\n"));
 			panel.handleInput("\r"); for (let i = 0; i < 16; i++) await Promise.resolve();
@@ -781,7 +781,7 @@ for (const shortcut of [false, true]) for (const closePending of [false, true]) 
 			chooseVisual(f, 3); f.resolveSave(); await flushFocus();
 			assert.equal(f.replacements(), 0);
 			f.send("\x1b[D");
-			for (let i = 0; i < 3; i++) f.send("\x1b[B");
+			for (let i = 0; i < 4; i++) f.send("\x1b[B");
 			await flushFocus(); await flushFocus();
 			f.send("\x1b[C"); f.send("\x1b[H");
 			// Select work's profile row; direct actions never add a second list.
@@ -859,7 +859,7 @@ for (const shortcut of [false, true]) void test(`registered ${shortcut ? "Ctrl+A
 				},
 			});
 			try {
-				for (let i = 0; i < 6; i++) f.send("\x1b[B");
+				for (let i = 0; i < 7; i++) f.send("\x1b[B");
 				await flushFocus(); await flushFocus();
 				f.send("\x1b[C"); f.send("\x1b[H");
 				assert.match(f.text(), /> work/);
@@ -908,7 +908,7 @@ void test("registered TODO selection reloads from the command but Ctrl+Alt+O req
 			f.resolveSave(); await Promise.resolve(); await Promise.resolve();
 			assert.equal(f.replacements(), 0);
 			f.send("\x1b[D"); f.send("\x1b[H");
-			for (let i = 0; i < 8; i++) f.send("\x1b[B");
+			for (let i = 0; i < 9; i++) f.send("\x1b[B");
 			await Promise.resolve(); await Promise.resolve();
 			assert.match(f.text(), /Configured: off.*Loaded registration: off/);
 			f.send("\x1b[C"); f.send("\x1b[H"); f.send("\r");
@@ -935,7 +935,7 @@ for (const shortcut of [false, true]) for (const initial of [true, false]) void 
 	const f = await focusFixture({ registered: true, shortcut, visualsEnabled: initial });
 	try {
 		f.lifecycle.length = 0;
-		for (let i = 0; i < 9; i++) f.send("\x1b[B");
+		for (let i = 0; i < 10; i++) f.send("\x1b[B");
 		assert.match(f.text(), /Control Center \/ Visuals/);
 		assert.equal(f.writes.length, 0, "inspection never saves");
 		f.send("\x1b[C"); f.send(initial ? "\x1b[F" : "\x1b[H"); f.send("\r");
@@ -966,7 +966,7 @@ function appearanceFixture(optedIn = true) {
 	return { home, agentDir, path };
 }
 function switchVisuals(f: Awaited<ReturnType<typeof focusFixture>>, enabled: boolean) {
-	for (let i = 0; i < 9; i++) f.send("\x1b[B");
+	for (let i = 0; i < 10; i++) f.send("\x1b[B");
 	f.send("\x1b[C"); f.send(enabled ? "\x1b[H" : "\x1b[F"); f.send("\r");
 }
 for (const optedIn of [true, false]) void test(`registered appearance transaction restores TODO opt-in=${optedIn} across registration and sibling saves`, async () => {
@@ -991,7 +991,7 @@ for (const optedIn of [true, false]) void test(`registered appearance transactio
 			const beforeSibling = readFileSync(appearance.path, "utf8");
 			chooseVisual(next, 1); next.resolveSave(); await flushFocus();
 			assert.equal(readFileSync(appearance.path, "utf8"), beforeSibling, "sibling preferences leave override and undo untouched");
-			next.send("\x1b[D"); for (let i = 0; i < 8; i++) next.send("\x1b[B");
+			next.send("\x1b[D"); for (let i = 0; i < 9; i++) next.send("\x1b[B");
 			assert.match(next.text(), enabled ? /Current: on/ : /Current: off/, "root overrides conflicting editor v1");
 			next.send("\x1b"); await next.showing;
 		} finally { next.cleanup(); }
@@ -1042,7 +1042,7 @@ void test("registered appearance rejection leaves root, current preference, over
 void test("registered visuals save failure preserves preference, panel and legacy master off", async () => {
 	const f = await focusFixture({ registered: true, visualsEnabled: false, legacyEnabled: false });
 	try {
-		for (let i = 0; i < 9; i++) f.send("\x1b[B");
+		for (let i = 0; i < 10; i++) f.send("\x1b[B");
 		assert.match(f.text(), /master.*off/i);
 		f.send("\x1b[C"); f.send("\x1b[H"); f.send("\r");
 		assert.deepEqual(f.appearanceWrites, [true]);
@@ -1060,7 +1060,7 @@ void test("registered visuals stale save completion cannot mutate live preferenc
 	for (const transition of ["replacement", "shutdown"] as const) {
 		const f = await focusFixture({ registered: true, visualsEnabled: true });
 		try {
-			for (let i = 0; i < 9; i++) f.send("\x1b[B");
+			for (let i = 0; i < 10; i++) f.send("\x1b[B");
 			f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r");
 			assert.deepEqual(f.appearanceWrites, [false]);
 			if (transition === "replacement") await f.transition();
@@ -1069,7 +1069,7 @@ void test("registered visuals stale save completion cannot mutate live preferenc
 			f.resolveSave(); await flushFocus();
 			assert.ok(!f.lifecycle.includes("reload"));
 			const reopened = f.reopen(); await flushFocus();
-			for (let i = 0; i < 9; i++) f.send("\x1b[B");
+			for (let i = 0; i < 10; i++) f.send("\x1b[B");
 			assert.match(f.text(), /Current: on/, transition);
 			f.send("\x1b"); await reopened;
 		} finally { f.cleanup(); }
@@ -1150,7 +1150,7 @@ void test("deferred editor policy keeps the mounted editor while Header saves li
 	try {
 		const original = f.mountedEditor();
 		const effective = f.state.editorEffective;
-		chooseVisual(f, 1);
+		chooseVisual(f, 1, 1);
 		assert.equal(f.state.headerVariant, "neon");
 		assert.equal(f.headerMounts(), 1, "Header remount is immediate");
 		assert.equal(f.writes.at(-1)?.headerVariant, "neon", "save starts immediately");
@@ -1168,6 +1168,17 @@ void test("deferred editor policy keeps the mounted editor while Header saves li
 	} finally { f.cleanup(); }
 });
 
+void test("Header saves the Slanted variant live through real TUI", async () => {
+	const f = await focusFixture({ boundary: true });
+	try {
+		chooseVisual(f, 1, 3);
+		assert.equal(f.state.headerVariant, "slanted");
+		assert.equal(f.writes.at(-1)?.headerVariant, "slanted");
+		f.send("\x1b"); await f.showing;
+		f.resolveSave(); await flushFocus();
+	} finally { f.cleanup(); }
+});
+
 function assertEditorContinuity(f: Awaited<ReturnType<typeof focusFixture>>) {
 	const mounted = f.mountedEditor();
 	const before = mounted.input;
@@ -1181,9 +1192,12 @@ function assertEditorContinuity(f: Awaited<ReturnType<typeof focusFixture>>) {
 	}
 }
 const flushFocus = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
-function chooseVisual(f: Awaited<ReturnType<typeof focusFixture>>, category: number) {
+function chooseVisual(f: Awaited<ReturnType<typeof focusFixture>>, category: number, rowsDown?: number) {
 	for (let i = 0; i < category; i++) f.send("\x1b[B");
-	f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r");
+	f.send("\x1b[C");
+	if (rowsDown === undefined) f.send("\x1b[F");
+	for (let i = 0; i < (rowsDown ?? 0); i++) f.send("\x1b[B");
+	f.send("\r");
 }
 
 for (const [name, category, boundary, expectedReplacements] of [
@@ -1195,12 +1209,12 @@ for (const [name, category, boundary, expectedReplacements] of [
 		try {
 			// Mascot remount can reconcile an editor whose responsive state needs updating.
 			if (category === 2) f.state.editorEffective = false;
-			chooseVisual(f, category);
+			chooseVisual(f, category, category === 1 ? 1 : undefined);
 			assert.equal(f.replacements(), 0, "mounted editor must survive the modal");
 			assert.equal(f.focused(), true, "visible Control Center must retain keyboard ownership before save finishes");
 			assert.match(f.text(), /Saving globally/);
 			f.send("\x1b[D"); f.send("\x1b[B");
-			assert.match(f.text(), new RegExp(`Control Center / ${["", "Mascot", "Editor", "Git"][category]}`));
+			assert.match(f.text(), new RegExp(`Control Center / ${["", "Mascot", "Editor", "Companion"][category]}`));
 			f.send("\x1b"); await f.showing;
 			assert.equal(f.closes(), 1, "Escape must reach the overlay through TUI");
 			assert.equal(f.replacements(), expectedReplacements);
@@ -1520,6 +1534,15 @@ void test("registered Ctrl+Alt+O and osdyConfig share the same panel, live value
 			assert.match(panel.render(100).join("\n"), /Saved globally: osdy-theme/);
 			panel.handleInput("\x1b[D");
 			for (let i = 0; i < 3; i++) panel.handleInput("\x1b[B");
+			assert.ok(panel.render(100).join("\n").includes("Tiny Doodle"));
+			assert.ok(!panel.render(100).join("\n").includes("Pi Simple"));
+			panel.handleInput("\x1b[C"); panel.handleInput("\x1b[H");
+			panel.handleInput("\x1b[B"); panel.handleInput("\r");
+			assert.equal(writes.at(-1)?.companionStyle, "drawn");
+			assert.equal(writes.at(-1)?.companionEnabled, true);
+			for (let i = 0; i < 8; i++) await Promise.resolve();
+			assert.match(panel.render(100).join("\n"), /Current: Tiny Doodle/);
+			panel.handleInput("\x1b[D"); panel.handleInput("\x1b[B");
 			for (let i = 0; i < 8; i++) await Promise.resolve();
 			assert.match(panel.render(100).join("\n"), /Branch: test-branch/);
 			assert.match(panel.render(100).join("\n"), /disabled.*current/);
@@ -1537,14 +1560,44 @@ void test("registered Ctrl+Alt+O and osdyConfig share the same panel, live value
 		const legacy = commands.get("osdy-pi"); const modal = commands.get("osdyConfig");
 		assert.ok(legacy); assert.ok(modal);
 		assert.equal(commands.has("osdy"), false, "the Control Center command is renamed, not aliased");
+		await legacy.handler("companion drawn", ctx);
+		const beforeWithdrawal = writes.length;
+		const retained = writes.at(-1);
+		for (const withdrawn of ["simple", "mini", "micro", "terminal-mini"]) {
+			await legacy.handler(`companion ${withdrawn}`, ctx);
+			assert.equal(writes.length, beforeWithdrawal, `withdrawn companion choice ${withdrawn} must not save`);
+			assert.deepEqual(notices.at(-1), {
+				message: "Usage: /osdy-pi companion on | off | toggle | original | drawn | rounded | terminal | slim | slim-small | status", level: "warning",
+			});
+		}
+		await legacy.handler("invalid", ctx);
+		assert.ok(notices.at(-1)?.message.includes("companion on|off|toggle|original|drawn|rounded|terminal|slim|slim-small|status"));
+		assert.doesNotMatch(notices.at(-1)?.message ?? "", /companion \S*simple/);
+		assert.equal(writes.length, beforeWithdrawal);
+		await legacy.handler("editor simple", ctx);
+		assert.deepEqual(notices.at(-1), { message: "osdy-pi editor mode: simple", level: "info" });
+		assert.deepEqual(writes.at(-1), { ...retained, editorMode: "simple" }, "rejected companion command must not mutate live settings");
 		for (const [args, expected, field, value] of [
 			["header neon", "osdy-pi header: neon", "headerVariant", "neon"],
-			["mascot bts", "osdy-pi mascot: Bts", "mascot", "bts"],
-			["mascot osdy-halloween", "osdy-pi mascot: Osdy-Halloween", "mascot", "osdy-halloween"],
+			["header block-shadow", "osdy-pi header: block-shadow", "headerVariant", "block-shadow"],
+			["header slanted", "osdy-pi header: slanted", "headerVariant", "slanted"],
+			["mascot bts", "osdy-pi mascot: Lavender Bandit", "mascot", "bts"],
+			["mascot pi", "osdy-pi mascot: Hoodie Pi", "mascot", "pi"],
+			["mascot osdy-halloween", "osdy-pi mascot: Little Vampire", "mascot", "osdy-halloween"],
 			["editor off", "osdy-pi editor mode: simple", "editorMode", "simple"],
 			["editor on", "osdy-pi editor mode: extended", "editorMode", "extended"],
 			["editor toggle", "osdy-pi editor mode: simple", "editorMode", "simple"],
 			["editor auto", "osdy-pi editor mode: auto", "editorMode", "auto"],
+			["companion off", "osdy-pi companion: off", "companionEnabled", false],
+			["companion on", "osdy-pi companion: on", "companionEnabled", true],
+			["companion toggle", "osdy-pi companion: off", "companionEnabled", false],
+			["companion drawn", "osdy-pi companion: Tiny Doodle", "companionStyle", "drawn"],
+			["companion rounded", "osdy-pi companion: Big Cuddle", "companionStyle", "rounded"],
+			["companion terminal", "osdy-pi companion: Retro Buddy", "companionStyle", "terminal"],
+			["companion slim", "osdy-pi companion: Slim Ringtail", "companionStyle", "slim"],
+			["companion slim-small", "osdy-pi companion: Pocket Ringtail", "companionStyle", "slim-small"],
+			["companion off", "osdy-pi companion: off", "companionEnabled", false],
+			["companion original", "osdy-pi companion: Pixel Pal", "companionEnabled", true],
 		] as const) {
 			await legacy.handler(args, ctx);
 			assert.deepEqual(notices.at(-1), { message: expected, level: "info" });
@@ -1555,8 +1608,8 @@ void test("registered Ctrl+Alt+O and osdyConfig share the same panel, live value
 		assert.equal(notices.at(-1)?.message, "osdy-pi working tree disabled");
 		const before = writes.length;
 		await legacy.handler("mascot status", ctx);
-		assert.deepEqual(notices.at(-1), { message: "osdy-pi mascot: Osdy-Halloween", level: "info" });
-		for (const args of ["working-tree status", "header status", "mascot status", "editor status", "header invalid", "mascot bts extra", "mascot osdy-halloween extra", "mascot invalid", "editor simple extra"]) await legacy.handler(args, ctx);
+		assert.deepEqual(notices.at(-1), { message: "osdy-pi mascot: Little Vampire", level: "info" });
+		for (const args of ["working-tree status", "header status", "mascot status", "editor status", "header invalid", "mascot bts extra", "mascot osdy-halloween extra", "mascot invalid", "editor simple extra", "companion status", "companion invalid", "companion on extra", "companion drawn extra", "companion simple extra"]) await legacy.handler(args, ctx);
 		assert.equal(writes.length, before, "status and invalid inputs never save");
 		assert.equal(shortcuts.has("f1"), false);
 		assert.equal(shortcuts.has("f2"), false);
@@ -1581,7 +1634,7 @@ void test("registered Ctrl+Alt+O and osdyConfig share the same panel, live value
 		assert.match(notices.at(-1)?.message ?? "", /disabled but could not be saved/);
 		await legacy.handler("working-tree status", ctx);
 		assert.equal(notices.at(-1)?.message, "osdy-pi working tree disabled");
-		for (const args of ["header neon", "mascot current", "editor simple"]) {
+		for (const args of ["header neon", "mascot current", "editor simple", "companion on"]) {
 			await legacy.handler(args, ctx);
 			assert.match(notices.at(-1)?.message ?? "", /changed but could not be saved/);
 			assert.equal(notices.at(-1)?.level, "warning");
@@ -2079,10 +2132,21 @@ void test("agents off confirms and switches, reports actual mode, and guides res
 	assert.deepEqual(getOsdyCommandCompletions("agents"), ["setup", "on", "off", "status"].map((action) => ({ value: `agents ${action}`, label: `agents ${action}` })));
 });
 
+void test("companion command completes only retained choices while editor simple remains available", () => {
+	assert.deepEqual(getOsdyCommandCompletions("companion"),
+		["on", "off", "toggle", "original", "drawn", "rounded", "terminal", "slim", "slim-small", "status"].map(action => ({
+			value: `companion ${action}`, label: `companion ${action}`,
+		})));
+	assert.deepEqual(getOsdyCommandCompletions("companion si"), []);
+	assert.deepEqual(getOsdyCommandCompletions("editor si"), [{ value: "editor simple", label: "editor simple" }]);
+});
+
 void test("header command completes only catalog choices and is persisted through session wiring", () => {
 	assert.deepEqual(getOsdyCommandCompletions("header"), [
 		{ value: "header osdy-theme", label: "header osdy-theme" },
 		{ value: "header neon", label: "header neon" },
+		{ value: "header block-shadow", label: "header block-shadow" },
+		{ value: "header slanted", label: "header slanted" },
 		{ value: "header status", label: "header status" },
 	]);
 	assert.deepEqual(getOsdyCommandCompletions("header n"), [
@@ -2113,12 +2177,16 @@ void test("uninstall command is offered and wired through guarded Pi CLI removal
  assert.match(source, /pi\.exec\("pi", \["remove", source/);
 });
 
-void test("mascot command completes all three choices and status while persisting with immediate refresh", () => {
+void test("mascot command completes all four choices and status while persisting with immediate refresh", () => {
 	assert.deepEqual(getOsdyCommandCompletions("mascot"), [
 		{ value: "mascot current", label: "mascot current" },
 		{ value: "mascot bts", label: "mascot bts" },
 		{ value: "mascot osdy-halloween", label: "mascot osdy-halloween" },
+		{ value: "mascot pi", label: "mascot pi" },
 		{ value: "mascot status", label: "mascot status" },
+	]);
+	assert.deepEqual(getOsdyCommandCompletions("mascot p"), [
+		{ value: "mascot pi", label: "mascot pi" },
 	]);
 	assert.deepEqual(getOsdyCommandCompletions("mascot b"), [
 		{ value: "mascot bts", label: "mascot bts" },

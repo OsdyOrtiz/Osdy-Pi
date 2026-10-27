@@ -16,6 +16,10 @@ import * as profileLabel from "./profile-label.ts";
 import { HEADER_VARIANTS, MASCOTS, MASCOT_GAP, STACKED_CONTENT_MAX_ROWS, headerWidth, mascotForChoice, mascotWidthForRows, scaleHeader, scaleMascot } from "./constants.ts";
 // @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
 import { shouldShowFooterMetadata } from "./types.ts";
+// @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
+import { PI_RACCOON_MASCOT_SIZES } from "./pi-raccoon-sprites.ts";
+// @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
+import { pixelGridWidth } from "./pixel-art.ts";
 
 registerHooks({
 	resolve(specifier, context, nextResolve) {
@@ -39,6 +43,8 @@ registerHooks({
 
 const ui = await import("./ui.js");
 const { compactMascotWidthBudget, composeSideBySide } = await import("./utils.js");
+const { renderPiMascot } = await import("./pixel-mascot.js");
+const { asciiAnimationMode } = await import("./animation.js");
 
 void test("header version occupies a blank leading row at the right edge without moving art", () => {
 	const art = ["\u001b[31m    \u001b[0m", "  mascot logo  "];
@@ -125,7 +131,7 @@ function plainHeader(lines: readonly string[]): string[] {
 
 function renderHeader(
 	headerVariant: keyof typeof HEADER_VARIANTS,
-	mascot: keyof typeof MASCOTS,
+	mascot: keyof typeof MASCOTS | "pi",
 	width: number,
 	rows: number,
 	columns = width,
@@ -193,13 +199,115 @@ for (const headerVariant of Object.keys(HEADER_VARIANTS) as (keyof typeof HEADER
 	}
 }
 
+/** Renders a pi/text header through a fake clock; returns the frames seen after each requested number of ticks. */
+function headerAfterTicks(
+	t: test.TestContext,
+	mascot: keyof typeof MASCOTS | "pi",
+	ticks: readonly number[],
+	mode: string,
+): { renders: string[]; requestedRenders: number } {
+	const previous = process.env.OSDY_PI_ANIMATION;
+	process.env.OSDY_PI_ANIMATION = mode;
+	t.after(() => {
+		if (previous === undefined) delete process.env.OSDY_PI_ANIMATION;
+		else process.env.OSDY_PI_ANIMATION = previous;
+	});
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	type Factory = ReturnType<typeof ui.createHeaderComponent>;
+	let requestedRenders = 0;
+	const component = ui.createHeaderComponent(
+		{} as Parameters<typeof ui.createHeaderComponent>[0],
+		{} as Parameters<typeof ui.createHeaderComponent>[1],
+		{ headerVariant: "osdy-theme", mascot } as Parameters<typeof ui.createHeaderComponent>[2],
+	)({ terminal: { columns: 100, rows: 40 }, requestRender() { requestedRenders += 1; } } as unknown as Parameters<Factory>[0],
+		{ fg: (_color: string, text: string) => text });
+	const renders: string[] = [];
+	let elapsed = 0;
+	try {
+		for (const tick of ticks) {
+			t.mock.timers.tick((tick - elapsed) * 30);
+			elapsed = tick;
+			renders.push(component.render(100).join("\n"));
+		}
+		return { renders, requestedRenders };
+	} finally {
+		component.dispose();
+		t.mock.timers.reset();
+	}
+}
+
+void test("hoodie pi waves at startup in intro mode, then returns to the neutral pose", (t) => {
+	const off = headerAfterTicks(t, "pi", [0], "off").renders[0];
+	const intro = headerAfterTicks(t, "pi", [0, 5, 10, 39, 40, 60], "intro");
+	assert.ok(off);
+	for (const waving of intro.renders.slice(0, 4)) assert.notEqual(waving, off, "waving differs from neutral");
+	assert.ok(new Set(intro.renders.slice(0, 4)).size === 4, "wave cycles frames");
+	assert.equal(intro.renders[4], intro.renders[5], "after the wave the static neutral pose holds");
+	assert.equal(intro.requestedRenders, 40, "intro timer runs long enough for the wave, then stops");
+});
+
+void test("hoodie pi never waves when animation is off and waves only once in continuous mode", (t) => {
+	const off = headerAfterTicks(t, "pi", [0, 10, 100], "off").renders;
+	assert.equal(new Set(off).size, 1, "off stays on the static neutral pose");
+	const continuous = headerAfterTicks(t, "pi", [0, 39, 40, 41, 100], "continuous");
+	assert.equal(continuous.requestedRenders, 100, "continuous keeps ticking");
+	assert.notEqual(continuous.renders[0], off[0]);
+});
+
+void test("text mascots keep the 28-frame intro and ignore the wave", (t) => {
+	const intro = headerAfterTicks(t, "current", [0, 27, 28, 60], "intro");
+	assert.equal(intro.requestedRenders, 28);
+	assert.equal(intro.renders[2], intro.renders[3]);
+});
+
+void test("pi mascot renders the generated half-block raccoon at the largest size that fits", () => {
+	const raw = (width: number, rows: number): string[] => {
+		type Factory = ReturnType<typeof ui.createHeaderComponent>;
+		const component = ui.createHeaderComponent(
+			{} as Parameters<typeof ui.createHeaderComponent>[0],
+			{} as Parameters<typeof ui.createHeaderComponent>[1],
+			{ headerVariant: "osdy-theme", mascot: "pi" } as Parameters<typeof ui.createHeaderComponent>[2],
+		)({ terminal: { columns: width, rows }, requestRender() {} } as unknown as Parameters<Factory>[0],
+			{ fg: (_color: string, text: string) => text });
+		try { return component.render(width); } finally { component.dispose(); }
+	};
+	const largest = PI_RACCOON_MASCOT_SIZES[0];
+	const smallest = PI_RACCOON_MASCOT_SIZES.at(-1);
+	assert.ok(largest && smallest);
+	assert.ok(PI_RACCOON_MASCOT_SIZES.every((grid, index, all) => index === 0 || grid.length < (all[index - 1]?.length ?? 0)));
+
+	const fullWidth = headerWidth("osdy-theme") + MASCOT_GAP + pixelGridWidth(largest);
+	const full = raw(fullWidth, 40);
+	assert.ok(full.join("\n").includes("\u001b[38;2;"), "pixel mascot uses truecolor half blocks");
+	const style = asciiAnimationMode() === "off" ? "static" : "animated";
+	const waveFrame = style === "animated" ? 0 : undefined;
+	const mascotLines = renderPiMascot(fullWidth - headerWidth("osdy-theme") - MASCOT_GAP, 40,
+		{ frame: 0, theme: { fg: (_color: string, text: string) => text }, style, waveFrame });
+	assert.equal(mascotLines.length, Math.ceil(largest.length / 2));
+	assert.deepEqual(plainHeader(full), plainHeader(ui.decorateHeaderVersion(composeSideBySide(
+		mascotLines, pixelGridWidth(largest),
+		[...HEADER_VARIANTS["osdy-theme"].header], fullWidth, headerWidth("osdy-theme"),
+	), fullWidth, ui.loadInstalledPackageVersion())));
+
+	for (const [width, rows] of [[40, 40], [fullWidth - 1, 40], [100, 12], [1, 1]] as const) {
+		const lines = raw(width, rows);
+		assert.ok(lines.every(line => visibleWidth(line) <= width), `${width}x${rows} stays in bounds`);
+		const fits = PI_RACCOON_MASCOT_SIZES.find(grid =>
+			pixelGridWidth(grid) <= compactMascotWidthBudget(width) && Math.ceil(grid.length / 2) <= Math.min(rows, STACKED_CONTENT_MAX_ROWS));
+		const pixelRows = lines.filter(line => line.includes("\u001b[38;2;")).length;
+		assert.ok(pixelRows <= Math.ceil((fits?.length ?? 0) / 2), `${width}x${rows} picks the largest fitting size`);
+		if (fits) assert.ok(pixelRows > 0, `${width}x${rows} shows the raccoon`);
+	}
+	assert.ok(smallest.length <= 16);
+});
+
 void test("footer metadata is shown only when the native editor is effective", () => {
 	assert.equal(shouldShowFooterMetadata(false), true);
 	assert.equal(shouldShowFooterMetadata(true), false);
 });
 
 void test("neon header keeps the parsed 129 by 13 transparent tone structure", () => {
-	assert.deepEqual(Object.keys(HEADER_VARIANTS), ["osdy-theme", "neon"]);
+	assert.deepEqual(Object.keys(HEADER_VARIANTS), ["osdy-theme", "neon", "block-shadow", "slanted"]);
 	const neon = scaleHeader("neon", 1_000, 100);
 	assert.equal(neon.header.length, 13);
 	const toneMap = neon.toneMap;
@@ -251,7 +359,7 @@ void test("mascot selection wires Bts art through the responsive renderer", () =
 
 	assert.deepEqual(Object.keys(MASCOTS), ["current", "bts", "osdy-halloween"]);
 	assert.ok(mascotForChoice("bts"));
-	assert.match(ui, /const mascot = mascotForChoice\(state\.mascot\);/);
+	assert.match(ui, /const mascot = mascotForChoice\(choice\);/);
 	assert.match(ui, /scaleMascot\(\s*mascot\.art,/);
 });
 
@@ -398,6 +506,82 @@ void test("places a managed profile beside the model in simple mode and preserve
 	);
 });
 
+void test("extended editor shows the companion raccoon in its own accent box only when it fits and is enabled", (t) => {
+	const color = (text: string) => `\u001b[33m${text}\u001b[39m`;
+	const accent = (text: string) => `\u001b[35m${text}\u001b[39m`;
+	const theme = {
+		fg: (name: string, text: string) => name === "accent" ? accent(text) : color(text),
+		bold: (text: string) => text,
+	};
+	const state: OsdyState = {
+		codexUsage: { kind: "idle" }, enabled: true, editorEffective: true, editorMode: "extended",
+		fallbackEditorFactory: undefined, headerVariant: "osdy-theme", mascot: "current", smallMode: false,
+		tui: undefined, workingTreeEnabled: false, workingTreePlacement: "aboveEditor",
+		working: { active: false, activity: "thinking", frame: 0 },
+	};
+	const ctx = { cwd: "/synthetic", ui: { theme }, model: { provider: "test", id: "test", contextWindow: 200000 },
+		getContextUsage: () => ({ percent: 60 }), sessionManager: { getEntries: () => [] },
+	} as unknown as ExtensionContext;
+	const pi = { getThinkingLevel: () => "off" } as ExtensionAPI;
+	const terminal = { rows: 40, columns: 120 };
+	const tui = { terminal, requestRender: () => {} } as unknown as TUI;
+	const editorTheme: EditorTheme = { borderColor: color, selectList: {
+		selectedPrefix: color, selectedText: color, description: color, scrollInfo: color, noMatch: color,
+	} };
+	const editor = ui.createEditorComponent(pi, ctx, state)(tui, editorTheme, new KeybindingsManager());
+	const hasCompanion = (lines: readonly string[]): boolean => lines.join("\n").includes("\u001b[38;2;");
+	const compact = editor.render(40);
+
+	const wide = editor.render(120);
+	assert.ok(hasCompanion(wide));
+	assert.ok(wide.every(line => visibleWidth(line) <= 120));
+	assert.ok(wide[0]?.includes(accent("✦")), "companion frame starts its theme gradient at accent with a sparkle corner");
+	assert.ok(wide[0]?.includes(accent("Pixel Pal")), "companion name tab uses the theme accent");
+	assert.ok(wide[0]?.trimEnd().endsWith(accent("✦")), "both top corners are sparkles");
+	const editorTop = wide.findIndex(line => line.includes(color("╭")));
+	const editorBottom = wide.findIndex(line => line.includes(color("╰")));
+	assert.ok(editorTop > 0, "the taller companion box starts above the editor frame");
+	assert.ok(wide[editorBottom]?.includes(color("╰")) && wide[editorBottom]?.endsWith(color("╯")), "both frames share the bottom row");
+	assert.ok(visibleWidth((wide[editorTop] ?? "").split(color("╮"))[0] ?? "") < 120 - 26);
+
+	const idleFrame = editor.render(120).join("\n");
+	const busyFrames = new Set(
+		Array.from({ length: 12 }, (_, frame) => {
+			state.working = { active: true, activity: "working", frame };
+			return editor.render(120).join("\n");
+		}),
+	);
+	assert.ok(busyFrames.size > 1);
+	assert.ok(!busyFrames.has(idleFrame));
+
+	state.working = { active: false, activity: "thinking", frame: 0 };
+	const original = editor.render(120).join("\n");
+	state.companionStyle = "drawn";
+	const drawn = editor.render(120).join("\n");
+	assert.ok(hasCompanion(drawn.split("\n")));
+	assert.notEqual(drawn, original, "the Hand-drawn style swaps the raccoon");
+	delete state.companionStyle;
+	terminal.rows = 27;
+	assert.ok(!hasCompanion(editor.render(120)));
+	terminal.rows = 28;
+	assert.ok(hasCompanion(editor.render(74)));
+	assert.ok(!hasCompanion(editor.render(73)));
+	assert.ok(!hasCompanion(editor.render(60)), "narrow terminals keep the plain editor");
+	terminal.rows = 20;
+	assert.ok(!hasCompanion(editor.render(120)), "short terminals keep the plain editor");
+	terminal.rows = 40;
+	state.companionEnabled = false;
+	assert.ok(!hasCompanion(editor.render(120)));
+	assert.equal(editor.render(40).join("\n"), compact.join("\n"));
+	state.companionEnabled = true;
+	state.smallMode = true;
+	assert.ok(!hasCompanion(editor.render(120)));
+	state.smallMode = false;
+	assert.ok(hasCompanion(editor.render(120)));
+	t.mock.method(editor, "isShowingAutocomplete", () => true);
+	assert.ok(!hasCompanion(editor.render(120)), "autocomplete keeps the native full-width editor");
+});
+
 void test("one real editor instance and native footer read live/final speed with ANSI-safe resizing", () => {
 	const color = (text: string) => `\u001b[33m${text}\u001b[39m`;
 	const theme = { fg: (_name: string, text: string) => color(text), bold: (text: string) => text };
@@ -456,4 +640,10 @@ void test("replaces the extended editor Osdy-Pi title with a managed profile or 
 		),
 		"Osdy-Pi",
 	);
+});
+
+void test("header and mascot keep four blank columns between them", () => {
+	assert.deepEqual(composeSideBySide(["AA", "AA"], 2, ["BB", "BB"], 8, 2), ["AA    BB", "AA    BB"]);
+	// Without room for the gap, only the mascot remains, as before.
+	assert.deepEqual(composeSideBySide(["AA"], 2, ["BB"], 7, 2), ["BB"]);
 });

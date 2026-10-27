@@ -20,7 +20,7 @@ import { createControlCenterUsage } from "./control-center-usage.js";
 import type { UsageSnapshot } from "./usage-analytics-store.js";
 import { createControlCenterGit } from "./control-center-git.js";
 import { bindControlCenterSounds } from "./control-center-sounds.js";
-import type { VisualPreferenceAction } from "./control-center-preferences.js";
+import { mascotLabel as mascotDisplayLabel, visualPreferenceLabel, type VisualPreferenceAction } from "./control-center-preferences.js";
 import { identifyLocalPackage, runOsdyUninstall } from "./uninstall.js";
 import { isAbsolute, join } from "node:path";
 import { inspectJokerAgents, setupJokerAgents, switchAgentMode } from "./agent-coexistence-setup.js";
@@ -46,9 +46,13 @@ import {
 import { runSoundSetupWizard } from "./sound-setup-wizard.js";
 import {
 	areVisualsEnabled,
+	COMPANION_STYLES,
 	DEFAULT_EDITOR_MODE,
+	DEFAULT_HEADER_VARIANT,
+	DEFAULT_MASCOT,
 	EDITOR_MODES,
 	HEADER_VARIANT_CHOICES,
+	isCompanionStyle,
 	type EditorMode,
 	type HeaderVariant,
 	MASCOT_CHOICES,
@@ -140,8 +144,7 @@ function isMascotChoice(value: string): value is MascotChoice {
 }
 
 function mascotLabel(mascot: MascotChoice): string {
-	if (mascot === "osdy-halloween") return "Osdy-Halloween";
-	return mascot === "bts" ? "Bts" : mascot;
+	return mascotDisplayLabel(mascot);
 }
 
 function isHeaderVariant(value: string): value is HeaderVariant {
@@ -157,6 +160,8 @@ async function saveVisualSettings(
 			version: 1,
 			enabled: state.enabled,
 			...(state.visualsEnabled !== undefined ? { visualsEnabled: state.visualsEnabled } : {}),
+			...(state.companionEnabled !== undefined ? { companionEnabled: state.companionEnabled } : {}),
+			...(state.companionStyle !== undefined ? { companionStyle: state.companionStyle } : {}),
 			editorMode: state.editorMode,
 			workingTreeEnabled: state.workingTreeEnabled,
 			headerVariant: state.headerVariant,
@@ -178,6 +183,15 @@ export async function applyVisualPreference(
 	workingTreeState: WorkingTreeState,
 	settingsStore: ReturnType<typeof createEditorSettingsStore>,
 ): Promise<boolean> {
+	if (action.kind === "companion" || action.kind === "companion-style") {
+		if (action.kind === "companion") state.companionEnabled = action.value;
+		else {
+			state.companionStyle = action.value;
+			state.companionEnabled = true;
+		}
+		state.tui?.requestRender();
+		return saveVisualSettings(state, settingsStore);
+	}
 	switch (action.kind) {
 		case "header": state.headerVariant = action.value; break;
 		case "mascot": state.mascot = action.value; break;
@@ -291,6 +305,45 @@ async function handleMascotCommand(
 	);
 }
 
+const COMPANION_COMMAND_ACTIONS: readonly string[] = ["on", "off", "toggle", ...COMPANION_STYLES, "status"];
+
+async function handleCompanionCommand(
+	action: string | undefined,
+	rest: string[],
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	state: OsdyState,
+	workingState: WorkingWidgetState,
+	workingTreeState: WorkingTreeState,
+	settingsStore: ReturnType<typeof createEditorSettingsStore>,
+): Promise<void> {
+	const label = (enabled: boolean): string => `osdy-pi companion: ${enabled ? "on" : "off"}`;
+	const current = state.companionEnabled !== false;
+	if (rest.length > 0 || (action !== undefined && !COMPANION_COMMAND_ACTIONS.includes(action))) {
+		ctx.ui.notify(`Usage: /osdy-pi companion ${COMPANION_COMMAND_ACTIONS.join(" | ")}`, "warning");
+		return;
+	}
+	if (action === "status" || action === undefined) {
+		ctx.ui.notify(label(current), "info");
+		return;
+	}
+	if (isCompanionStyle(action)) {
+		const preference = { kind: "companion-style", value: action } as const;
+		const saved = await applyVisualPreference(preference, pi, ctx, state, workingState, workingTreeState, settingsStore);
+		ctx.ui.notify(
+			saved ? `osdy-pi companion: ${visualPreferenceLabel(preference)}` : "osdy-pi companion changed but could not be saved",
+			saved ? "info" : "warning",
+		);
+		return;
+	}
+	const next = action === "toggle" ? !current : action === "on";
+	const saved = await applyVisualPreference({ kind: "companion", value: next }, pi, ctx, state, workingState, workingTreeState, settingsStore);
+	ctx.ui.notify(
+		saved ? label(next) : "osdy-pi companion changed but could not be saved",
+		saved ? "info" : "warning",
+	);
+}
+
 async function handleHeaderCommand(
 	action: string | undefined,
 	rest: string[],
@@ -338,6 +391,7 @@ export function getOsdyCommandCompletions(prefix: string) {
 			"sound",
 			"working-tree",
 			"editor",
+			"companion",
 			"mascot",
 			"header",
 			"diff",
@@ -375,6 +429,9 @@ export function getOsdyCommandCompletions(prefix: string) {
 			"mascot status",
 		].map((value) => ({ value, label: value }));
 	}
+	if (trimmed === "companion") {
+		return COMPANION_COMMAND_ACTIONS.map((action) => ({ value: `companion ${action}`, label: `companion ${action}` }));
+	}
 	if (trimmed === "header") {
 		return [
 			...HEADER_VARIANT_CHOICES.map((choice) => `header ${choice}`),
@@ -406,6 +463,7 @@ export function getOsdyCommandCompletions(prefix: string) {
 			"sound",
 			"working-tree",
 			"editor",
+			"companion",
 			"mascot",
 			"header",
 			"diff",
@@ -437,6 +495,11 @@ export function getOsdyCommandCompletions(prefix: string) {
 		return [...MASCOT_CHOICES, "status"]
 			.filter((value) => value.startsWith(valuePrefix))
 			.map((value) => ({ value: `mascot ${value}`, label: `mascot ${value}` }));
+	}
+	if (parts[0] === "companion" && parts.length === 2) {
+		return COMPANION_COMMAND_ACTIONS
+			.filter((value) => value.startsWith(parts[1] ?? ""))
+			.map((value) => ({ value: `companion ${value}`, label: `companion ${value}` }));
 	}
 	if (parts[0] === "editor" && parts.length === 2) {
 		const valuePrefix = parts[1] ?? "";
@@ -1012,7 +1075,7 @@ function registerCommand(
 	});
 	pi.registerCommand("osdy-pi", {
 		description:
-			"Manage Osdy Pi: legacy master on/off, status, todo on/off/status, agents, mascot, editor, sound, speech on|off|status|stop|last, working tree, or diff.",
+			"Manage Osdy Pi: legacy master on/off, status, todo on/off/status, agents, mascot, editor, companion, sound, speech on|off|status|stop|last, working tree, or diff.",
 		getArgumentCompletions: getOsdyCommandCompletions,
 		handler: async (args, ctx) => {
 			const [action = "status", ...rest] = parseCommandArgs(args);
@@ -1096,6 +1159,19 @@ function registerCommand(
 				);
 				return;
 			}
+			if (action === "companion") {
+				await handleCompanionCommand(
+					rest[0],
+					rest.slice(1),
+					pi,
+					ctx,
+					state,
+					workingState,
+					workingTreeState,
+					editorSettingsStore,
+				);
+				return;
+			}
 			if (action === "header") {
 				await handleHeaderCommand(
 					rest[0],
@@ -1140,7 +1216,7 @@ function registerCommand(
 				return;
 			}
 			ctx.ui.notify(
-				`Usage: /osdy-pi todo on|off|status | agents setup|on|off|status | enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | sound setup | speech on|off|status|stop|last | working-tree ... | diff | uninstall`,
+				`Usage: /osdy-pi todo on|off|status | agents setup|on|off|status | enable|disable|on|off|status | mascot ${MASCOT_CHOICES.join("|")}|status | header ${HEADER_VARIANT_CHOICES.join("|")}|status | editor auto|extended|simple|on|off|toggle|status | companion ${COMPANION_COMMAND_ACTIONS.join("|")} | sound setup | speech on|off|status|stop|last | working-tree ... | diff | uninstall`,
 				"warning",
 			);
 		},
@@ -1185,8 +1261,8 @@ export async function registerOsdyPi(
 		editorEffective: false,
 		editorMode: DEFAULT_EDITOR_MODE,
 		fallbackEditorFactory: undefined,
-		headerVariant: "osdy-theme",
-		mascot: "current",
+		headerVariant: DEFAULT_HEADER_VARIANT,
+		mascot: DEFAULT_MASCOT,
 		smallMode: false,
 		tui: undefined,
 		workingTreeEnabled: true,
@@ -1206,6 +1282,7 @@ export async function registerOsdyPi(
 		timer: undefined,
 		tui: undefined,
 	};
+	state.working = workingState;
 	const workingTreeState: WorkingTreeState = {
 		enabled: true,
 		loading: false,
@@ -1494,6 +1571,10 @@ export async function registerOsdyPi(
 		state.workingTreeEnabled = editorSettings.workingTreeEnabled;
 		state.headerVariant = editorSettings.headerVariant;
 		state.mascot = editorSettings.mascot;
+		if (editorSettings.companionEnabled === undefined) delete state.companionEnabled;
+		else state.companionEnabled = editorSettings.companionEnabled;
+		if (editorSettings.companionStyle === undefined) delete state.companionStyle;
+		else state.companionStyle = editorSettings.companionStyle;
 		workingTreeState.enabled = editorSettings.workingTreeEnabled;
 		if (!state.enabled) return;
 		claimOsdyVisualLayer(

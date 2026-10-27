@@ -58,6 +58,56 @@ void test("visual-only preference defaults on for old v1 files and round-trips i
 	}
 });
 
+void test("companion preference is kept only when boolean and round-trips false", async () => {
+	for (const value of [undefined, null, "false", 0]) {
+		assert.equal("companionEnabled" in normalizeEditorSettings({ version: 1, companionEnabled: value }), false);
+	}
+	const fs = new MemoryEditorSettingsFileSystem();
+	const store = createEditorSettingsStore("/agent/extensions/osdy-pi/settings.json", fs);
+	for (const companionEnabled of [true, false]) {
+		const settings = { ...normalizeEditorSettings({ version: 1 }), companionEnabled };
+		await store.save(settings);
+		assert.deepEqual(await store.load(), settings);
+	}
+});
+
+void test("companion style is kept only when known and round-trips", async () => {
+	for (const value of [undefined, null, "pixel", "simple", 1]) {
+		assert.equal("companionStyle" in normalizeEditorSettings({ version: 1, companionStyle: value }), false);
+	}
+	const fs = new MemoryEditorSettingsFileSystem();
+	const store = createEditorSettingsStore("/agent/extensions/osdy-pi/settings.json", fs);
+	for (const companionStyle of ["original", "drawn", "rounded", "terminal", "slim", "slim-small"] as const) {
+		const settings = { ...normalizeEditorSettings({ version: 1 }), companionStyle };
+		await store.save(settings);
+		assert.deepEqual(await store.load(), settings);
+	}
+});
+
+void test("withdrawn companion style falls back to Original without writes or changing sibling settings", async () => {
+	for (const [companionEnabled, withdrawn] of [
+		[true, "simple"], [false, "simple"], [true, "mini"], [false, "micro"], [true, "terminal-mini"],
+	] as const) {
+		const expected = {
+			version: 1, enabled: true, visualsEnabled: false, editorMode: "simple" as const,
+			workingTreeEnabled: false, headerVariant: "neon" as const, mascot: "pi" as const, companionEnabled,
+		};
+		const raw = { ...expected, companionStyle: withdrawn };
+		const fs = new MemoryEditorSettingsFileSystem();
+		fs.content = JSON.stringify(raw);
+		const before = fs.content;
+		const store = createEditorSettingsStore("/agent/extensions/osdy-pi/settings.json", fs);
+		const loaded = await store.load();
+		assert.equal(loaded.companionStyle ?? "original", "original");
+		assert.deepEqual(loaded, expected);
+		assert.deepEqual(normalizeEditorSettings(raw), expected);
+		assert.equal(loaded.companionEnabled, companionEnabled);
+		assert.equal(fs.content, before);
+		assert.deepEqual(fs.writePaths, []);
+		assert.deepEqual(fs.renameCalls, []);
+	}
+});
+
 void test("failed visual preference replacement preserves persisted settings", async () => {
 	const fs = new MemoryEditorSettingsFileSystem();
 	const store = createEditorSettingsStore("/agent/extensions/osdy-pi/settings.json", fs);
@@ -69,20 +119,20 @@ void test("failed visual preference replacement preserves persisted settings", a
 });
 
 void test("editor settings preserve version-one header choices and fall back safely", async () => {
-	assert.deepEqual(HEADER_VARIANT_CHOICES, ["osdy-theme", "neon"]);
+	assert.deepEqual(HEADER_VARIANT_CHOICES, ["osdy-theme", "neon", "block-shadow", "slanted"]);
 	assert.equal(
 		normalizeEditorSettings({ version: 1 }).headerVariant,
-		"osdy-theme",
+		"slanted",
 	);
 	assert.equal(
 		normalizeEditorSettings({ version: 1, headerVariant: "classic" })
 			.headerVariant,
-		"osdy-theme",
+		"slanted",
 	);
 	assert.equal(
 		normalizeEditorSettings({ version: 1, headerVariant: "invalid" })
 			.headerVariant,
-		"osdy-theme",
+		"slanted",
 	);
 
 	const fileSystem = new MemoryEditorSettingsFileSystem();
@@ -99,6 +149,18 @@ void test("editor settings preserve version-one header choices and fall back saf
 		mascot: "current",
 	});
 	assert.equal((await store.load()).headerVariant, "neon");
+	await store.save({ ...(await store.load()), headerVariant: "block-shadow" });
+	assert.equal((await store.load()).headerVariant, "block-shadow");
+	assert.equal(
+		normalizeEditorSettings({ version: 1, headerVariant: "block-shadow" }).headerVariant,
+		"block-shadow",
+	);
+	await store.save({ ...(await store.load()), headerVariant: "slanted" });
+	assert.equal((await store.load()).headerVariant, "slanted");
+	assert.equal(
+		normalizeEditorSettings({ version: 1, headerVariant: "slanted" }).headerVariant,
+		"slanted",
+	);
 });
 
 void test("editor settings normalize only supported versioned modes", () => {
@@ -113,17 +175,30 @@ void test("editor settings normalize only supported versioned modes", () => {
 			enabled: true,
 			editorMode,
 			workingTreeEnabled: true,
-			headerVariant: "osdy-theme",
-			mascot: "current",
+			headerVariant: "slanted",
+			mascot: "pi",
 		});
 	}
 });
 
-void test("mascot choices preserve the version-one current default, migrate raccoon to Bts, and persist Bts", async () => {
-	assert.deepEqual(MASCOT_CHOICES, ["current", "bts", "osdy-halloween"]);
+void test("Slanted header and Hoodie Pi are the defaults while saved choices are kept", () => {
+	const defaults = normalizeEditorSettings({ version: 1 });
+	assert.equal(defaults.headerVariant, "slanted");
+	assert.equal(defaults.mascot, "pi");
+	assert.equal(defaults.companionEnabled, undefined, "companion stays on by default");
+	assert.equal(defaults.companionStyle, undefined, "companion stays Pixel Pal by default");
+	assert.equal(normalizeEditorSettings({ version: 1, headerVariant: "invalid" }).headerVariant, "slanted");
+	const saved = normalizeEditorSettings({ version: 1, headerVariant: "osdy-theme", mascot: "current" });
+	assert.equal(saved.headerVariant, "osdy-theme");
+	assert.equal(saved.mascot, "current");
+});
+
+void test("mascot choices default to Hoodie Pi, migrate raccoon to Bts, and persist Bts", async () => {
+	assert.deepEqual(MASCOT_CHOICES, ["current", "bts", "osdy-halloween", "pi"]);
+	assert.equal(normalizeEditorSettings({ version: 1, mascot: "pi" }).mascot, "pi");
 	assert.equal(
 		normalizeEditorSettings({ version: 1, mascot: "invalid" }).mascot,
-		"current",
+		"pi",
 	);
 	assert.equal(
 		normalizeEditorSettings({ version: 1, mascot: "raccoon" }).mascot,
@@ -132,7 +207,7 @@ void test("mascot choices preserve the version-one current default, migrate racc
 	for (const mascot of ["detective", "explorer"] as const) {
 		assert.equal(
 			normalizeEditorSettings({ version: 1, mascot }).mascot,
-			"current",
+			"pi",
 		);
 	}
 
@@ -161,7 +236,7 @@ void test("Osdy-Halloween round-trips through a fresh version-one settings store
 	const persisted: unknown = JSON.parse(fileSystem.content ?? "{}");
 	assert.deepEqual(persisted, { ...settings, version: 1 });
 	assert.deepEqual(await createEditorSettingsStore(path, fileSystem).load(), settings);
-	assert.equal(normalizeEditorSettings({ version: 2, mascot: "osdy-halloween" }).mascot, "current");
+	assert.equal(normalizeEditorSettings({ version: 2, mascot: "osdy-halloween" }).mascot, "pi");
 });
 
 void test("enabled defaults safely and persists globally", async () => {

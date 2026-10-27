@@ -1,16 +1,20 @@
 # Osdy Pi — a themed, responsive Pi workspace
 
-Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive terminal presentation with a header, editor, working indicator, and Git view. Visit the [Osdy landing page](https://osdy-pi.vercel.app/).
+Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive terminal presentation with selectable headers and mascots, an editor companion, working indicator, and Git view. Visit the [Osdy landing page](https://osdy-pi.vercel.app/).
 
 <img width="1857" height="847" alt="Osdy Pi interface" src="https://github.com/user-attachments/assets/028eeb14-3f43-4f1c-9603-0c55a8d2856d" />
 
 ## Release highlights
 
+**Visual feature availability:** the four headers, Hoodie Pi startup wave, and six companions below describe the current source; their availability in a published npm artifact has not yet been verified. A source change or successful push alone does not prove release success.
+
+**New visual defaults are Slanted + Hoodie Pi, with Pixel Pal enabled**, only for fresh, missing, or invalid preferences. Valid saved choices—including companion off—remain respected. Use `/osdyConfig` → **Header**, **Mascot**, or **Companion** to choose independently. See [Header, mascot, and animation](#header-mascot-and-animation) and [Companion raccoon](#companion-raccoon).
+
 **Audio notifications share a bundled 180 ms default sound on macOS and Windows**, with a persistent master mute in `/osdyConfig` → **Sounds**. Custom paths take precedence: startup flag → saved global path → bundled default. Muting preserves those paths and visual alerts; explicit **Test effective** still plays while muted. See [Audio notifications](#audio-notifications).
 
 **Local response narration is opt-in on macOS**: `/osdyConfig` → **Speech** offers a one-line selector for installed macOS voices and optional local Kokoro voices, with explicit previews without saving or enabling narration. Stop from chat with **Ctrl+Option+S** or `/osdy-pi speech stop`. Speech stays independent of notification sounds and their mute. See [Response speech](#response-speech).
 
-**The Control Center consolidates Osdy controls in `/osdyConfig`**: twelve categories cover appearance, Git, sounds, accounts, usage, TODO/Agents provider settings, and opt-in response speech. Account quota previews query a selected stored Codex profile without switching it. The header shows the installed Osdy package version when it fits; constrained layouts show only the centered mascot. See [Control Center in Pi](#control-center-in-pi) for confirmation and persistence boundaries.
+**The Control Center consolidates Osdy controls in `/osdyConfig`**: thirteen categories cover appearance, Git, sounds, accounts, usage, TODO/Agents provider settings, and opt-in response speech. Account quota previews query a selected stored Codex profile without switching it. The header shows the installed Osdy package version when it fits; constrained layouts show only the centered mascot. See [Control Center in Pi](#control-center-in-pi) for confirmation and persistence boundaries.
 
 **Codex banked resets show counts and per-reset local expiry** in `/usage` and the Control Center. Press **u** in `/usage` or select **Usage → Use or check banked reset** for Cancel-first, active-account use or pending-attempt checks; stored-profile previews stay read-only. See [Use or check a banked reset](#use-or-check-a-banked-reset).
 
@@ -18,7 +22,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
 
 | Area | What ships |
 | --- | --- |
-| Control Center | **Ctrl+Option+O** or `/osdyConfig` opens twelve categories, including reversible Osdy appearance/provider on/off, confirmed standalone TODO/Agents selection, explicit per-profile Codex quota previews, and Speech. |
+| Control Center | **Ctrl+Option+O** or `/osdyConfig` opens thirteen categories, including reversible Osdy appearance/provider on/off, confirmed standalone TODO/Agents selection, explicit per-profile Codex quota previews, and Speech. |
 | Speech | Default-off local macOS narration, optional Spanish Kokoro voices, one saved voice, explicit draft previews, and chat-accessible Stop. |
 | Audio | Shared bundled default, per-event custom paths, and persistent automatic-audio mute; [explicit tests remain available](#audio-notifications). |
 | Local analytics (1.10.0) | `/osdy-usage` opens Summary, Profiles, Models, and History pages for recorded tokens and estimated cost—not billing or subscription quota. |
@@ -51,7 +55,7 @@ Osdy Pi gives [Pi](https://github.com/earendil-works/pi) a themed, responsive te
    pi install git:github.com/OsdyOrtiz/Osdy-Pi
    ```
 
-   Check the resolved npm version: the Spider-Man-inspired themes require 1.11.0 or later; local analytics requires 1.10.0 or later. To pin the historical feature release explicitly, use `pi install npm:osdy-pi@1.11.0` if that version is available on npm; automatic patches may already be newer. For an unpinned installation, use `pi update`; it does not move a pinned version, so replace an older pin explicitly. First-party TODO is included starting in 1.5.0; `/osdy-pi uninstall` and explicit agent provider modes start in 1.6.0. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
+   Check the resolved npm version: the Spider-Man-inspired themes require 1.11.0 or later; local analytics requires 1.10.0 or later. To pin the historical feature release explicitly, use `pi install npm:osdy-pi@1.11.0` if that version is available on npm; automatic patches may already be newer. For an unpinned installation, run `pi update`, then `/reload` in a running Pi session (or restart Pi) to load the updated resources. Updating does not move a pinned version, so replace an older pin explicitly. First-party TODO is included starting in 1.5.0; `/osdy-pi uninstall` and explicit agent provider modes start in 1.6.0. Installing Osdy does not automatically install Joker; see [explicit agent provider modes](#explicit-agent-provider-modes-in-normal-pi).
 
 2. Start Pi:
 
@@ -65,7 +69,7 @@ Osdy Pi's own extension and themes are bundled—do not install them separately.
 
 ### Control Center in Pi
 
-Press **Ctrl+Option+O** or run **`/osdyConfig`** in interactive Pi to open the Osdy Control Center. The twelve categories—**Theme, Header, Mascot, Editor, Git, Sounds, Account, Usage, TODO, Visuals, Agents, and Speech**—provide inline controls or data in the same modal. Existing commands remain available.
+Press **Ctrl+Option+O** or run **`/osdyConfig`** in interactive Pi to open the Osdy Control Center. The thirteen categories—**Theme, Header, Mascot, Editor, Companion, Git, Sounds, Account, Usage, TODO, Visuals, Agents, and Speech**—provide inline controls or data in the same modal. Existing commands remain available.
 
 **Suspend or restore Osdy’s appearance and providers:** run `/osdyConfig` → **Visuals** → **off — save and reload** or **on — save and reload**. A successful save closes/disposes the panel and releases its editor hold before automatic reload. A failed save keeps the previous preference and does not reload. From **Ctrl+Option+O**, run `/reload` manually after saving.
 
@@ -95,7 +99,8 @@ Positive counts also trigger a best-effort read-only reset-details GET within th
 - TODO shows configured selection, current eligibility, and actually loaded SDK registration separately. Opt-in/out requires an idle session and a Cancel-first inline confirmation naming the target, owned Gentle filter effects, and reload. Successful selection closes/disposes the panel and releases its editor hold before automatic command reload or the Ctrl+Option+O manual-reload notice described above; restart Pi if reload fails. Rejections stay in the panel. No installs or task-history changes occur; legacy `/osdy-pi todo on|off|status` remains available.
 - Agents shows concise **Joker / Gentle** choices without activating anything. With detail focus, visible lowercase-only **j Joker / g Gentle** letters open the existing confirmation directly; only available, unambiguous rows get shortcuts. **↑/↓ + Enter** remains the fallback. Profile and Agent selections survive category navigation; unavailable choices fall back to the current row. Letters never bypass category focus, confirmation, path input, loading, querying, or saving. Selection is idle-only and Cancel-first confirmed, naming the real target, possible Joker installation, owned agent filters, and preserved unrelated resources. Normal personal Pi only: `pi:dev` and isolated/override sessions are blocked, never redirected to personal settings. Success closes/disposes the panel and releases its editor hold before automatic command reload or the Ctrl+Option+O manual-reload notice described above; restart Pi if reload fails. Legacy `/osdy-pi agents setup|on|off|status` is unchanged.
 - Theme lists Pi's available themes and marks the current theme. Explicit **Page x/N** pages contain at most **8 themes**, fewer in short viewports or with expanded help. **Page Up/Down** changes pages, **Home/End** reaches the first/last theme, and arrows cross page boundaries. Selection survives category navigation and resizing; resizing adjusts the page around the selected theme. A successful selection applies live and saves globally in the active Pi agent directory; project settings can override it at startup. Failures appear in the modal.
-- Header offers **osdy-theme / neon**; Mascot offers **current / Bts / Osdy-Halloween**; Editor offers **auto / extended / simple**, with the current preference marked. Editor also shows the effective mode: small terminals stay simple/native even with extended selected.
+- Header offers **osdy-theme / neon / block-shadow / slanted**; Mascot offers **Cozy Bandit / Lavender Bandit / Little Vampire / Hoodie Pi**; Editor offers **auto / extended / simple**, with the current preference marked. Editor also shows the effective mode: small terminals stay simple/native even with extended selected.
+- Companion offers **Pixel Pal / Tiny Doodle / Big Cuddle / Retro Buddy / Slim Ringtail / Pocket Ringtail / off**; the choice applies live and saves globally.
 - Header/Mascot/Editor preferences save immediately through the same runtime and global Osdy settings store as `/osdy-pi` commands (`<agent-dir>/extensions/osdy-pi/settings.json`). Header/Mascot apply live without closing the panel. Editor replacement waits until all overlays close; if another overlay remains, the next existing responsive watcher tick applies the latest choice. The effective mode reports the actually mounted editor while queued. Opening a category only reads values; while Osdy is disabled, choices save for later without enabling it.
 - A selection shows **Saving** until persistence finishes and **Saved globally** only on success. For Header/Mascot/Editor, failed saves retain the live preference but report **could not be saved**; select again to retry. Application errors report **Not saved**, without claiming the runtime change succeeded. Duplicate selections are ignored while saving.
 - **Git** shows the current branch (or detached HEAD), changed-entry count/clean status, and the current widget position as a read-only session detail. Working-tree enablement applies and saves through the same owner as `/osdy-pi working-tree`; Git inspection never writes Git. `/osdy-pi diff` and position commands are unchanged.
@@ -337,7 +342,8 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 | Area | Included behavior |
 | --- | --- |
 | Themes | 23 built-in themes, including Osdy, Kanagawa, Dracula, Gruvbox, Nord, Rosé Pine, Daniela Cute, Halloween, Halloween Killer, Catppuccin, Matrix, Lucent Orange, and three Spider-Man-inspired palettes |
-| Header and mascot | Independently selectable `osdy-theme`/`neon` headers and `current`/`bts`/`osdy-halloween` mascots |
+| Header and mascot | Independently selectable `osdy-theme`/`neon`/`block-shadow`/`slanted` headers and `current`/`bts`/`osdy-halloween`/`pi` mascots |
+| Companion raccoon | Six pixel-art companion styles (Pixel Pal, Tiny Doodle, Big Cuddle, Retro Buddy, Slim Ringtail, Pocket Ringtail) beside the framed editor, posed after the working activity |
 | Messages | Native colored user cards without emojis and plain assistant Markdown with a separate assistant `🦝` row |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
 | Status | Six activity labels with compact per-state glyphs and a shared theme-color pulse, responsive footer metrics, dynamic extension statuses, and Codex subscription quota with low-capacity emphasis |
@@ -402,38 +408,62 @@ Header and mascot choices are independent:
 
 | Element | Choices | Command |
 | --- | --- | --- |
-| Header | `osdy-theme` (default), `neon` | `/osdy-pi header osdy-theme|neon` |
-| Mascot | `current` (default), `bts`, `osdy-halloween` | `/osdy-pi mascot current\|bts\|osdy-halloween` |
+| Header | `osdy-theme`, `neon`, `block-shadow`, `slanted` (default) | `/osdy-pi header osdy-theme\|neon\|block-shadow\|slanted` |
+| Mascot | `current`, `bts`, `osdy-halloween`, `pi` (default) | `/osdy-pi mascot current\|bts\|osdy-halloween\|pi` |
+
+Each mascot shows a friendly name in `/osdyConfig` and in status notices; the command id and saved setting value are unchanged:
+
+| Name | Command id |
+| --- | --- |
+| Cozy Bandit | `current` |
+| Lavender Bandit | `bts` |
+| Little Vampire | `osdy-halloween` |
+| Hoodie Pi (default) | `pi` |
 
 Both commands update the UI immediately. Add `status` instead of a choice to inspect the current selection. Choices persist in the global Osdy Pi settings across reloads and sessions. The old top-level style commands and `classic` header aliases are no longer registered.
 
-Choose **Osdy-Halloween** in `/osdyConfig` → **Mascot**, or run `/osdy-pi mascot osdy-halloween`. It dresses the same Current raccoon in ivory fangs and a high-collared dark/crimson vampire cape. Its glow follows the active theme's `accent`, `mdHeading`, and `mdLink` colors; no Halloween theme is required. Current remains the default, and Current/Bts artwork and version-1 settings compatibility are unchanged.
+Choose **Little Vampire** in `/osdyConfig` → **Mascot**, or run `/osdy-pi mascot osdy-halloween`. It dresses the same Cozy Bandit raccoon in ivory fangs and a high-collared dark/crimson vampire cape. Its glow follows the active theme's `accent`, `mdHeading`, and `mdLink` colors; no Halloween theme is required. Cozy Bandit/Lavender Bandit artwork and version-1 settings compatibility are unchanged.
+
+Choose **Hoodie Pi** (`/osdy-pi mascot pi`) for the OpenPets "Pi" raccoon in its hoodie, drawn as half-block pixel art in 24-bit color instead of text art. It is pre-rendered from the neutral pose in the asset's five flat colors at 16 to 64 pixels tall; the header shows the largest size that fits, without runtime resampling. Like the other mascots, its right edge glows in the active theme's `accent`, `mdHeading`, and `mdLink` colors, kept discreet: one dimmed outline pixel per row, cycling through those colors with the same wave when animation is on.
+
+When the header mounts with animation on, Hoodie Pi **waves hello**: the four OpenPets "waving" frames play twice at about 150 ms each (about 1.2 seconds), then the neutral pose returns. Every wave frame has the neutral pose's grid dimensions at each height, but the startup wave can still shift the decorated header by about one row when its leading blank row changes. At small sizes the motion can be subtle; a live terminal/font check remains unverified. The other mascots do not wave. Regenerate the neutral sizes, the wave frames, and the Pixel Pal companion frames together with `node scripts/generate-companion-sprites.mjs pi-base-neutral.png sheet.png extensions/osdy-pi/pi-raccoon-sprites.ts [preview.png] [wave-preview.png]`, after converting the OpenPets `spritesheet.webp` to `sheet.png` (for example with `dwebp`).
 
 The header also shows **`osdy-pi v<version>`** at the top right in the theme's accent color, read from the installed Osdy package—not Pi's host version or the workspace manifest. It uses an empty first row or adds a row without overwriting artwork; invalid/unreadable versions or labels wider than the terminal are omitted.
 
-In normal mode, the selected header and mascot render side by side when both fit. The Neon header derives its highlights from the active theme rather than using one fixed palette. Each mascot keeps its own tone map while its animated edge glow can resolve through theme colors. Header and mascot scaling remain independent, so any combination follows the same responsive layout rules.
+In normal mode, the selected header and mascot render side by side, four blank columns apart, when both fit. All four headers use active-theme colors: OsdyTheme uses `accent`, `mdLink`, and `mdHeading`; Neon derives its highlights from the active theme rather than using one fixed palette. The Block Shadow header is 76 columns of block faces with shaded offset edges, split into three bands that follow the active theme's accent, mdLink and mdHeading colors, with dimmed shadows and the same animation as OsdyTheme. The Slanted header is a 78 by 11 sans-serif wordmark with a slanted bevel, drawn as half-block pixel art: the bevel follows `accent`, the letter face follows `mdLink` and the depth follows `mdHeading`, and its animation shifts those three roles with the same wave as OsdyTheme. It is never scaled; when it does not fit beside the mascot (78 columns plus the four-column gap and the height-fitted mascot, and at least 11 rows) the mascot is shown alone, like the other headers. Text mascots keep their own tone maps; Hoodie Pi keeps its pixel palette. Their animated edge glow follows theme colors. Header artwork is not scaled in this layout; mascot sizing is independent, and every combination uses the same responsive fallback rules.
 
 Animation is enabled by default with an intro animation. Configure it through `OSDY_PI_ANIMATION`:
 
 | Value | Result |
 | --- | --- |
-| `0`, `off` | Static art |
-| `1`, `on`, `continuous` | Continuous animation |
-| `intro` | Intro animation, then static art |
+| `0`, `off` | Static art; Hoodie Pi stays on its neutral pose and never waves |
+| `1`, `on`, `continuous` | Continuous animation; Hoodie Pi waves once at startup, then keeps its glow |
+| `intro` | Intro animation, then static art; the intro lasts until Hoodie Pi's wave is done (about 1.2 seconds instead of 0.84) |
 
 ### Responsive layout
 
 | Terminal mode | Header and mascot | Editor and Git | Footer |
 | --- | --- | --- | --- |
 | Normal | Full selected header and mascot side by side | Auto mode shows the framed editor by default; simple selects Pi's native editor and extended selects the framed editor; Git summary when enabled | Native editor: model/thinking, usage, path/branch, then statuses; framed editor: path/branch then statuses |
-| Compact (72+ columns, full artwork does not fit) | Centered mascot only; art and tone map scale proportionally | Selected editor mode and Git behavior | Same editor-aware footer behavior as normal/small modes |
-| Small (<72 columns) | Mascot only; art and tone map scale proportionally | Pi native editor for every editor mode; Git summary hidden | Model + styled thinking level, usage, path/branch, then dynamic extension statuses (except Pi Lens) |
+| Compact (above the selected header's small-mode cutoff, full artwork does not fit) | Centered mascot only; text art scales proportionally, Hoodie Pi selects a pre-rendered size | Selected editor mode and Git behavior | Same editor-aware footer behavior as normal/small modes |
+| Small (below either cutoff below) | Mascot only, sized to fit | Pi native editor for every editor mode; Git summary hidden | Model + styled thinking level, usage, path/branch, then dynamic extension statuses (except Pi Lens) |
+
+Small mode depends on the **selected header**, not a fixed 72-column breakpoint. It starts below either the width or height listed here:
+
+| Header id | Artwork (columns × rows) | Minimum columns outside small mode | Minimum rows outside small mode |
+| --- | --- | --- | --- |
+| `osdy-theme` | 79 × 11 | 84 | 11 |
+| `neon` | 129 × 13 | 134 | 13 |
+| `block-shadow` | 76 × 11 | 81 | 11 |
+| `slanted` | 78 × 11 | 83 | 11 |
+
+These editor/Git cutoffs reserve header width + four gap columns + one mascot column; showing the full header also requires room for the actual height-fitted mascot.
 
 In the extended framed editor, the active thinking level is rendered in bold in the top-right model metadata so it remains easy to scan.
 
-The full header and mascot render side by side only when the available width and height permit it without an additional width-limited mascot reduction. Otherwise, only the centered mascot renders—there is no scaled or stacked logo. Small and compact modes trim only fully empty mascot-art and tone-map margins before applying one proportional width-and-height scale; mascot width starts near four-fifths of the available width. The fallback mascot uses the available terminal rows, capped at 32 content rows, without reserving rows for a logo. The small-mode footer places the model and styled bare thinking level above usage, path/branch, and dynamic extension statuses. Pi Lens's footer status is hidden in small mode, but Pi Lens continues running. Usage includes response speed, cache-read/cache-write tokens when space permits, cost, and context. Extension statuses are supplied dynamically by Pi/extensions and may include Osdy Pi, MCP, or LSP; they are not hardcoded.
+The full header and mascot render side by side only when the available width and height permit it without an additional width-limited mascot reduction. Otherwise, only the centered mascot renders—there is no scaled or stacked logo. Small and compact modes trim fully empty margins from text mascots and their tone maps before proportional width-and-height scaling; Hoodie Pi instead selects the largest pre-rendered size within both budgets. Mascot width starts near four-fifths of the available width. The fallback mascot uses the available terminal rows, capped at 32 content rows, without reserving rows for a logo. The small-mode footer places the model and styled bare thinking level above usage, path/branch, and dynamic extension statuses. Pi Lens's footer status is hidden in small mode, but Pi Lens continues running. Usage includes response speed, cache-read/cache-write tokens when space permits, cost, and context. Extension statuses are supplied dynamically by Pi/extensions and may include Osdy Pi, MCP, or LSP; they are not hardcoded.
 
-The enabled state, editor mode, working-tree visibility preference, header, and mascot persist globally across Pi reloads and sessions, shared by all projects. They are saved in `$PI_CODING_AGENT_DIR/extensions/osdy-pi/settings.json`, or `~/.pi/agent/extensions/osdy-pi/settings.json` when `PI_CODING_AGENT_DIR` is unset. Existing settings without the new visual fields safely default to `osdy-theme` and `current`; the former `raccoon` mascot value migrates to `bts`. The selected editor mode and working-tree placement are restored when the terminal moves normal → small → normal.
+The enabled state, editor mode, working-tree visibility preference, header, mascot, and companion enabled/style preferences persist globally across Pi reloads and sessions, shared by all projects. They are saved in `$PI_CODING_AGENT_DIR/extensions/osdy-pi/settings.json`, or `~/.pi/agent/extensions/osdy-pi/settings.json` when `PI_CODING_AGENT_DIR` is unset. Fresh or unreadable settings use **Slanted** (`slanted`), **Hoodie Pi** (`pi`), and companion **on** with **Pixel Pal** (`original`). Within supported version-1 settings, each missing or invalid preference falls back independently to its default; valid saved header/mascot/style choices and a saved companion **off** are preserved, not overwritten. The former `raccoon` mascot value migrates to `bts`. The selected editor mode and working-tree placement are restored when the terminal moves normal → small → normal.
 
 ## Commands
 
@@ -445,9 +475,10 @@ The enabled state, editor mode, working-tree visibility preference, header, and 
 | Accounts | `/osdy-account` |
 | TODO selection | `/osdy-pi todo on\|off\|status` |
 | Session TODO (opt-in, starting in 1.5.0) | `/todos` (read-only) |
-| Header | `/osdy-pi header osdy-theme\|neon\|status` |
-| Mascot | `/osdy-pi mascot current\|bts\|osdy-halloween\|status` |
+| Header | `/osdy-pi header osdy-theme\|neon\|block-shadow\|slanted\|status` |
+| Mascot | `/osdy-pi mascot current\|bts\|osdy-halloween\|pi\|status` |
 | Editor | `/osdy-pi editor auto\|extended\|simple\|on\|off\|toggle\|status` |
+| Companion | `/osdy-pi companion original\|drawn\|rounded\|terminal\|slim\|slim-small\|on\|off\|toggle\|status` |
 | Working tree | `/osdy-pi working-tree on\|off\|toggle\|status` |
 | Working tree | `/osdy-pi working-tree position top\|bottom\|status` |
 | Audio | `/osdy-pi sound setup` |
@@ -527,6 +558,67 @@ Pi renders the colored user card and assistant Markdown natively. User messages 
 The default `auto` editor mode preserves the responsive behavior: it uses the framed editor when space permits and Pi's native editor on small terminals. Select `simple` for Pi's native editor at every width, or `extended` to request the framed editor explicitly: `/osdy-pi editor auto|extended|simple`. Simple mode actually unmounts the custom editor component rather than hiding it. Small terminals always use Pi's native editor, including when `extended` is selected. The legacy commands remain compatible where feasible: `on` maps to `extended`, `off` maps to `simple`, and `toggle` switches between extended and simple.
 
 In auto or extended mode at a non-small width, the framed editor shows the model and thinking level in its title and session usage in its footer. For an account-profile launch, the left title shows the active profile name instead of `Osdy-Pi`. When the native editor is effective (simple mode or any small terminal), the Osdy footer instead shows model, active profile when present, thinking, and usage rows before its path/branch and status rows. It uses the currently active Pi/Osdy theme palette; no separate editor theme selector exists. Usage shows response speed instead of cumulative input/output totals, alongside cache read/write when present, cost, and context. If Pi supports autocomplete, the editor uses Pi's native autocomplete rendering while the completion UI is visible.
+
+### Companion raccoon
+
+A full-body pixel-art raccoon sits in its own rounded box to the right of the framed editor, drawn with half-block characters (two vertical pixels per cell, 24-bit color). The frame has `✦` corners at the top, `╰` and `╯` at the bottom, and the companion's name in a tab on the top edge (`✦─ Pixel Pal ───✦`; a name too long for a narrow box is shortened with `…`). Its border is a static gradient from the active theme: going around the frame, it shifts through `accent`, `mdHeading` and `mdLink`, and the name uses `accent`. The box keeps its own height, independent of the editor; both are bottom-aligned. It is hidden on small terminals, below its minimum size, and while autocomplete is visible.
+
+Choose a style (or **off**) in the **Companion** category of `/osdyConfig`, or run `/osdy-pi companion original|drawn|rounded|terminal|slim|slim-small|on|off|toggle|status`. Choosing a style also turns the companion on; the choice applies live and saves globally.
+
+| Name | Command id | Sprite | Box | Box minimum* | Source |
+| --- | --- | --- | --- | --- | --- |
+| Pixel Pal (default) | `original` | 24 × 24 | 26 × 14 | 74 columns, 28 rows | OpenPets "Pi" spritesheet |
+| Tiny Doodle | `drawn` | 16 × 16 | 18 × 10 | 66 columns, 24 rows | Hand-drawn in this repository |
+| Big Cuddle | `rounded` | 48 × 52 | 50 × 28 | 98 columns, 42 rows | Pi rounded terminal pack |
+| Retro Buddy | `terminal` | 24 × 24 | 26 × 14 | 74 columns, 28 rows | Pi Terminal pack |
+| Slim Ringtail | `slim` | 24 × 24 | 26 × 14 | 74 columns, 28 rows | Pi Terminal v2 pack |
+| Pocket Ringtail | `slim-small` | 16 × 16 | 18 × 10 | 66 columns, 24 rows | Pi Terminal v2 pack |
+
+Sprite sizes are in pixels and box sizes in columns × rows. **\*Box minimums are necessary, not sufficient:** the framed editor must also be active and the terminal outside the selected header's [small mode](#responsive-layout). With default Slanted, every style except Big Cuddle therefore needs at least **83 columns**; Big Cuddle needs **98**. The row minimums above still apply. Each box reserves a one-column gap, at least 45 editor text columns plus its two borders, and 14 conversation rows above the box.
+
+- **Pixel Pal** matches the OpenPets "Pi" raccoon: its frames are converted from the spritesheet into the asset's five flat colors (outline, hoodie, fur, light fur, zipper), favoring outlines and the zipper and restoring each eye's highlight dot.
+- **Tiny Doodle** is redrawn pixel by pixel after the same asset, with crisp outlines and simple two-frame poses.
+- **Big Cuddle** is the detailed rounded raccoon at its native size, with the pack's 31-color palette and eight-frame animations. It needs a large terminal.
+- **Retro Buddy** is Pi's mask, ringed tail, blue hoodie, and cyan accent in five opaque colors.
+- **Slim Ringtail** is the unclothed grey raccoon in five flat colors; **Pocket Ringtail** is the same pack's separately drawn small version.
+
+The pose follows the working indicator's activity and reuses its 80 ms timer; idle always shows the first resting frame and adds no timer. Pixel Pal and Tiny Doodle use fixed tick counts per pose. Big Cuddle and Retro Buddy follow each animation's duration; Slim Ringtail and Pocket Ringtail retain **each frame's own duration**. Pack durations are rounded to the nearest whole 80 ms tick, with a one-tick minimum. Those three supplied terminal packs share the mapping below and omit active frames identical to the resting idle frame.
+
+| Activity | Pixel Pal | Tiny Doodle | Big Cuddle, Retro Buddy, Slim Ringtail, Pocket Ringtail |
+| --- | --- | --- | --- |
+| Idle | Idle, first frame | Standing still | Idle, first frame |
+| `Thinking...` | Waiting | Looks up, left then right | Think |
+| `Exploring...` | Running right | Trots, eyes to the right | Walk right |
+| `Verifying...` | Review | Reads down-left, then closes its eyes | Look around (Retro Buddy, Slim Ringtail, Pocket Ringtail: Eat) |
+| `Working...` | Running (typing) | Taps both paws on the hoodie | Walk left |
+| `Delegating...` | Waving | Waves its right paw | Wave |
+| `Executing...` | Jumping | Lands, then hops | Jump |
+
+Terminals without 24-bit color may approximate the palette. See [artwork provenance and maintainer confirmation](extensions/osdy-pi/assets/PROVENANCE.md#maintainer-redistribution-confirmation).
+
+#### Regenerating the sprites
+
+Tiny Doodle is not generated: its frames are editable pixel grids in `extensions/osdy-pi/companion-sprite.ts`. Every other style has a generator in the source checkout. These development commands need the source packs separately; they are not installation steps or runtime dependencies. The examples use Bash process substitution:
+
+```bash
+# Pixel Pal (also the Hoodie Pi header mascot and its wave frames); see the Hoodie Pi mascot above
+node scripts/generate-companion-sprites.mjs pi-base-neutral.png sheet.png extensions/osdy-pi/pi-raccoon-sprites.ts
+
+# Big Cuddle, from the Pi rounded terminal pack
+node scripts/generate-pi-pack-sprites.mjs \
+  <(unzip -p pi-rounded-terminal-v2.zip pi-rounded/frames.json) \
+  extensions/osdy-pi
+
+# Retro Buddy, from the Pi Terminal pack
+node scripts/generate-pi-terminal-sprites.mjs \
+  <(unzip -p pi-terminal.zip pi-terminal/frames.json) \
+  extensions/osdy-pi/pi-terminal-sprites.ts
+
+# Slim Ringtail and Pocket Ringtail, from the Pi Terminal v2 pack
+node scripts/generate-pi-slim-sprites.mjs \
+  <(unzip -p pi-terminal-v2.zip pi-terminal-v2/frames.json) \
+  extensions/osdy-pi/pi-slim-sprites.ts
+```
 
 ### Response speed
 
@@ -713,6 +805,7 @@ An isolated agent directory does **not** make custom audio paths or real provide
 
 - Check `/hotkeys` lists `ctrl+alt+o`, `ctrl+alt+u`, and `ctrl+alt+s`. On macOS, configure Option to send Alt/Meta and verify the terminal supports Ctrl+Alt chords; actual Ctrl+Option delivery still needs a hardware check. Open both **Ctrl+Option+O** and `/osdyConfig` in regular and fullscreen Pi (Ctrl+Alt+O on other platforms); use the slash command if the chord is intercepted or unsupported. Check arrows/Home/End/Page Up/Down, Tab or left/right, Enter, and Esc; shrink and restore the terminal, checking both panes remain reachable. With disposable TODO/Agents settings, verify Ctrl+Option+O asks for manual `/reload` only after closing, while `/osdyConfig` reloads automatically.
 - In disposable settings, change a visual preference, wait for **Saved globally**, close and reopen, then reload/restart to check persistence. Esc does not undo changes; distinguish save/application errors from success.
+- Visual additions (manual, not yet verified on a live terminal/font): check all four headers and six companion styles, theme changes, name-tab ellipsis (Pocket Ringtail shows `Pocket Ring…`), bottom alignment, and the selected header's responsive cutoffs above. Check fresh defaults separately from saved choices/off. Observe Hoodie Pi's startup wave with intro, continuous, and off; allow for a roughly one-row shift and subtle motion at small sizes. Source and automated rendering checks do not establish visual fidelity or npm artifact availability.
 - Account (manual): with disposable profiles only, check Cancel-first switch/set-default/clear-default confirmations, Esc cancellation, idle switching, and current/default labels. Verify Ctrl+Option+O refuses all three changes while busy, succeeds when idle, and `/osdyConfig` still waits for idle. Check one row per profile with **v/s/d/c** context actions and **Enter** usage fallback, without a second action list. From **v** quota details, check eligible **s Switch** opens the same Cancel-first confirmation, with blank separators between the title/effects, choices, and instructions; Cancel/Esc must retain the quota view and scroll position. Check gaps yield on short viewports without hiding safety content or enabling acceptance when the full confirmation cannot fit. Check remaining-capacity bars, **r Refresh**, **b Back/Esc** returning to the selected profile, long-view scrolling, no query on navigation, no stored-profile polling, and cancellation on exit. Create/rename/remove stay in `/osdy-account`, login in `/login`.
 - Subscription quota (manual): compare **Ctrl+Option+U** and `/usage` (Ctrl+Alt+U on other platforms), including **r Refresh** and Esc/q closing. Verify actual terminal chord delivery; use `/usage` if intercepted or unsupported.
 - Speech Stop (manual): during intentional narration or a voice preview, press **Ctrl+Option+S** in chat; confirm audio stops without aborting the agent or changing editor text/settings. Check actual terminal delivery, with `/osdy-pi speech stop` as fallback. Registration and automated callback tests do not establish a hardware pass.
@@ -742,7 +835,7 @@ npm run pi:dev
 ## Limits and troubleshooting
 
 - The custom UI requires a Pi session with a UI; otherwise it does not mount.
-- When the full side-by-side header and mascot cannot fit, only the centered, responsively scaled mascot renders; below 72 columns, Pi also uses the native editor and hides the Git summary until space returns.
+- When the full side-by-side header and mascot cannot fit, only the centered mascot renders. Below the selected header's width or height cutoff, Pi also uses the native editor and hides the Git summary and companion until space returns; see [Responsive layout](#responsive-layout).
 - Fullscreen mascot scrolling remains under investigation; the responsive header changes do not establish that this issue is fixed.
 - The Git summary reports unavailable when Git commands cannot read a working tree.
 - Diff patches depend on readable repository files; a file whose patch cannot load shows the reported error in the panel.

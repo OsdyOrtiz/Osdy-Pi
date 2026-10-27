@@ -29,6 +29,10 @@ export interface GlobalEditorSettings {
 	workingTreeEnabled: boolean;
 	headerVariant: HeaderVariant;
 	mascot: MascotChoice;
+	/** Missing means the editor companion raccoon is shown. */
+	companionEnabled?: boolean;
+	/** Missing means the original style. */
+	companionStyle?: CompanionStyle;
 }
 
 export function areVisualsEnabled(state: Pick<OsdyState, "enabled" | "visualsEnabled">): boolean {
@@ -47,13 +51,39 @@ export function shouldShowFooterMetadata(editorEffective: boolean): boolean {
 	return !editorEffective;
 }
 
-export const HEADER_VARIANT_CHOICES = ["osdy-theme", "neon"] as const;
+export const HEADER_VARIANT_CHOICES = ["osdy-theme", "neon", "block-shadow", "slanted"] as const;
 
 export type HeaderVariant = (typeof HEADER_VARIANT_CHOICES)[number];
 
-export const MASCOT_CHOICES = ["current", "bts", "osdy-halloween"] as const;
+/** Header for new or unreadable settings; a saved choice always wins. */
+export const DEFAULT_HEADER_VARIANT: HeaderVariant = "slanted";
+
+export const MASCOT_CHOICES = ["current", "bts", "osdy-halloween", "pi"] as const;
 
 export type MascotChoice = (typeof MASCOT_CHOICES)[number];
+
+/** Mascot for new or unreadable settings (Hoodie Pi); a saved choice always wins. */
+export const DEFAULT_MASCOT: MascotChoice = "pi";
+
+/** Header mascots drawn as tone-mapped text art; the rest are half-block pixel art. */
+export type TextMascotChoice = Exclude<MascotChoice, "pi">;
+
+export function isTextMascotChoice(choice: MascotChoice): choice is TextMascotChoice {
+	return choice !== "pi";
+}
+
+/**
+ * Original: converted from the OpenPets sheet. Drawn: hand-drawn 16 x 16 art.
+ * Rounded: generated from the Pi rounded terminal mascot pack (48 x 52).
+ * Terminal: generated from the flat-color Pi Terminal pack (24 x 24).
+ */
+export const COMPANION_STYLES = ["original", "drawn", "rounded", "terminal", "slim", "slim-small"] as const;
+
+export type CompanionStyle = (typeof COMPANION_STYLES)[number];
+
+export function isCompanionStyle(value: unknown): value is CompanionStyle {
+	return typeof value === "string" && COMPANION_STYLES.some((style) => style === value);
+}
 
 export type WorkingTreePlacement = "aboveEditor" | "belowEditor";
 
@@ -84,6 +114,12 @@ export type OsdyState = {
 	tui: TUI | undefined;
 	workingTreeEnabled: boolean;
 	workingTreePlacement: WorkingTreePlacement;
+	/** Editor companion raccoon preference; missing means enabled. */
+	companionEnabled?: boolean;
+	/** Editor companion raccoon art; missing means the original style. */
+	companionStyle?: CompanionStyle;
+	/** Live read-only view of the working indicator; drives the editor companion pose. */
+	working?: Readonly<Pick<WorkingWidgetState, "active" | "activity" | "frame">>;
 };
 
 export type WorkingActivity =

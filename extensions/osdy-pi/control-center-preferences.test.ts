@@ -28,10 +28,42 @@ void test("Visuals help states reversible Osdy-only suspension, fallback and ato
 	assert.match(detail.note, /shortcut: run \/reload manually/);
 });
 
+void test("Companion rows choose only a style or off with one current value", () => {
+	for (const [companionEnabled, companionStyle, current] of [
+		[undefined, undefined, "Pixel Pal"], [true, "original", "Pixel Pal"], [true, "drawn", "Tiny Doodle"],
+		[undefined, "drawn", "Tiny Doodle"], [true, "rounded", "Big Cuddle"], [true, "terminal", "Retro Buddy"], [undefined, "terminal", "Retro Buddy"],
+		[true, "slim", "Slim Ringtail"], [true, "slim-small", "Pocket Ringtail"],
+		[false, "rounded", "off"],
+		[false, "drawn", "off"], [false, undefined, "off"],
+	] as const) {
+		const detail = preferenceDetail("Companion", {
+			...snapshot,
+			...(companionEnabled === undefined ? {} : { companionEnabled }),
+			...(companionStyle === undefined ? {} : { companionStyle }),
+		});
+		assert.ok(detail);
+		assert.deepEqual(detail.rows.map((row) => row.label), ["Pixel Pal", "Tiny Doodle", "Big Cuddle", "Retro Buddy", "Slim Ringtail", "Pocket Ringtail", "off"]);
+		assert.deepEqual(detail.rows.filter((row) => row.current).map((row) => row.label), [current]);
+		assert.deepEqual(detail.rows.map((row) => row.action), [
+			{ kind: "companion-style", value: "original" },
+			{ kind: "companion-style", value: "drawn" },
+			{ kind: "companion-style", value: "rounded" },
+			{ kind: "companion-style", value: "terminal" },
+			{ kind: "companion-style", value: "slim" },
+			{ kind: "companion-style", value: "slim-small" },
+			{ kind: "companion", value: false },
+		]);
+		assert.equal(detail.summary, `Current: ${current}`);
+		assert.match(detail.note, /Applies live/);
+	}
+	assert.equal(preferenceDetail("Companion", { ...snapshot, enabled: false })?.summary, "Current: Pixel Pal | Osdy disabled");
+	assert.equal(preferenceDetail("Companion", { ...snapshot, visualsEnabled: false })?.summary, "Current: Pixel Pal | Visuals off");
+});
+
 void test("preference rows expose every catalog value and exactly one current indicator", () => {
 	for (const [category, field, values] of [
-		["Header", "headerVariant", ["osdy-theme", "neon"]],
-		["Mascot", "mascot", ["current", "bts", "osdy-halloween"]],
+		["Header", "headerVariant", ["osdy-theme", "neon", "block-shadow", "slanted"]],
+		["Mascot", "mascot", ["current", "bts", "osdy-halloween", "pi"]],
 		["Editor", "editorMode", ["auto", "extended", "simple"]],
 	] as const) {
 		for (const value of values) {
@@ -40,7 +72,7 @@ void test("preference rows expose every catalog value and exactly one current in
 			assert.deepEqual(detail.rows.map((row) => "value" in row.action ? row.action.value : undefined), values);
 			assert.equal(detail.rows.filter((row) => row.current).length, 1);
 			assert.equal(detail.rows.find((row) => row.current)?.action.kind, category.toLowerCase());
-			const label = value === "bts" ? "Bts" : value === "osdy-halloween" ? "Osdy-Halloween" : value;
+			const label = ({ current: "Cozy Bandit", bts: "Lavender Bandit", "osdy-halloween": "Little Vampire", pi: "Hoodie Pi" } as const)[value as "current" | "bts" | "osdy-halloween" | "pi"] ?? value;
 			assert.match(detail.summary, new RegExp(`Current: ${label}`));
 			assert.equal(detail.rows.find((row) => row.current)?.label, label);
 		}
@@ -52,7 +84,7 @@ void test("effective editor and disabled visuals describe live runtime, not a de
 	const disabled = { ...snapshot, enabled: false, editorEffective: false };
 	assert.match(preferenceDetail("Editor", disabled)?.summary ?? "", /Osdy disabled.*Effective: simple\/native/);
 	assert.match(preferenceDetail("Header", disabled)?.note ?? "", /apply when Osdy is enabled/);
-	assert.match(preferenceDetail("Mascot", { ...snapshot, smallMode: true })?.summary ?? "", /Current: current/);
+	assert.match(preferenceDetail("Mascot", { ...snapshot, smallMode: true })?.summary ?? "", /Current: Cozy Bandit/);
 	assert.equal(preferenceDetail("Git", snapshot), undefined);
 	assert.equal(preferenceDetail("Sounds", snapshot), undefined);
 	assert.equal(preferenceDetail("Account", snapshot), undefined);

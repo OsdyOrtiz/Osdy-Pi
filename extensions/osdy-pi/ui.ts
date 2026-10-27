@@ -19,6 +19,13 @@ import {
 	asciiAnimationMode,
 } from "./animation.js";
 import { fitBorder } from "./border.js";
+import {
+	companionLayout,
+	composeWithCompanion,
+	renderCompanionBox,
+	resolveMascotPose,
+	shouldShowCompanion,
+} from "./companion-panel.js";
 import { formatContextUsage } from "./context-usage-ui.js";
 import {
 	renderCompactCodexQuotaBars,
@@ -37,6 +44,8 @@ import {
 	type MascotConfig,
 } from "./constants.js";
 import { formatPath } from "./format.js";
+import { renderPixelHeader } from "./header-slanted.js";
+import { PI_WAVE_TICKS, piMascotWidthForRows, piWaveFrameAt, renderPiMascot } from "./pixel-mascot.js";
 import { renderWorkingWidget } from "./working-animation.js";
 import { contextUsageData, modelLabel } from "./metrics.js";
 import {
@@ -45,8 +54,10 @@ import {
 	resolveEditorTitleLabel,
 } from "./profile-label.js";
 import {
+	isTextMascotChoice,
 	shouldShowFooterMetadata,
 	type HeaderVariant,
+	type MascotChoice,
 	type OsdyState,
 	type SimpleTheme,
 	type WorkingWidgetState,
@@ -124,20 +135,54 @@ type HeaderLayout = {
 
 type HeaderConfig = (typeof HEADER_VARIANTS)[HeaderVariant];
 
+/** What the responsive header needs from a mascot, whether text art or pixel art. */
+type HeaderMascot = {
+	widthForRows(rows: number): number;
+	render(
+		widthBudget: number,
+		rowBudget: number,
+		frame: number,
+		theme: SimpleTheme,
+		animationStyle: "animated" | "static",
+		waveFrame?: number,
+	): string[];
+};
+
+function headerMascotFor(choice: MascotChoice): HeaderMascot {
+	if (!isTextMascotChoice(choice)) {
+		return {
+			widthForRows: piMascotWidthForRows,
+			render: (widthBudget, rowBudget, frame, theme, animationStyle, waveFrame) =>
+				renderPiMascot(widthBudget, rowBudget, { frame, theme, style: animationStyle, waveFrame }),
+		};
+	}
+	const mascot = mascotForChoice(choice);
+	const hasArt = mascot.art.mascot.length > 0 && mascot.art.toneMap.length > 0;
+	return {
+		widthForRows: (rows) => hasArt ? mascotWidthForRows(mascot.art, rows) : 0,
+		render: (widthBudget, rowBudget, frame, theme, animationStyle) => hasArt
+			? renderMascotLines(
+				mascot,
+				scaleMascot(mascot.art, widthBudget, rowBudget),
+				frame,
+				theme,
+				animationStyle,
+			)
+			: [],
+	};
+}
+
 function calculateHeaderLayout(
 	variantName: HeaderVariant,
 	variant: HeaderConfig,
-	mascot: MascotConfig,
+	mascot: HeaderMascot,
 	width: number,
 	terminalRows: number,
 ): HeaderLayout {
 	const renderWidth = Math.max(1, width);
 	const fullHeaderWidth = headerWidth(variantName);
-	const mascotArt = mascot.art;
-	const hasMascot = mascotArt.mascot.length > 0 && mascotArt.toneMap.length > 0;
-	const heightLimitedMascotWidth = hasMascot
-		? mascotWidthForRows(mascotArt, terminalRows)
-		: 0;
+	const heightLimitedMascotWidth = mascot.widthForRows(terminalRows);
+	const hasMascot = heightLimitedMascotWidth > 0;
 	const canUseFullHeader =
 		hasMascot &&
 		renderWidth >= fullHeaderWidth + MASCOT_GAP + heightLimitedMascotWidth &&
@@ -234,9 +279,10 @@ function renderResponsiveHeader(
 	frame: number,
 	theme: SimpleTheme,
 	animationStyle: "animated" | "static",
+	waveFrame?: number,
 ): string[] {
 	const variant = HEADER_VARIANTS[state.headerVariant];
-	const mascot = mascotForChoice(state.mascot);
+	const mascot = headerMascotFor(state.mascot);
 	const layout = calculateHeaderLayout(
 		state.headerVariant,
 		variant,
@@ -244,29 +290,25 @@ function renderResponsiveHeader(
 		width,
 		terminalRows,
 	);
-	const mascotArt = layout.hasMascot
-		? scaleMascot(mascot.art, layout.mascotWidthBudget, layout.mascotRowBudget)
-		: { mascot: [], toneMap: [] };
-	const mascotLines = renderMascotLines(
-		mascot,
-		mascotArt,
-		frame,
-		theme,
-		animationStyle,
-	);
+	const mascotLines = layout.hasMascot
+		? mascot.render(layout.mascotWidthBudget, layout.mascotRowBudget, frame, theme, animationStyle, waveFrame)
+		: [];
 	if (!layout.canUseFullHeader) {
 		return mascotLines.map((line) => fitCenterVisible(line, layout.renderWidth));
 	}
-	const logoLines = renderHeaderLines(
-		variant,
-		variant.header,
-		variant.headerMap,
-		variant.header.map((_line, index) => index),
-		frame,
-		theme,
-		animationStyle,
-	);
-	const scaledMascotWidth = mascotArt.mascot.reduce(
+	// Pixel headers cannot be scaled: they render whole here, or the layout above fell back to the mascot alone.
+	const logoLines = variant.pixelHeader
+		? renderPixelHeader(variant.pixelHeader, frame, theme, animationStyle)
+		: renderHeaderLines(
+			variant,
+			variant.header,
+			variant.headerMap,
+			variant.header.map((_line, index) => index),
+			frame,
+			theme,
+			animationStyle,
+		);
+	const scaledMascotWidth = mascotLines.reduce(
 		(maximum, line) => Math.max(maximum, visibleWidth(line)),
 		0,
 	);
@@ -372,6 +414,11 @@ class OsdyWorkingWidget implements Component {
 	invalidate(): void {}
 }
 
+/** The intro runs until both the glow intro and, for the pi mascot, its startup wave are done. */
+function introFramesFor(choice: MascotChoice): number {
+	return isTextMascotChoice(choice) ? INTRO_ANIMATION_FRAMES : Math.max(INTRO_ANIMATION_FRAMES, PI_WAVE_TICKS);
+}
+
 export function createHeaderComponent(
 	_pi: ExtensionAPI,
 	_ctx: ExtensionContext,
@@ -387,7 +434,7 @@ export function createHeaderComponent(
 		const timer = animateAscii
 			? setInterval(() => {
 					frame += 1;
-					if (animationMode === "intro" && frame >= INTRO_ANIMATION_FRAMES) {
+					if (animationMode === "intro" && frame >= introFramesFor(state.mascot)) {
 						animationComplete = true;
 						clearInterval(timer);
 					}
@@ -398,6 +445,9 @@ export function createHeaderComponent(
 			render(width: number): string[] {
 				const animationStyle =
 					animateAscii && !animationComplete ? "animated" : "static";
+				const waveFrame = animateAscii && !animationComplete && state.mascot === "pi"
+					? piWaveFrameAt(frame)
+					: undefined;
 				const lines = renderResponsiveHeader(
 					state,
 					width,
@@ -405,6 +455,7 @@ export function createHeaderComponent(
 					frame,
 					theme,
 					animationStyle,
+					waveFrame,
 				);
 				return decorateHeaderVersion(lines, width, installedVersion, theme);
 			},
@@ -456,7 +507,16 @@ export function createEditorComponent(
 
 		override render(width: number): string[] {
 			if (width < 4 || this.isShowingAutocomplete()) return super.render(width);
-			const editorWidth = width;
+			const companionStyle = state.companionStyle ?? "original";
+			const companion = companionLayout(companionStyle);
+			const showCompanion = shouldShowCompanion({
+				style: companionStyle,
+				enabled: state.companionEnabled !== false,
+				smallMode: state.smallMode,
+				width,
+				terminalRows: this.tuiRef.terminal.rows,
+			});
+			const editorWidth = showCompanion ? width - companion.columns : width;
 			const innerWidth = Math.max(1, editorWidth - 2);
 			const lines = super.render(innerWidth);
 			if (lines.length < 2) return lines;
@@ -499,7 +559,14 @@ export function createEditorComponent(
 			const quotaLines = codexSnapshot
 				? renderCompactCodexQuotaBars(ctx.ui.theme, codexSnapshot, editorWidth)
 				: [];
-			return [...lines, ...quotaLines];
+			if (!showCompanion) return [...lines, ...quotaLines];
+			const box = renderCompanionBox(
+				companionStyle,
+				resolveMascotPose(state.working),
+				state.working?.frame ?? 0,
+				ctx.ui.theme,
+			);
+			return [...composeWithCompanion(lines, editorWidth, box, companion.boxWidth), ...quotaLines];
 		}
 	}
 

@@ -53,6 +53,27 @@ const GLOW_TRAIL_TONES = {
 	v: "c",
 } as const;
 
+export type GlowTone = keyof typeof GLOW_HIGHLIGHT_TONES;
+
+/** Mascot edge glow color: fixed per tone when static, a wave through the three tones when animated. */
+export function glowToneColor(
+	tone: GlowTone,
+	column: number,
+	lineIndex: number,
+	frame: number,
+	palette: Pick<MascotTonePalette, GlowTone>,
+	style: AsciiAnimationStyle,
+): MascotTonePalette[GlowTone] {
+	if (style === "static") return palette[tone];
+	const wave = positiveModulo(column + lineIndex * 2 - frame * 5, 44);
+	return getAnimatedAsciiColor(
+		wave,
+		palette[tone],
+		palette[GLOW_HIGHLIGHT_TONES[tone]],
+		palette[GLOW_TRAIL_TONES[tone]],
+	);
+}
+
 export function colorAsciiCharacter(
 	theme: SimpleTheme,
 	color: string | ThemeForegroundColor,
@@ -122,22 +143,17 @@ export function animateAsciiLineWithToneMap(
 				return char;
 			}
 			const baseColor = palette[tone];
+			if (tone === "p" || tone === "c" || tone === "v") {
+				return colorAsciiCharacter(
+					theme,
+					glowToneColor(tone, charIndex, lineIndex, frame, palette, style),
+					char,
+				);
+			}
 			if (style === "static") {
 				return colorAsciiCharacter(theme, baseColor, char);
 			}
 			const wave = positiveModulo(charIndex + lineIndex * 2 - frame * 5, 44);
-			if (tone === "p" || tone === "c" || tone === "v") {
-				return colorAsciiCharacter(
-					theme,
-					getAnimatedAsciiColor(
-						wave,
-						baseColor,
-						palette[GLOW_HIGHLIGHT_TONES[tone]],
-						palette[GLOW_TRAIL_TONES[tone]],
-					),
-					char,
-				);
-			}
 			const highlightColor = tone === "b" || tone === "h" ? palette.h : palette.l;
 			const trailColor = tone === "d" ? palette.m : palette.b;
 			return colorAsciiCharacter(

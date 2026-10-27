@@ -18,7 +18,7 @@ const { CONTROL_CENTER_CATEGORIES, ControlCenter } = await import("./control-cen
 const { createControlCenterSpeech } = await import("./control-center-speech.js");
 
 void test("Speech remains last after Visuals and Agents", () => {
-	assert.deepEqual([...CONTROL_CENTER_CATEGORIES], ["Theme", "Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage", "TODO", "Visuals", "Agents", "Speech"]);
+	assert.deepEqual([...CONTROL_CENTER_CATEGORIES], ["Theme", "Header", "Mascot", "Editor", "Companion", "Git", "Sounds", "Account", "Usage", "TODO", "Visuals", "Agents", "Speech"]);
 });
 
 void test("Speech displays enabled/voice/rate and routes only Enable/Disable, Read last response and Stop", async () => {

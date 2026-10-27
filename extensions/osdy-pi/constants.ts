@@ -1,5 +1,5 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import type { HeaderVariant, MascotChoice, WorkingActivity } from "./types.js";
+import type { HeaderVariant, TextMascotChoice, WorkingActivity } from "./types.js";
 
 export const ANIMATION_ENABLED = true;
 export const ANIMATION_INTERVAL_MS = 30;
@@ -24,7 +24,8 @@ export const WORKING_SYMBOL_PULSE: readonly string[] = [
 ];
 export const WORKING_WIDGET_KEY = "osdy-pi-working";
 export const WORKING_TREE_WIDGET_KEY = "osdy-pi-working-tree";
-export const MASCOT_GAP = 0;
+/** Blank columns between the header art and the mascot when both fit side by side. */
+export const MASCOT_GAP = 4;
 export const COMPACT_HEADER_HIDDEN_COLUMNS = 72;
 export const STACKED_CONTENT_MAX_ROWS = 32;
 export const STACKED_HEADER_MAX_ROWS = 8;
@@ -205,6 +206,97 @@ const NEON_HEADER_TONES: MascotTonePalette = {
   v: "#FFFFFF",
 };
 
+const BLOCK_SHADOW_HEADER_ROWS = [
+  "    ███████                  █████                       ███████████    ███ ",
+  "  ███░░░░░███               ░░███                        ░░███░░░░░███  ░░░ ",
+  " ███     ░░███  █████     ███████  █████ ████             ░███    ░███ ████ ",
+  "░███      ░███ ███░░     ███░░███  ░░███ ░███  █████████  ░██████████  ░░███",
+  "░███      ░███ ░░█████  ░███ ░███   ░███ ░███  ░░░░░░░░░  ░███░░░░░░    ░███",
+  "░░███     ███   ░░░░███ ░███ ░███   ░███ ░███             ░███          ░███",
+  " ░░░███████░    ██████  ░░████████  ░░███████             █████        █████",
+  "   ░░░░░░░     ░░░░░░    ░░░░░░░░    ░░░░░███            ░░░░░         ░░░░░",
+  "                                      ███ ░███                              ",
+  "                                     ░░██████                               ",
+  "                                      ░░░░░░                                ",
+] as const;
+
+const BLOCK_SHADOW_FACE_TONES = ["p", "v", "c"] as const;
+const BLOCK_SHADOW_EDGE_TONES = ["l", "m", "d"] as const;
+
+function blockShadowBand(rowIndex: number): 0 | 1 | 2 {
+  if (rowIndex < 3) return 0;
+  return rowIndex < 6 ? 1 : 2;
+}
+
+/** Derives a tone row from block glyphs: faces glow, shadows dim, per row band. */
+function deriveBlockShadowToneRow(row: string, rowIndex: number): string {
+  const band = blockShadowBand(rowIndex);
+  return Array.from(row, (glyph) => {
+    if (glyph === "█") return BLOCK_SHADOW_FACE_TONES[band];
+    if (glyph === "░") return BLOCK_SHADOW_EDGE_TONES[band];
+    return " ";
+  }).join("");
+}
+
+const BLOCK_SHADOW_HEADER_TONES: MascotTonePalette = {
+  b: { kind: "theme", token: "mdLink", dimmed: true },
+  h: { kind: "theme", token: "accent" },
+  l: { kind: "theme", token: "accent", dimmed: true },
+  m: { kind: "theme", token: "mdLink", dimmed: true },
+  d: { kind: "theme", token: "mdHeading", dimmed: true },
+  p: { kind: "theme", token: "accent" },
+  c: { kind: "theme", token: "mdHeading" },
+  v: { kind: "theme", token: "mdLink" },
+};
+
+/**
+ * Slanted sans-serif header drawn as 78 by 22 logical pixels (two per terminal row).
+ * Keys are roles, not colors: C = bevel, S = face, V = depth, "." = transparent.
+ * header-slanted.ts maps the roles to theme tokens when rendering.
+ */
+const SLANTED_PIXEL_ROWS = [
+  ".........................................................................CCC..",
+  "......CCCC........................CCCCC..................................CSSC.",
+  "....CCCSSSCCC.....................CSSSS.....................CCCCCCCCC...CCSSS.",
+  "..CCCSSSSSSSSC....................CSSSVV...................CCSSSSSSSSC...SSSSV",
+  "..CSSSSSSSSSSSC...................CSSSVV...................CSSSSSSSSSS...VVVVV",
+  ".CCSSSSSSSSSSSS...CCCCCC.....CCCC.CSSSVCCCCC...CCCC........CSSSSVSSSSSV.CCCCVV",
+  "CCSSSSVVVVSSSSSV.CCSSSSSC..CCCSSSCCSSSVCSSSS..CCSSS........CSSSVVVSSSSV.CSSS..",
+  "CSSSSVVVVVCSSSSVCCSSSSSSV.CCSSSSSSSSSSV.SSSSV.CSSSVV.......CSSSCCCCSSSV.CSSSV.",
+  "CSSSSVV...CSSSSVCSSSVVVVVVCSSSSVSSSSSSV.CSSSVCCSSSVCCCCCC..CSSSSSSSSSSVCCSSSV.",
+  "CSSSSV....CSSSSVCSSSCCCVV.CSSSVVVSSSSVV.CSSSVCSSSVVCSSSSS.CCSSSSSSSSSVVCSSSSV.",
+  "CSSSSV....CSSSSV.SSSSSSC.CCSSSVV.CSSSVV.CSSSCCSSSVVCSSSSVVCSSSSSSSSVVVVCSSSSV.",
+  "CSSSSC..CCCSSSVV.VVSSSSS.CSSSSV.CCSSSV..CSSSSSSSVV.CSSSSVVCSSSSVVVVVVV.CSSSVV.",
+  ".SSSSSCCCSSSSSVVCCVVSSSSVCSSSSCCCSSSSV...SSSSSSSVV..VVVVV.CSSSVVVVVV...CSSSVV.",
+  ".CSSSSSSSSSSSVVCCSCCCSSSV.SSSSSSSSSSSV...CSSSSSVV...VVVVV.CSSSVV.......CSSSV..",
+  "..SSSSSSSSSSVVVCSSSSSSSVV.CSSSSSSSSSSV...CSSSSSVV........CCSSSV.......CCSSSV..",
+  "..VVSSSSSVVVVV..VSSSSVVVV..VSSSVVVVVVV...CSSSSVV...........VVVV.........VVVV..",
+  "...VVVVVVVVVV...VVVVVVVV...VVVVVVVVVVV.CCCSSSVVV..........VVVVV........VVVVV..",
+  ".....VVVVV........VVVV.......VVV......CCSSSSSVV...............................",
+  "......................................CSSSSSVV................................",
+  "......................................CSSSSVVV................................",
+  ".......................................VVVVVV.................................",
+  ".......................................VVVVV..................................",
+] as const;
+
+const SLANTED_GLYPHS = [" ", "▄", "▀", "█"] as const;
+
+/** Monochrome silhouette of the pixel art: one half-block glyph per terminal cell. */
+function deriveSlantedGlyphRow(cellRow: number): string {
+  const top = SLANTED_PIXEL_ROWS[cellRow * 2] ?? "";
+  const bottom = SLANTED_PIXEL_ROWS[cellRow * 2 + 1] ?? "";
+  return Array.from(top, (topPixel, column) => {
+    const upper = topPixel !== "." ? 2 : 0;
+    const lower = bottom[column] !== undefined && bottom[column] !== "." ? 1 : 0;
+    return SLANTED_GLYPHS[upper + lower];
+  }).join("");
+}
+
+const SLANTED_HEADER_ROWS = Array.from(
+  { length: SLANTED_PIXEL_ROWS.length / 2 },
+  (_value, cellRow) => deriveSlantedGlyphRow(cellRow),
+);
+
 type HeaderPalette = {
   baseColor: string;
   highlightColor: string;
@@ -238,6 +330,8 @@ type HeaderVariantConfig = {
   header: readonly string[];
   headerMap?: readonly string[];
   headerTonePalette?: MascotTonePalette;
+  /** Role-keyed pixel rows; when set the renderer draws these instead of `header` text art. */
+  pixelHeader?: readonly string[];
   mascot?: readonly string[];
   mascotMap?: readonly string[];
   linePalette: (lineIndex: number) => HeaderPalette;
@@ -525,13 +619,13 @@ export type MascotConfig = {
   tonePalette: MascotTonePalette;
 };
 
-export const MASCOTS: Record<MascotChoice, MascotConfig> = {
+export const MASCOTS: Record<TextMascotChoice, MascotConfig> = {
   current: { art: ROSE_MASCOT, tonePalette: HTML_MASCOT_TONES },
   bts: { art: BTS_MASCOT_ART, tonePalette: BTS_MASCOT_TONES },
   "osdy-halloween": { art: HALLOWEEN_MASCOT, tonePalette: HALLOWEEN_MASCOT_TONES },
 };
 
-export function mascotForChoice(choice: MascotChoice): MascotConfig {
+export function mascotForChoice(choice: TextMascotChoice): MascotConfig {
   return MASCOTS[choice];
 }
 
@@ -611,6 +705,27 @@ export const HEADER_VARIANTS: Record<HeaderVariant, HeaderVariantConfig> = {
     header: NEON_HEADER_ROWS.map(([header]) => header),
     headerMap: NEON_HEADER_ROWS.map(([, toneMap]) => toneMap),
     headerTonePalette: NEON_HEADER_TONES,
+    mascot: ROSE_MASCOT.mascot,
+    mascotMap: ROSE_MASCOT.toneMap,
+    linePalette: osdyThemePalette,
+    mascotPalette: OSDY_THEME_MASCOT_PALETTE,
+    mascotTonePalette: HTML_MASCOT_TONES,
+  },
+  "block-shadow": {
+    label: "Block Shadow",
+    header: BLOCK_SHADOW_HEADER_ROWS,
+    headerMap: BLOCK_SHADOW_HEADER_ROWS.map(deriveBlockShadowToneRow),
+    headerTonePalette: BLOCK_SHADOW_HEADER_TONES,
+    mascot: ROSE_MASCOT.mascot,
+    mascotMap: ROSE_MASCOT.toneMap,
+    linePalette: osdyThemePalette,
+    mascotPalette: OSDY_THEME_MASCOT_PALETTE,
+    mascotTonePalette: HTML_MASCOT_TONES,
+  },
+  slanted: {
+    label: "Slanted",
+    header: SLANTED_HEADER_ROWS,
+    pixelHeader: SLANTED_PIXEL_ROWS,
     mascot: ROSE_MASCOT.mascot,
     mascotMap: ROSE_MASCOT.toneMap,
     linePalette: osdyThemePalette,

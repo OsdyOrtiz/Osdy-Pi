@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 // @ts-expect-error Node's native TypeScript runner resolves test-only TypeScript source imports.
-import { HEADER_VARIANT_CHOICES, MASCOT_CHOICES } from "./types.ts";
+import { DEFAULT_HEADER_VARIANT, DEFAULT_MASCOT, HEADER_VARIANT_CHOICES, isCompanionStyle, MASCOT_CHOICES } from "./types.ts";
 import type {
 	EditorMode,
 	GlobalEditorSettings,
@@ -39,8 +39,8 @@ function createDefaultEditorSettings(): GlobalEditorSettings {
 		enabled: true,
 		editorMode: DEFAULT_EDITOR_MODE,
 		workingTreeEnabled: true,
-		headerVariant: "osdy-theme",
-		mascot: "current",
+		headerVariant: DEFAULT_HEADER_VARIANT,
+		mascot: DEFAULT_MASCOT,
 	};
 }
 
@@ -55,7 +55,7 @@ function normalizeHeaderVariant(value: unknown): HeaderVariant {
 	return typeof value === "string" &&
 		HEADER_VARIANT_CHOICES.includes(value as HeaderVariant)
 		? (value as HeaderVariant)
-		: "osdy-theme";
+		: DEFAULT_HEADER_VARIANT;
 }
 
 function normalizeMascotChoice(value: unknown): MascotChoice {
@@ -63,7 +63,7 @@ function normalizeMascotChoice(value: unknown): MascotChoice {
 	return typeof value === "string" &&
 		MASCOT_CHOICES.includes(value as MascotChoice)
 		? (value as MascotChoice)
-		: "current";
+		: DEFAULT_MASCOT;
 }
 
 export function normalizeEditorSettings(value: unknown): GlobalEditorSettings {
@@ -79,6 +79,8 @@ export function normalizeEditorSettings(value: unknown): GlobalEditorSettings {
 		enabled:
 			typeof recordValue.enabled === "boolean" ? recordValue.enabled : true,
 		...(typeof recordValue.visualsEnabled === "boolean" ? { visualsEnabled: recordValue.visualsEnabled } : {}),
+		...(typeof recordValue.companionEnabled === "boolean" ? { companionEnabled: recordValue.companionEnabled } : {}),
+		...(isCompanionStyle(recordValue.companionStyle) ? { companionStyle: recordValue.companionStyle } : {}),
 		editorMode: isEditorMode(recordValue.editorMode)
 			? recordValue.editorMode
 			: DEFAULT_EDITOR_MODE,

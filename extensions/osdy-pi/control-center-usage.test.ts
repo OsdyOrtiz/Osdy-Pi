@@ -182,7 +182,7 @@ void test("Usage banked reset row fits narrow and wide Control Center views", as
 		readThemes: () => [], applyTheme: () => ({ success: true }),
 		requestRender: () => {}, height: () => 50, close: () => {},
 	});
-	for (let index = 0; index < 7; index++) panel.handleInput("\x1b[B");
+	for (let index = 0; index < 8; index++) panel.handleInput("\x1b[B");
 	await new Promise<void>(resolve => setImmediate(resolve));
 	panel.handleInput("\t");
 	panel.handleInput("\x1b[H");
