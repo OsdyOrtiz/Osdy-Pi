@@ -553,7 +553,7 @@ void test("shared visual actions apply immediately, save the complete settings, 
 const { isSmallResponsiveMode } = await import("./utils.js");
 const { createResponsiveCoordinator, reconcileResponsiveUi, disableOsdyPi } = await import("./runtime-helpers.js");
 
-async function focusFixture(options: { boundary?: boolean; throwApply?: boolean; synchronousThrow?: boolean; underlyingOverlay?: boolean; startupFailure?: boolean; registered?: boolean; shortcut?: boolean; idle?: boolean; todoDir?: string; reloadFails?: boolean;
+async function focusFixture(options: { boundary?: boolean; throwApply?: boolean; synchronousThrow?: boolean; underlyingOverlay?: boolean; startupFailure?: boolean; registered?: boolean; shortcut?: boolean; idle?: boolean; todoDir?: string; reloadFails?: boolean; visualsEnabled?: boolean; legacyEnabled?: boolean;
 	accountFactory?: NonNullable<Parameters<typeof registerOsdyPi>[1]>["accountFactory"] } = {}) {
 	let input: (data: string) => void = () => {};
 	const columns = options.boundary
@@ -678,7 +678,7 @@ async function focusFixture(options: { boundary?: boolean; throwApply?: boolean;
 		process.env.PI_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "osdy-modal-runtime-"));
 		try {
 			await registerOsdyPi(pi, { ...(options.accountFactory ? { accountFactory: options.accountFactory } : {}), readActiveProfile: () => Promise.resolve(undefined), editorSettingsStore: {
-				...store, load: () => Promise.resolve({ version: 1, enabled: true, editorMode: "auto", headerVariant: "osdy-theme",
+				...store, load: () => Promise.resolve({ version: 1, enabled: options.legacyEnabled ?? true, visualsEnabled: options.visualsEnabled ?? true, editorMode: "auto", headerVariant: "osdy-theme",
 					mascot: "current", workingTreeEnabled: false }),
 			} });
 		} finally {
@@ -899,6 +899,64 @@ void test("registered TODO selection reloads from the command but Ctrl+Alt+O req
 	}
 });
 
+for (const shortcut of [false, true]) for (const initial of [true, false]) void test(`registered visuals ${initial ? "off" : "on"} via ${shortcut ? "shortcut" : "command"} saves before disposal and reload`, async () => {
+	const f = await focusFixture({ registered: true, shortcut, visualsEnabled: initial });
+	try {
+		f.lifecycle.length = 0;
+		for (let i = 0; i < 9; i++) f.send("\x1b[B");
+		assert.match(f.text(), /Control Center \/ Visuals/);
+		assert.equal(f.writes.length, 0, "inspection never saves");
+		f.send("\x1b[C"); f.send(initial ? "\x1b[F" : "\x1b[H"); f.send("\r");
+		assert.equal(f.writes.at(-1)?.visualsEnabled, !initial);
+		assert.deepEqual(f.lifecycle, [], "pending save neither closes nor reloads");
+		f.send("\x1b"); f.send("\r");
+		assert.equal(f.closes(), 0, "transactional visual switch keeps the panel until save finishes");
+		assert.equal(f.writes.length, 1, "duplicate input cannot save twice");
+		f.resolveSave(); await f.showing;
+		assert.deepEqual(f.lifecycle, ["done", "hidden", "disposed", ...(initial ? ["editor-mount"] : []), ...(shortcut ? [] : ["reload"])]);
+		assert.deepEqual(f.writes.at(-1), { version: 1, enabled: true, visualsEnabled: !initial, editorMode: "auto", headerVariant: "osdy-theme", mascot: "current", workingTreeEnabled: false });
+		if (shortcut) assert.match(f.notices.join("\n"), /saved.*\/reload.*manually/i);
+		else assert.deepEqual(f.notices, []);
+	} finally { f.cleanup(); }
+});
+
+void test("registered visuals save failure preserves preference, panel and legacy master off", async () => {
+	const f = await focusFixture({ registered: true, visualsEnabled: false, legacyEnabled: false });
+	try {
+		for (let i = 0; i < 9; i++) f.send("\x1b[B");
+		assert.match(f.text(), /master.*off/i);
+		f.send("\x1b[C"); f.send("\x1b[H"); f.send("\r");
+		assert.equal(f.writes.at(-1)?.enabled, false);
+		f.rejectSave(); await flushFocus();
+		assert.match(f.text(), /not saved.*reload not requested/i);
+		assert.match(f.text(), /Current: off/);
+		assert.equal(f.closes(), 0);
+		f.send("\r"); f.resolveSave(); await f.showing;
+		assert.equal(f.writes.at(-1)?.enabled, false, "visual preference never overrides master off");
+		assert.ok(f.lifecycle.includes("reload"));
+	} finally { f.cleanup(); }
+});
+
+void test("registered visuals stale save completion cannot mutate live preference after replacement or shutdown", async () => {
+	for (const transition of ["replacement", "shutdown"] as const) {
+		const f = await focusFixture({ registered: true, visualsEnabled: true });
+		try {
+			for (let i = 0; i < 9; i++) f.send("\x1b[B");
+			f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r");
+			assert.equal(f.writes.at(-1)?.visualsEnabled, false);
+			if (transition === "replacement") await f.transition();
+			else f.shutdown();
+			f.complete({ kind: "closed" }); await f.showing;
+			f.resolveSave(); await flushFocus();
+			assert.ok(!f.lifecycle.includes("reload"));
+			const reopened = f.reopen(); await flushFocus();
+			for (let i = 0; i < 9; i++) f.send("\x1b[B");
+			assert.match(f.text(), /Current: on/, transition);
+			f.send("\x1b"); await reopened;
+		} finally { f.cleanup(); }
+	}
+});
+
 void test("Ctrl+Alt+O ignores a reload result after runtime shutdown", async () => {
 	const f = await focusFixture({ registered: true, shortcut: true });
 	try {
@@ -930,7 +988,7 @@ for (const shortcut of [false, true]) void test(`registered ${shortcut ? "Ctrl+A
 		assert.match(f.text(), /Agent mode: mixed/);
 		assert.doesNotMatch(readFileSync(path, "utf8"), /-\.\/index.ts/);
 		f.send("\x1b[C"); f.send("\x1b[F"); f.send("\r");
-		assert.match(f.text(), /> Cancel/); assert.ok(f.text().includes(path));
+		assert.match(f.text(), /> Cancel/); assert.ok(f.text().replace(/[║\s]/g, "").includes(path), f.text());
 		f.send("\r"); assert.equal(f.closes(), 0);
 		f.send("g"); f.text(); f.send("\x1b[B"); f.send("\r");
 		await f.showing;
@@ -1512,6 +1570,70 @@ void test("actual factory registers no TODO surfaces by default, and all three o
  }
 });
 
+void test("registered TODO and historical markers preserve legacy off-on-off ownership unless visuals are explicitly off", async (t) => {
+ t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+ const root = mkdtempSync(join(tmpdir(), "osdy-visual-ownership-"));
+ mkdirSync(join(root, "rpiv-todo"));
+ writeFileSync(join(root, "rpiv-todo", "config.json"), "{}");
+ writeFileSync(join(root, "settings.json"), JSON.stringify({ osdyPiTodoProvider: { version: 1, enabled: true, ownedExclusions: [] } }));
+ const previousDir = process.env.PI_CODING_AGENT_DIR; const previousConfig = process.env.XDG_CONFIG_HOME;
+ process.env.PI_CODING_AGENT_DIR = root; process.env.XDG_CONFIG_HOME = root;
+ try {
+  for (const visualsEnabled of [undefined, true, false]) {
+   let settings: GlobalEditorSettings = { version: 1, enabled: false, editorMode: "simple", workingTreeEnabled: false,
+    headerVariant: "osdy-theme", mascot: "current", ...(visualsEnabled === undefined ? {} : { visualsEnabled }) };
+   const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>();
+   const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
+   const widgets = new Map<string, boolean>();
+   type MarkerRenderer = (entry: { data: { role: string } }, options: { expanded: boolean }, theme: Theme) => Component | undefined;
+   let renderMarker: MarkerRenderer | undefined;
+   let todo: { execute(id: string, params: { action: "list" }, signal: undefined, update: undefined, ctx: ExtensionContext): Promise<{ details: { tasks: unknown[] } }> } | undefined;
+   let entries = 0;
+   const pi = {
+    on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => Promise<void> | void) => { handlers.set(name, [...(handlers.get(name) ?? []), handler]); },
+    registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
+    registerTool: (tool: NonNullable<typeof todo> & { name: string }) => { if (tool.name === "todo") todo = tool; },
+    registerEntryRenderer: (_name: string, renderer: MarkerRenderer) => { renderMarker = renderer; },
+    appendEntry: () => { entries++; }, registerShortcut: () => {}, registerFlag: () => {}, registerMessageRenderer: () => {},
+    exec: () => Promise.resolve({ code: 0, stdout: JSON.stringify(root), stderr: "", killed: false }), events: { on: () => () => {} },
+   } as unknown as ExtensionAPI;
+   const theme = { fg: (_color: string, text: string) => text } as Theme;
+   const ctx = { cwd: root, mode: "tui", hasUI: true, isIdle: () => true,
+    modelRegistry: { getProviderAuth: () => Promise.resolve(undefined) },
+    sessionManager: { getSessionId: () => "ownership", getBranch: () => [{ type: "message", message: { role: "toolResult", toolName: "todo",
+     details: { nextId: 2, tasks: [{ id: 1, subject: "Retained task", status: "pending" }] } } }] },
+    ui: { theme, notify: () => {}, getEditorComponent: () => undefined, setEditorComponent: () => {}, setHeader: () => {}, setFooter: () => {},
+     setWorkingVisible: () => {}, setWidget: (key: string, factory: unknown) => { widgets.set(key, factory !== undefined); } },
+   } as unknown as ExtensionCommandContext;
+   await registerOsdyPi(pi, { agentDir: () => root, readActiveProfile: () => Promise.resolve(undefined),
+    editorSettingsStore: { path: "/unused", load: () => Promise.resolve(settings), save: value => { settings = value; return Promise.resolve(); } } });
+   const emit = async (name: string, event: unknown = {}) => { for (const handler of handlers.get(name) ?? []) await handler(event, ctx); };
+   const marker = renderMarker?.({ data: { role: "assistant" } }, { expanded: false }, theme);
+   assert.deepEqual(marker?.render(40), [], "replay waits for loaded settings");
+   const expectedVisible = visualsEnabled !== false;
+   const assertVisibility = () => {
+    assert.equal(widgets.get("osdy-todos") === true, expectedVisible, `TODO visibility with visuals=${String(visualsEnabled)}`);
+    assert.equal(Boolean(marker?.render(40).length), expectedVisible, "historical marker visibility ignores legacy master");
+   };
+   try {
+    await emit("session_start"); assertVisibility();
+    await emit("message_start", { message: { role: "assistant" } });
+    await emit("message_end", { message: { role: "assistant", content: [{ type: "text", text: "answer" }] } });
+    assert.equal(entries, 0, "legacy off still prevents new markers");
+    assert.ok(todo); assert.ok(commands.has("todos"));
+    assert.equal((await todo.execute("list", { action: "list" }, undefined, undefined, ctx)).details.tasks.length, 1);
+    await commands.get("osdy-pi")!.handler("on", ctx); assertVisibility();
+    await commands.get("osdy-pi")!.handler("off", ctx); assertVisibility();
+    assert.equal(settings.visualsEnabled, visualsEnabled, "legacy persistence preserves the independent preference");
+    await emit("session_shutdown"); await emit("session_start"); assertVisibility();
+   } finally { await emit("session_shutdown"); }
+  }
+ } finally {
+  if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previousDir;
+  if (previousConfig === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = previousConfig;
+ }
+});
+
 void test("official SDK factory uses SDK cwd, not the safe process cwd, before TODO registration", async () => {
  const { loadExtensionFromFactory, createExtensionRuntime } = await import("../../node_modules/@earendil-works/pi-coding-agent/dist/core/extensions/loader.js");
  const { default: factory } = await import("../osdy-pi.js");
@@ -1776,9 +1898,9 @@ class TestSessionContextProvider {
 	}
 }
 
-void test("runtime wires standalone role markers to the existing enabled state", () => {
+void test("runtime wires distinct loaded marker creation and visual-only rendering gates", () => {
  const source = readFileSync(new URL("./runtime.ts", import.meta.url), "utf8");
- assert.match(source, /registerMessageRoleMarkers\(pi, \(\) => state\.enabled\)/);
+ assert.match(source, /registerMessageRoleMarkers\(pi, \(\) => usageSettingsReady && areVisualsEnabled\(state\),\s*\(\) => usageSettingsReady && state\.visualsEnabled !== false\)/);
  assert.equal(source.match(/registerMessageRoleMarkers\(pi, /g)?.length, 1);
 });
 
@@ -1787,7 +1909,7 @@ void test("runtime passes one session store to exactly one todo tool and command
  assert.equal(source.match(/createTodoSessionStore\(\)/g)?.length, 1);
  assert.equal(source.match(/registerTodoTool\(pi, todoStore\)/g)?.length, 1);
  assert.equal(source.match(/registerTodosCommand\(pi, todoStore\)/g)?.length, 1);
- assert.equal(source.match(/registerTodoWidget\(pi, todoStore\)/g)?.length, 1);
+ assert.equal(source.match(/if \(todoStore\) registerTodoWidget\(pi, todoStore, undefined, undefined, \(\) => state\.visualsEnabled !== false\)/g)?.length, 1);
 });
 
 void test("agents setup requires interactive confirmation and reloads only after success", async () => {
@@ -2025,7 +2147,7 @@ class IdleQuotaClock implements CodexUsageRefreshClock {
 	}
 }
 
-async function idleQuotaFixture() {
+async function idleQuotaFixture(visualsEnabled = true) {
 	const clock = new IdleQuotaClock();
 	const shortcuts = new Map<string, ShortcutRegistration>();
 	const authSessions: number[] = [];
@@ -2034,6 +2156,8 @@ async function idleQuotaFixture() {
 	const requests: Array<{ signal: AbortSignal; resolve(snapshot: CodexUsageSnapshot): void; reject(error: Error): void }> = [];
 	let enabled = true; let hasUI = true; let idle = true; let provider = "openai-codex"; let mode = "tui";
 	let session = 0; let authCalls = 0; let panel: Component | undefined;
+	let visualMounts = 0;
+	const writes: GlobalEditorSettings[] = [];
 	const snapshot = (fetchedAt: number): CodexUsageSnapshot => ({ fetchedAt, planType: "plus", ordinaryUsageAllowed: true,
 		buckets: [], credits: undefined });
 	const pi = { registerCommand: (name: string, command: { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }) => commands.set(name, command),
@@ -2050,8 +2174,8 @@ async function idleQuotaFixture() {
 		get model() { return { provider, id: "fake-codex", name: `session-${session}` }; }, isIdle: () => idle,
 		getThinkingLevel: () => "off", modelRegistry: { getProviderAuth: () => {
 			authCalls++; authSessions.push(generation); return Promise.resolve({ auth: { apiKey: accessToken } });
-		} }, ui: { getEditorComponent: () => undefined, setEditorComponent: () => {}, setHeader: () => {}, setFooter: () => {},
-			setWidget: () => {}, setWorkingVisible: () => {}, notify: () => {},
+		} }, ui: { getEditorComponent: () => undefined, setEditorComponent: () => { visualMounts++; }, setHeader: () => { visualMounts++; }, setFooter: () => { visualMounts++; },
+			setWidget: () => { visualMounts++; }, setWorkingVisible: () => { visualMounts++; }, notify: () => {},
 			custom: (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component) => {
 				panel = factory({ requestRender: () => {} }, { fg: (_color: string, text: string) => text }, undefined, () => {});
 				return Promise.resolve();
@@ -2066,8 +2190,8 @@ async function idleQuotaFixture() {
 	try {
 		await registerOsdyPi(pi, { readActiveProfile: () => Promise.resolve(undefined), codexUsageClock: clock,
 			fetchCodexUsage: (_auth, { signal }) => new Promise((resolve, reject) => { requests.push({ signal, resolve, reject }); }),
-			editorSettingsStore: { path: "/unused", save: () => Promise.resolve(), load: () => Promise.resolve({
-				version: 1, enabled, editorMode: "simple", headerVariant: "osdy-theme", mascot: "current", workingTreeEnabled: false,
+			editorSettingsStore: { path: "/unused", save: settings => { writes.push(settings); return Promise.resolve(); }, load: () => Promise.resolve({
+				version: 1, enabled, visualsEnabled, editorMode: "simple", headerVariant: "osdy-theme", mascot: "current", workingTreeEnabled: false,
 			}) },
 		});
 	} finally {
@@ -2079,7 +2203,7 @@ async function idleQuotaFixture() {
 		assert.ok(handler, `runtime ${name} handler must be registered`);
 		await handler({}, ctx); await clock.advance(0);
 	};
-	return { clock, requests, snapshot, authSessions, authCalls: () => authCalls, context: () => ctx,
+	return { clock, requests, snapshot, authSessions, writes, commands, visualMounts: () => visualMounts, authCalls: () => authCalls, context: () => ctx,
 		start: () => lifecycle("session_start"), stop: () => lifecycle("session_shutdown"), settle: () => lifecycle("agent_settled"),
 		replace: async () => { session++; ctx = makeContext(); await lifecycle("session_start"); },
 		manual: async () => { await commands.get("usage")!.handler("", ctx as ExtensionCommandContext); await clock.advance(0); },
@@ -2099,6 +2223,23 @@ async function idleQuotaFixture() {
 		complete: async (index: number, at = index) => { requests[index]!.resolve(snapshot(at)); await clock.advance(0); },
 	};
 }
+
+void test("visual-only off retains startup, idle, settlement and explicit quota refresh", async () => {
+	const f = await idleQuotaFixture(false);
+	try {
+		await f.start(); assert.equal(f.requests.length, 1);
+		await f.complete(0); await f.clock.advance(60_000); assert.equal(f.requests.length, 2);
+		await f.complete(1); await f.settle(); assert.equal(f.requests.length, 3);
+		await f.complete(2); await f.shortcut(); assert.equal(f.requests.length, 4);
+		await f.complete(3);
+		assert.equal(f.visualMounts(), 0, "startup, settlement and quota panels never claim automatic visual surfaces");
+		for (const name of ["osdyConfig", "osdy-account", "osdy-usage"]) assert.ok(f.commands.has(name));
+		await f.visual("off"); assert.equal(f.writes.at(-1)?.enabled, false);
+		await f.visual("on");
+		assert.equal(f.writes.at(-1)?.enabled, true);
+		assert.equal(f.writes.at(-1)?.visualsEnabled, false, "legacy master changes preserve the separate preference");
+	} finally { await f.stop(); }
+});
 
 void test("registered idle quota runtime respects timing, in-flight manual requests and settlement", async () => {
 	const f = await idleQuotaFixture();
@@ -2249,11 +2390,11 @@ void test("agent and tool completion reclaim the Gentle changed-files widget", (
 	assert.ok(toolExecutionEndHandler);
 	assert.match(
 		agentEndHandler,
-		/if \(state\.enabled\) clearGentleShellChangesWidget\(ctx\)/,
+		/if \(areVisualsEnabled\(state\)\) clearGentleShellChangesWidget\(ctx\)/,
 	);
 	assert.match(
 		toolExecutionEndHandler,
-		/if \(state\.enabled\) clearGentleShellChangesWidget\(ctx\)/,
+		/if \(areVisualsEnabled\(state\)\) clearGentleShellChangesWidget\(ctx\)/,
 	);
 });
 

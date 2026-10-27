@@ -17,8 +17,8 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 const { CONTROL_CENTER_CATEGORIES, ControlCenter } = await import("./control-center.js");
 const { createControlCenterSpeech } = await import("./control-center-speech.js");
 
-void test("Speech appends after all existing categories without changing their indices", () => {
-	assert.deepEqual([...CONTROL_CENTER_CATEGORIES], ["Theme", "Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage", "TODO", "Agents", "Speech"]);
+void test("Speech remains last after Visuals and Agents", () => {
+	assert.deepEqual([...CONTROL_CENTER_CATEGORIES], ["Theme", "Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage", "TODO", "Visuals", "Agents", "Speech"]);
 });
 
 void test("Speech displays enabled/voice/rate and routes only Enable/Disable, Read last response and Stop", async () => {

@@ -1,4 +1,4 @@
-import type { OsdyState, WorkingActivity, WorkingWidgetState } from "./types.js";
+import { areVisualsEnabled, type OsdyState, type WorkingActivity, type WorkingWidgetState } from "./types.js";
 import { classifyWorkingActivity, WORKING_ACTIVITY_LABELS } from "./working-activity.js";
 import { childActivityState, childAssignmentState, type ChildWorkingState } from "./working-child-activity.js";
 
@@ -14,7 +14,7 @@ export type WorkingController = {
 };
 
 export function createWorkingController(
-	state: Pick<OsdyState, "enabled">,
+	state: Pick<OsdyState, "enabled" | "visualsEnabled">,
 	workingState: WorkingWidgetState,
 ): WorkingController {
 	let activeAgent = false;
@@ -55,7 +55,7 @@ export function createWorkingController(
 		const child = current?.childState ?? current?.assignmentState;
 		setActivity(child?.activity ?? current?.activity ?? "thinking");
 		if (child) workingState.label = child.label;
-		if (!state.enabled || (!activeAgent && activeTools.size === 0)) {
+		if (!areVisualsEnabled(state) || (!activeAgent && activeTools.size === 0)) {
 			stopWorking();
 			return;
 		}

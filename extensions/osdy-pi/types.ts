@@ -23,10 +23,16 @@ export const DEFAULT_EDITOR_MODE = EDITOR_MODES.AUTO;
 export interface GlobalEditorSettings {
 	version: number;
 	enabled: boolean;
+	/** Missing in older v1 settings means visuals are enabled. */
+	visualsEnabled?: boolean;
 	editorMode: EditorMode;
 	workingTreeEnabled: boolean;
 	headerVariant: HeaderVariant;
 	mascot: MascotChoice;
+}
+
+export function areVisualsEnabled(state: Pick<OsdyState, "enabled" | "visualsEnabled">): boolean {
+	return state.enabled && state.visualsEnabled !== false;
 }
 
 export function resolveEffectiveEditorMode(
@@ -62,6 +68,7 @@ export type OsdyState = {
 	/** Volatile response reading; never persisted as usage or settings. */
 	generation?: GenerationReading;
 	enabled: boolean;
+	visualsEnabled?: boolean;
 	/** Actual mounted editor, including while a desired change is deferred. */
 	editorEffective: boolean;
 	/** Volatile interaction ownership; never saved in global settings. */

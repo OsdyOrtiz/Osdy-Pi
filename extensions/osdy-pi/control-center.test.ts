@@ -504,7 +504,7 @@ void test("empty feedback preserves the current theme summary on short terminals
 
 void test("empty feedback preserves focus and position with ANSI colors", () => {
 	const f = fixture();
-	assert.match(f.panel.render(80).join("\n"), /categories: 1\/11/);
+	assert.match(f.panel.render(80).join("\n"), /categories: 1\/12/);
 	f.panel.handleInput(right);
 	assert.match(f.panel.render(80).join("\n"), /detail: 1\/2/);
 	f.panel.handleInput(down);

@@ -7,6 +7,7 @@ type Marker = { role: "assistant" };
 export function registerMessageRoleMarkers(
  pi: Pick<ExtensionAPI, "on" | "appendEntry" | "registerEntryRenderer"> & Partial<Pick<ExtensionAPI, "getSettings">>,
  isEnabled: () => boolean,
+ isVisible: () => boolean = () => true,
 ): void {
  let pendingAssistant = false;
  const eligible = (ctx: ExtensionContext): boolean => isEnabled() && ctx.mode === "tui" && ctx.hasUI;
@@ -21,7 +22,12 @@ export function registerMessageRoleMarkers(
  pi.registerEntryRenderer<Marker>(ENTRY_TYPE, (entry, _options, theme) => {
   const role = entry.data?.role;
   if (role !== "assistant") return undefined;
-  return createAssistantMarker(theme, () => pi.getSettings?.().terminal?.showImages !== false);
+  const marker = createAssistantMarker(theme, () => pi.getSettings?.().terminal?.showImages !== false);
+  // Historical entries stay intact; both replay and already-created rows honor visibility.
+  return {
+   render: (width: number) => isVisible() ? marker.render(width) : [],
+   invalidate: () => marker.invalidate(),
+  };
  });
  pi.on("message_start", (event, ctx) => {
   if (event.message.role === "user") {

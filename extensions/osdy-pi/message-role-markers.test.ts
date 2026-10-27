@@ -24,7 +24,7 @@ const { registerMessageRoleMarkers } = await import("./message-role-markers.js")
 
 type Handler = (event: { message?: { role: string } }, ctx: ExtensionContext) => void;
 type TestRenderer = (entry: { data?: { role?: unknown } }, options: { expanded: boolean }, theme: { fg: (color: string, text: string) => string }) => { render(width: number): string[] } | undefined;
-function harness(mode = "tui", enabled = true, settingsAvailable = true) {
+function harness(mode = "tui", enabled = true, settingsAvailable = true, isVisible?: () => boolean) {
  const handlers = new Map<string, Handler>();
  const entries: Array<{ type: "custom"; customType: string; data: { role: string } }> = [];
  const timeline: string[] = [];
@@ -38,7 +38,7 @@ function harness(mode = "tui", enabled = true, settingsAvailable = true) {
   appendEntry: (type: string, data: { role: string }) => { entries.push({ type: "custom", customType: type, data }); timeline.push(`marker:${data.role}`); },
   registerEntryRenderer: (type: string, render: unknown) => { customType = type; renderer = render as TestRenderer; },
  } as unknown as ExtensionAPI;
- registerMessageRoleMarkers(pi, () => enabled);
+ registerMessageRoleMarkers(pi, () => enabled, isVisible);
  const emit = (name: string, message?: { role: string }) => { handlers.get(name)?.(message ? { message } : {}, ctx); if (name === "message_start" && message) timeline.push(`native:${message.role}`); };
  return { setShowImages: (value: boolean) => { showImages = value; }, emit, entries, timeline, ctx, get renderer() { return renderer; }, get customType() { return customType; }, setEnabled: (value: boolean) => { enabled = value; } };
 }
@@ -59,6 +59,34 @@ void test("supported images replace only the standalone marker and settings are 
  } finally {
   setCapabilities({ images: null, trueColor: true, hyperlinks: false });
  }
+});
+
+void test("historical and already-mounted markers honor dedicated visual visibility without deleting entries", () => {
+ let visualsVisible = true;
+ const h = harness("tui", true, true, () => visualsVisible); const theme = { fg: (_color: string, text: string) => text };
+ h.emit("message_start", message("assistant", 1));
+ h.emit("message_end", message("assistant", 1, [{ type: "text", text: "answer" }]));
+ const marker = h.renderer?.(h.entries[0]!, { expanded: false }, theme);
+ assert.ok(marker?.render(40).length);
+ visualsVisible = false; h.setEnabled(false);
+ assert.deepEqual(marker?.render(40), []);
+ assert.deepEqual(h.renderer?.(h.entries[0]!, { expanded: false }, theme)?.render(40), []);
+ h.emit("message_start", message("assistant", 2));
+ h.emit("message_end", message("assistant", 2, [{ type: "text", text: "hidden" }]));
+ assert.equal(h.entries.length, 1);
+ visualsVisible = true; assert.ok(marker?.render(40).length); assert.equal(h.entries.length, 1);
+});
+
+void test("legacy disabled creation gate leaves historical and already-created marker rows visible by default", () => {
+ const h = harness(); const theme = { fg: (_color: string, text: string) => text };
+ const entry = { data: { role: "assistant" } };
+ const marker = h.renderer?.(entry, { expanded: false }, theme);
+ h.setEnabled(false);
+ assert.ok(marker?.render(40).length);
+ assert.ok(h.renderer?.(entry, { expanded: false }, theme)?.render(40).length);
+ h.emit("message_start", message("assistant", 1));
+ h.emit("message_end", message("assistant", 1, [{ type: "text", text: "answer" }]));
+ assert.equal(h.entries.length, 0, "legacy off still suppresses creation");
 });
 
 void test("older hosts without getSettings remain compatible", () => {

@@ -45,6 +45,29 @@ class MemoryEditorSettingsFileSystem implements EditorSettingsFileSystem {
 	private pendingContent = "";
 }
 
+void test("visual-only preference defaults on for old v1 files and round-trips independently of legacy master", async () => {
+	for (const value of [undefined, null, "false", 0]) {
+		assert.equal(normalizeEditorSettings({ version: 1, visualsEnabled: value }).visualsEnabled ?? true, true);
+	}
+	const fs = new MemoryEditorSettingsFileSystem();
+	const store = createEditorSettingsStore("/agent/extensions/osdy-pi/settings.json", fs);
+	for (const enabled of [true, false]) for (const visualsEnabled of [true, false]) {
+		const settings = { ...normalizeEditorSettings({ version: 1 }), enabled, visualsEnabled, headerVariant: "neon" as const, mascot: "bts" as const };
+		await store.save(settings);
+		assert.deepEqual(await store.load(), settings);
+	}
+});
+
+void test("failed visual preference replacement preserves persisted settings", async () => {
+	const fs = new MemoryEditorSettingsFileSystem();
+	const store = createEditorSettingsStore("/agent/extensions/osdy-pi/settings.json", fs);
+	const before = { ...normalizeEditorSettings({ version: 1 }), visualsEnabled: true };
+	await store.save(before);
+	fs.rename = () => Promise.reject(new Error("disk full"));
+	await assert.rejects(store.save({ ...before, visualsEnabled: false }), /disk full/);
+	assert.deepEqual(await store.load(), before);
+});
+
 void test("editor settings preserve version-one header choices and fall back safely", async () => {
 	assert.deepEqual(HEADER_VARIANT_CHOICES, ["osdy-theme", "neon"]);
 	assert.equal(

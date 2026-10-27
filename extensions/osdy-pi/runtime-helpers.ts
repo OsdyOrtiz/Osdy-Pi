@@ -6,6 +6,7 @@ import { asciiAnimationMode } from "./animation.js";
 import { WORKING_TREE_WIDGET_KEY, WORKING_WIDGET_KEY } from "./constants.js";
 import { modelLabel, usageLabel } from "./metrics.js";
 import {
+	areVisualsEnabled,
 	resolveEffectiveEditorMode,
 	type OsdyState,
 	type WorkingTreeState,
@@ -30,7 +31,7 @@ export function clearGentleShellChangesWidget(ctx: ExtensionContext): void {
 function workingTreeEffective(
 	state: OsdyState,
 ): "visible" | "hidden" | "unmounted" {
-	if (!state.enabled || !state.workingTreeEnabled) return "unmounted";
+	if (!areVisualsEnabled(state) || !state.workingTreeEnabled) return "unmounted";
 	return state.smallMode ? "hidden" : "visible";
 }
 
@@ -47,8 +48,9 @@ function desiredSmallMode(state: OsdyState): boolean {
 
 /** Only editor reconstruction is deferred: all other visual owners stay live. */
 function reconcileEditorMount(pi: ExtensionAPI, ctx: ExtensionContext, state: OsdyState): void {
-	const extended = state.enabled && resolveEffectiveEditorMode(state.editorMode, state.smallMode) === "extended";
-	if (state.enabled && state.editorEffective === extended && !state.editorSessionRemountPending) {
+	const visuals = areVisualsEnabled(state);
+	const extended = visuals && resolveEffectiveEditorMode(state.editorMode, state.smallMode) === "extended";
+	if (visuals && state.editorEffective === extended && !state.editorSessionRemountPending) {
 		state.editorReconcilePending = false;
 		return;
 	}
@@ -57,12 +59,12 @@ function reconcileEditorMount(pi: ExtensionAPI, ctx: ExtensionContext, state: Os
 		return;
 	}
 	if (extended) mountOsdyEditor(pi, ctx, state);
-	else if (state.enabled) unmountOsdyEditor(ctx);
+	else if (visuals) unmountOsdyEditor(ctx);
 	else ctx.ui.setEditorComponent(state.fallbackEditorFactory);
 	state.editorEffective = extended;
 	state.editorReconcilePending = false;
 	state.editorSessionRemountPending = false;
-	if (!state.enabled) state.tui = undefined;
+	if (!visuals) state.tui = undefined;
 }
 
 export function reconcileResponsiveUi(
@@ -72,8 +74,8 @@ export function reconcileResponsiveUi(
 	workingTreeState: WorkingTreeState,
 ): void {
 	if (!ctx.hasUI) return;
-	if (!state.enabled) {
-		if (state.editorReconcilePending) reconcileEditorMount(pi, ctx, state);
+	if (!areVisualsEnabled(state)) {
+		if (state.editorEffective || state.editorReconcilePending) reconcileEditorMount(pi, ctx, state);
 		return;
 	}
 	const nextSmallMode = desiredSmallMode(state);
@@ -100,7 +102,7 @@ export function createResponsiveCoordinator(
 			if (timer) return;
 			reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 			timer = setInterval(() => {
-				if (!state.enabled && !state.editorReconcilePending) {
+				if (!areVisualsEnabled(state) && !state.editorReconcilePending) {
 					this.stop();
 					return;
 				}
@@ -135,7 +137,7 @@ export function syncWorkingTreeWidget(
 	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
 ): void {
-	if (!state.enabled || !state.workingTreeEnabled) {
+	if (!areVisualsEnabled(state) || !state.workingTreeEnabled) {
 		ctx.ui.setWidget(WORKING_TREE_WIDGET_KEY, undefined);
 		return;
 	}
@@ -157,6 +159,7 @@ export function mountOsdyUi(
 	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
 ): void {
+	if (!areVisualsEnabled(state)) return;
 	ctx.ui.setHeader(createHeaderComponent(pi, ctx, state));
 	ctx.ui.setFooter((tui, theme, footerData) => {
 		state.tui = tui;
@@ -180,7 +183,7 @@ export function applyOsdyPi(
 	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
 ): void {
-	if (!ctx.hasUI) return;
+	if (!ctx.hasUI || !areVisualsEnabled(state)) return;
 	mountOsdyUi(pi, ctx, state, workingState, workingTreeState);
 }
 

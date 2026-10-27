@@ -35,7 +35,7 @@ function row(task: TodoTask, theme: Theme, ids: boolean): string {
  return `${glyph}${id} ${subject}${form}${dependencies}`;
 }
 
-export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () => TodoConfig = loadTodoConfig, i18n: TodoI18n = todoI18n): void {
+export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () => TodoConfig = loadTodoConfig, i18n: TodoI18n = todoI18n, isEnabled: () => boolean = () => true): void {
  const shortcut = resolveCollapseKey(config());
  let foreground: string | undefined;
  let ui: ExtensionUIContext | undefined;
@@ -48,7 +48,7 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
  const visible = () => store.get(foreground ?? "").tasks.filter((task) => task.status !== "deleted");
  const render = (theme: Theme, width: number): string[] => {
   const tasks = visible();
-  if (!tasks.length) return [];
+  if (!isEnabled() || !tasks.length) return [];
   const trunc = (line: string) => truncateToWidth(line, width, "…");
   const done = tasks.filter((task) => task.status === "completed").length;
   const active = tasks.length !== done;
@@ -82,7 +82,7 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
   return lines;
  };
  const handleMouse = (event: TuiMouseEvent): TuiMouseEventResult | undefined => {
-  if (tui?.mode !== "fullscreen" || !visible().length) return undefined;
+  if (!isEnabled() || tui?.mode !== "fullscreen" || !visible().length) return undefined;
   if (event.type === "click" && event.button === "left" && event.y === 0) {
    collapsed = false; expanded = !expanded; offset = 0;
   } else if (event.type === "wheel" && expanded && !collapsed) {
@@ -98,7 +98,7 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
  const refresh = () => {
   clampOffset(visible().length);
   if (!ui) return;
-  if (!visible().length) {
+  if (!isEnabled() || !visible().length) {
    if (mounted) { ui.setWidget(KEY, undefined); mounted = false; tui = undefined; }
   } else if (!mounted) {
    ui.setWidget(KEY, (host, theme) => {
@@ -132,7 +132,7 @@ export function registerTodoWidget(pi: ExtensionAPI, store: Store, config: () =>
   if (event.toolName === "todo" && event.isError !== true && foregroundEvent(ctx)) refresh();
  });
  if (shortcut !== COLLAPSE_KEY_OFF) pi.registerShortcut(shortcut as Parameters<ExtensionAPI["registerShortcut"]>[0], { description: "Collapse or expand the todo widget", handler: (ctx) => {
-  if (!foregroundEvent(ctx) || !mounted) return;
+  if (!isEnabled() || !foregroundEvent(ctx) || !mounted) return;
   collapsed = !collapsed; tui?.requestRender(true);
  } });
 }

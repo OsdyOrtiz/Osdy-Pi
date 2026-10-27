@@ -28,7 +28,7 @@ const { createTodoSessionStore } = await import("./todo-session.js");
 const { applyTodo } = await import("./todo-domain.js");
 const { visibleWidth, Container } = await import("@earendil-works/pi-tui");
 const theme = { fg: (_color: string, text: string) => text, strikethrough: (text: string) => `~${text}~` };
-function harness(config: () => TodoConfig = () => ({}), i18n?: TodoI18n) {
+function harness(config: () => TodoConfig = () => ({}), i18n?: TodoI18n, isEnabled: () => boolean = () => true) {
  type Context = { hasUI: boolean; ui: typeof ui; sessionManager: { getSessionId(): string } };
  type Factory = (tui: { mode: TuiMode; requestRender(force?: boolean): void }, theme: Theme) => Component;
  const handlers = new Map<string, ((event: { toolName?: string }, ctx: Context) => void)[]>();
@@ -38,7 +38,7 @@ function harness(config: () => TodoConfig = () => ({}), i18n?: TodoI18n) {
  const ui = { theme, expanded: false, getToolsExpanded() { return this.expanded; }, setWidget(key: string, factory: Factory | undefined, options?: { placement: string }) { widgets.push({ key, factory, options }); } };
  const pi = { on(name: string, handler: (event: { toolName?: string }, ctx: Context) => void) { handlers.set(name, [...(handlers.get(name) ?? []), handler]); }, registerShortcut(key: string, options: { handler(ctx: Context): void }) { shortcuts.set(key, (ctx) => options.handler(ctx)); } };
  const store = createTodoSessionStore();
- registerTodoWidget(pi as unknown as ExtensionAPI, store, config, i18n);
+ registerTodoWidget(pi as unknown as ExtensionAPI, store, config, i18n, isEnabled);
  const ctx = (id: string, hasUI = true, panel = ui): Context => ({ hasUI, ui: panel, sessionManager: { getSessionId: () => id } });
  const emit = (name: string, context: Context, event: { toolName?: string } = {}) => { for (const handler of handlers.get(name) ?? []) handler(event, context); };
  const state = (id: string, tasks: { id: number; subject: string; status: "pending" | "in_progress" | "completed" | "deleted"; blockedBy?: number[]; activeForm?: string }[]) => store.set(id, { tasks, nextId: Math.max(1, ...tasks.map((t) => t.id + 1)) });
@@ -66,6 +66,19 @@ function harness(config: () => TodoConfig = () => ({}), i18n?: TodoI18n) {
  return { ui, host, widgets, renders, shortcuts, ctx, emit, state, action, lines, mouse, store };
 }
 const task = (id: number, status: "pending" | "in_progress" | "completed" | "deleted" = "pending", extra: { activeForm?: string; blockedBy?: number[] } = {}) => ({ id, status, subject: `Task ${id}`, ...extra });
+
+void test("visuals off suppresses startup and tool-refresh widgets without losing TODO state", () => {
+ let enabled = false;
+ const h = harness(undefined, undefined, () => enabled); const c = h.ctx("main");
+ h.state("main", [task(1)]); h.emit("session_start", c);
+ assert.equal(h.widgets.length, 0);
+ h.action("main", "create", "Still functional");
+ h.emit("tool_execution_end", c, { toolName: "todo" });
+ assert.equal(h.store.get("main").tasks.length, 2); assert.equal(h.widgets.length, 0);
+ enabled = true; h.emit("session_tree", c); assert.match(h.lines().join("\n"), /Still functional/);
+ enabled = false; assert.deepEqual(h.lines(), [], "an already-mounted renderer also honors visibility");
+ h.emit("tool_execution_end", c, { toolName: "todo" }); assert.equal(h.widgets.at(-1)?.factory, undefined);
+});
 
 void test("foreground widget renders glyphs, ids, metadata and truncates by terminal width", () => {
  const h = harness(); const c = h.ctx("main"); h.emit("session_start", c);

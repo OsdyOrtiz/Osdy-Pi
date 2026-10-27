@@ -44,6 +44,7 @@ import {
 } from "./runtime-helpers.js";
 import { runSoundSetupWizard } from "./sound-setup-wizard.js";
 import {
+	areVisualsEnabled,
 	DEFAULT_EDITOR_MODE,
 	EDITOR_MODES,
 	HEADER_VARIANT_CHOICES,
@@ -98,7 +99,7 @@ function scheduleOsdyRefresh(
 ): void {
 	const timeout = setTimeout(() => {
 		pendingRefreshes.delete(timeout);
-		if (state.enabled && isCurrentSession())
+		if (areVisualsEnabled(state) && isCurrentSession())
 			applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
 	}, delayMs);
 	pendingRefreshes.add(timeout);
@@ -113,7 +114,7 @@ function claimOsdyVisualLayer(
 	pendingRefreshes: Set<ReturnType<typeof setTimeout>>,
 	isCurrentSession: () => boolean,
 ): void {
-	if (!state.enabled) return;
+	if (!areVisualsEnabled(state)) return;
 	applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
 	for (const delayMs of [300, 1000]) {
 		scheduleOsdyRefresh(
@@ -154,6 +155,7 @@ async function saveVisualSettings(
 		await settingsStore.save({
 			version: 1,
 			enabled: state.enabled,
+			...(state.visualsEnabled !== undefined ? { visualsEnabled: state.visualsEnabled } : {}),
 			editorMode: state.editorMode,
 			workingTreeEnabled: state.workingTreeEnabled,
 			headerVariant: state.headerVariant,
@@ -165,7 +167,7 @@ async function saveVisualSettings(
 	}
 }
 
-/** Shared by inline controls and legacy commands; save failure never rolls back live state. */
+/** Per-visual choices apply live; the visual-only switch commits after saving. */
 export async function applyVisualPreference(
 	action: VisualPreferenceAction,
 	pi: ExtensionAPI,
@@ -174,13 +176,21 @@ export async function applyVisualPreference(
 	workingState: WorkingWidgetState,
 	workingTreeState: WorkingTreeState,
 	settingsStore: ReturnType<typeof createEditorSettingsStore>,
+	isCurrent: () => boolean = () => true,
 ): Promise<boolean> {
+	if (action.kind === "visuals") {
+		// Persist a candidate first: failed saves leave both live and stored preference unchanged.
+		const candidate = { ...state, visualsEnabled: action.value };
+		if (!await saveVisualSettings(candidate, settingsStore) || !isCurrent()) return false;
+		state.visualsEnabled = action.value;
+		return true;
+	}
 	switch (action.kind) {
 		case "header": state.headerVariant = action.value; break;
 		case "mascot": state.mascot = action.value; break;
 		case "editor": state.editorMode = action.value; break;
 	}
-	if (state.enabled) {
+	if (areVisualsEnabled(state)) {
 		if (action.kind === "editor") reconcileResponsiveUi(pi, ctx, state, workingTreeState);
 		else applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
 	}
@@ -492,14 +502,14 @@ function handleWorkingTreePositionCommand(
 ): void {
 	if (action === "top") {
 		state.workingTreePlacement = "aboveEditor";
-		if (state.enabled)
+		if (areVisualsEnabled(state))
 			applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
 		ctx.ui.notify("osdy-pi working tree position: top", "info");
 		return;
 	}
 	if (action === "bottom") {
 		state.workingTreePlacement = "belowEditor";
-		if (state.enabled)
+		if (areVisualsEnabled(state))
 			applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
 		ctx.ui.notify("osdy-pi working tree position: bottom", "info");
 		return;
@@ -713,7 +723,7 @@ async function openDiffCommand(
 	try {
 		await showWorkingTreeDiffPanel(pi, ctx, workingTreeState);
 	} finally {
-		if (state.enabled) {
+		if (areVisualsEnabled(state)) {
 			applyOsdyPi(pi, ctx, state, workingState, workingTreeState);
 		}
 	}
@@ -933,12 +943,20 @@ function registerCommand(
 		const useReset = ctx.hasUI && ctx.mode === "tui" ? await bindReset(ctx) : undefined;
 		if (!isCurrent()) return;
 		const completion: { result: ControlCenterResult } = { result: { kind: "closed" } };
+		let visualsSaved = false;
+		const visualsWereEnabled = areVisualsEnabled(state);
 		await withEditorMountHold(pi, ctx, state, workingTreeState, async () => {
 			completion.result = await showControlCenter(ctx, {
 				snapshot: () => state,
-				apply: (action) => isCurrent()
-					? applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore)
-					: Promise.resolve(false),
+				apply: (action) => {
+					if (!isCurrent()) return Promise.resolve(false);
+					const applying = applyVisualPreference(action, pi, ctx, state, workingState, workingTreeState, editorSettingsStore, isCurrent);
+					if (action.kind !== "visuals") return applying;
+					return applying.then(saved => {
+						if (saved && isCurrent()) visualsSaved = true;
+						return saved;
+					});
+				},
 			}, {
 				git: createControlCenterGit({
 					snapshot: () => ({ enabled: state.workingTreeEnabled, placement: state.workingTreePlacement }),
@@ -959,16 +977,23 @@ function registerCommand(
 				agents: createControlCenterAgents({ agentDir: todoAgentDir(), cwd: ctx.cwd,
 					env: { ...process.env }, isIdle: () => ctx.isIdle(), isCurrent }),
 			});
-		}, isCurrent);
+		}, () => isCurrent() && !(visualsSaved && completion.result.kind === "reload"));
+		// Visual switching reconciles below (off) or in the replacement runtime (on).
 		// Disposal and hold release precede either effect; check freshness without another await.
-		if (completion.result.kind === "reload" && isCurrent()) await onReloadRequired();
+		if (completion.result.kind === "reload" && isCurrent()) {
+			if (visualsSaved && visualsWereEnabled && !areVisualsEnabled(state)) {
+				controller.stopWorking();
+				disableOsdyPi(ctx, state);
+			}
+			await onReloadRequired();
+		}
 		else if (completion.result.kind === "codex-reset" && isCurrent() && useReset) {
 			await useReset();
 			if (isCurrent()) ctx.ui.notify("Control Center closed. Reopen Usage to view or check banked resets.", "info");
 		}
 	};
 	pi.registerCommand("osdyConfig", {
-		description: "Open Osdy Control Center (preferences, Git, Sounds, Account, Usage, TODO, Agents and Speech).",
+		description: "Open Osdy Control Center (Visuals, preferences, Git, Sounds, Account, Usage, TODO, Agents and Speech).",
 		handler: async (_args, ctx) => openControlCenter(ctx, async () => {
 			// Keep reload bound to the command context; never use that context afterward.
 			try { await ctx.reload(); } catch { return; }
@@ -991,7 +1016,7 @@ function registerCommand(
 	});
 	pi.registerCommand("osdy-pi", {
 		description:
-			"Manage Osdy Pi: visual on/off, status, todo on/off/status, agents, mascot, editor, sound, speech on|off|status|stop|last, working tree, or diff.",
+			"Manage Osdy Pi: legacy master on/off, status, todo on/off/status, agents, mascot, editor, sound, speech on|off|status|stop|last, working tree, or diff.",
 		getArgumentCompletions: getOsdyCommandCompletions,
 		handler: async (args, ctx) => {
 			const [action = "status", ...rest] = parseCommandArgs(args);
@@ -1199,13 +1224,11 @@ export async function registerOsdyPi(
 	const settingsStore = createAudioSoundSettingsStore();
 	const editorSettingsStore = dependencies.editorSettingsStore ?? createEditorSettingsStore();
 	registerAudioNotificationFlags(pi);
-	registerMessageRoleMarkers(pi, () => state.enabled);
  const todoActive = await sdkTodoActive(pi);
- if (todoActive) {
-  const todoStore = createTodoSessionStore();
+ const todoStore = todoActive ? createTodoSessionStore() : undefined;
+ if (todoStore) {
   registerTodoTool(pi, todoStore);
   registerTodosCommand(pi, todoStore);
-  registerTodoWidget(pi, todoStore);
  }
 	const audioRouter = createAudioEventRouter(
 		createAudioNotificationService(
@@ -1220,6 +1243,8 @@ export async function registerOsdyPi(
 	let sessionContext: ExtensionContext | undefined;
 	let runtimeGeneration = 0;
 	let usageSettingsReady = false;
+	registerMessageRoleMarkers(pi, () => usageSettingsReady && areVisualsEnabled(state),
+		() => usageSettingsReady && state.visualsEnabled !== false);
 	let codexUsageAbort: AbortController | undefined;
 	const resetAborts = new Set<AbortController>();
 	const getResetContext = async (): Promise<CodexResetContext | undefined> => {
@@ -1370,7 +1395,7 @@ export async function registerOsdyPi(
 		presentGeneration(generationMeter.interrupt());
 		controller.onAgentEnd();
 		audioRouter.onAgentEnd(ctx);
-		if (state.enabled) clearGentleShellChangesWidget(ctx);
+		if (areVisualsEnabled(state)) clearGentleShellChangesWidget(ctx);
 	});
 	pi.on("agent_settled", () => {
 		const activeSessionContext = sessionContext;
@@ -1391,9 +1416,9 @@ export async function registerOsdyPi(
 	pi.on("tool_execution_end", (event, ctx) => {
 		controller.onToolEnd(event.toolCallId);
 		audioRouter.onToolExecutionEnd(event.isError === true, ctx);
-		if (state.enabled) clearGentleShellChangesWidget(ctx);
+		if (areVisualsEnabled(state)) clearGentleShellChangesWidget(ctx);
 		if (
-			state.enabled &&
+			areVisualsEnabled(state) &&
 			state.workingTreeEnabled &&
 			event.isError !== true &&
 			shouldRefreshWorkingTree(event.toolName)
@@ -1455,6 +1480,8 @@ export async function registerOsdyPi(
 		const editorSettings = await editorSettingsStore.load();
 		if (sessionContext !== ctx) return;
 		state.fallbackEditorFactory = ctx.ui.getEditorComponent();
+		if (editorSettings.visualsEnabled === undefined) delete state.visualsEnabled;
+		else state.visualsEnabled = editorSettings.visualsEnabled;
 		state.enabled = editorSettings.enabled;
 		usageSettingsReady = true;
 		idleUsageRefresh.start();
@@ -1473,13 +1500,15 @@ export async function registerOsdyPi(
 			pendingOsdyRefreshes,
 			() => sessionContext === ctx,
 		);
-		startResponsive();
-		if (state.workingTreeEnabled) {
+		if (areVisualsEnabled(state)) startResponsive();
+		if (areVisualsEnabled(state) && state.workingTreeEnabled) {
 			void refreshWorkingTree(pi, ctx, workingTreeState);
 		}
 		void refreshCurrentCodexUsage(ctx);
 	});
 
+	// Registered after the awaited settings load so startup cannot mount a stale TODO widget.
+	if (todoStore) registerTodoWidget(pi, todoStore, undefined, undefined, () => state.visualsEnabled !== false);
 	const usageAnalytics = registerUsageAnalytics(pi, { isEnabled: () => usageSettingsReady && state.enabled });
 	registerUsageCommand(
 		pi,

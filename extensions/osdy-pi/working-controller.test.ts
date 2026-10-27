@@ -22,7 +22,7 @@ function assertDisplay(working: WorkingWidgetState, activity: WorkingActivity, l
 }
 
 function fixture() {
-	const state = { enabled: true };
+	const state = { enabled: true, visualsEnabled: true };
 	const working: WorkingWidgetState = { active: false, activity: "thinking", label: "Thinking...", frame: 0, timer: undefined, tui: undefined };
 	return { state, working, controller: createWorkingController(state, working) };
 }
@@ -67,6 +67,15 @@ void test("single 80ms clock stops while disabled and resumes the current tool",
 	c.onShutdown(); assert.equal(working.timer, undefined); assert.equal(working.active, false);
 	t.mock.timers.tick(800); assert.equal(working.frame, 2);
 	c.refreshWorking(); assert.equal(working.active, false);
+});
+
+void test("visual-only off suppresses working animation without changing master state or tool tracking", (t) => {
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const { state, working, controller: c } = fixture();
+	state.visualsEnabled = false; c.onAgentStart(); c.onToolStart("read", "a");
+	assert.equal(state.enabled, true); assert.equal(working.active, false); assert.equal(working.timer, undefined);
+	state.visualsEnabled = true; c.refreshWorking(); assert.equal(working.label, "Exploring...");
+	assert.equal(working.active, true); c.onShutdown();
 });
 
 void test("agent end clears tool identities before the next agent starts", (t) => {

@@ -78,6 +78,7 @@ export function normalizeEditorSettings(value: unknown): GlobalEditorSettings {
 		version: EDITOR_SETTINGS_VERSION,
 		enabled:
 			typeof recordValue.enabled === "boolean" ? recordValue.enabled : true,
+		...(typeof recordValue.visualsEnabled === "boolean" ? { visualsEnabled: recordValue.visualsEnabled } : {}),
 		editorMode: isEditorMode(recordValue.editorMode)
 			? recordValue.editorMode
 			: DEFAULT_EDITOR_MODE,

@@ -91,8 +91,10 @@ test("packed entry wires Osdy and exactly one native todo registration", async (
 	assert.equal(runtime.match(/createTodoSessionStore\(\)/g)?.length, 1);
 	assert.equal(runtime.match(/registerTodoTool\(pi, todoStore\)/g)?.length, 1);
 	assert.equal(runtime.match(/registerTodosCommand\(pi, todoStore\)/g)?.length, 1);
-	assert.equal(runtime.match(/registerTodoWidget\(pi, todoStore\)/g)?.length, 1);
- assert.match(runtime, /if \(todoActive\) \{[\s\S]*?registerTodoTool[\s\S]*?registerTodosCommand[\s\S]*?registerTodoWidget/);
+	assert.equal(runtime.match(/registerTodoWidget\(pi, todoStore, undefined, undefined, \(\) => state\.visualsEnabled !== false\)/g)?.length, 1);
+	assert.match(runtime, /const todoStore = todoActive \? createTodoSessionStore\(\) : undefined;/);
+	assert.match(runtime, /if \(todoStore\) \{\s*registerTodoTool\(pi, todoStore\);\s*registerTodosCommand\(pi, todoStore\);/);
+	assert.match(runtime, /if \(todoStore\) registerTodoWidget\(/);
 	assert.doesNotMatch(runtime, /registerOddTodo|odd-todo-ui/);
 	assert.equal(todo.match(/pi\.registerTool\(\{/g)?.length, 1);
 	assert.doesNotMatch(todo, /registerCommand\(/);

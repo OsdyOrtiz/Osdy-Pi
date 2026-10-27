@@ -12,7 +12,7 @@ import type { CodexUsageSnapshot, CodexUsageWindow } from "./codex-usage.js";
 import { renderCodexUsageDashboardContentLines, renderControlCenterQuotaWindow } from "./codex-usage-ui.js";
 
 export const CONTROL_CENTER_CATEGORIES = [
-	"Theme", "Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage", "TODO", "Agents", "Speech",
+	"Theme", "Header", "Mascot", "Editor", "Git", "Sounds", "Account", "Usage", "TODO", "Visuals", "Agents", "Speech",
 ] as const;
 export type ControlCenterCategory = (typeof CONTROL_CENTER_CATEGORIES)[number];
 export type ControlCenterServiceAction =
@@ -336,7 +336,10 @@ export class ControlCenter implements Component, Focusable {
 			const saved = await preferences.apply(action);
 			if (this.disposed) return;
 			this.failed = !saved;
-			this.feedback = saved ? `Saved globally: ${label}` : `Applied live: ${label}, but could not be saved. Retry to persist.`;
+			if (action.kind === "visuals") {
+				if (saved) { this.dependencies.reload?.({ kind: "reload" }); return; }
+				this.feedback = "Visuals not saved; reload not requested. Retry to persist.";
+			} else this.feedback = saved ? `Saved globally: ${label}` : `Applied live: ${label}, but could not be saved. Retry to persist.`;
 		} catch (error) {
 			if (this.disposed) return;
 			this.failed = true;
@@ -472,7 +475,7 @@ export class ControlCenter implements Component, Focusable {
 			this.dependencies.requestRender();
 			return;
 		}
-		if (this.saving && (this.category === "TODO" || this.category === "Agents")) return;
+		if (this.saving && (this.category === "TODO" || this.category === "Agents" || this.category === "Visuals")) return;
 		if (this.input) {
 			this.input.handleInput(data);
 			this.dependencies.requestRender();
