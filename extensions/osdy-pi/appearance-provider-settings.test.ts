@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerHooks } from "node:module";
@@ -50,6 +50,18 @@ void test("absent/explicit false selections and absent Gentle never install or f
   await setAppearanceProviders({ ...f, visualsEnabled: true });
   const after = saved(f); delete after.osdyPiAppearance; assert.deepEqual(after, settings);
  }
+});
+void test("first-run appearance switching creates only its namespace in an existing agent directory", async () => {
+ const f = fixture();
+ unlinkSync(f.path);
+ assert.equal(inspectAppearanceSettings(f.agentDir), undefined);
+ await setAppearanceProviders({ ...f, visualsEnabled: false });
+ assert.equal(inspectAppearanceSettings(f.agentDir), false);
+ assert.equal(inspectTodoProvider(f).configured, false);
+ assert.deepEqual(saved(f), { osdyPiAppearance: { version: 1, visualsEnabled: false,
+  suspended: { edits: [], jokerSuspended: false } } });
+ await setAppearanceProviders({ ...f, visualsEnabled: true });
+ assert.deepEqual(saved(f), { osdyPiAppearance: { version: 1, visualsEnabled: true } });
 });
 void test("conflicting owned fields and invalid undo metadata fail without writes", async () => {
  for (const corrupt of [

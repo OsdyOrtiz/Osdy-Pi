@@ -62,7 +62,11 @@ function appearance(settings: Settings): Appearance | undefined {
 }
 function load(agentDir: string): Settings {
  const path = join(agentDir, "settings.json");
- if (!lstatSync(path).isFile()) throw new Error("Appearance requires regular settings.json, not a symlink.");
+ const file = lstatSync(path, { throwIfNoEntry: false });
+ if (!file) {
+  if (!lstatSync(agentDir, { throwIfNoEntry: false })?.isDirectory())
+   throw new Error("Appearance requires an existing agent directory.");
+ } else if (!file.isFile()) throw new Error("Appearance requires regular settings.json, not a symlink.");
  return loadTodoSettings(path);
 }
 /** Undefined means T2 must fall back to editor v1 visualsEnabled. Invalid data throws. */
