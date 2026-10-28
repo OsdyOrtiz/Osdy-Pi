@@ -46,6 +46,50 @@ const { compactMascotWidthBudget, composeSideBySide } = await import("./utils.js
 const { renderPiMascot } = await import("./pixel-mascot.js");
 const { asciiAnimationMode } = await import("./animation.js");
 
+void test("Git summary uses the live theme accent and preserves diff colors and counts", async () => {
+	const { createWorkingTreeWidgetFactory } = await import("./working-tree.js");
+	let palette = "first";
+	const theme = { fg: (token: string, text: string) => `<${palette}:${token}>${text}</>`, bold: (text: string) => text };
+	const state = { enabled: true, visible: true, loading: false, snapshot: {
+		totalFiles: 3, additions: 7, removals: 2, stagedFiles: 1, unstagedFiles: 2, untrackedFiles: 1,
+	} } as Parameters<typeof createWorkingTreeWidgetFactory>[0];
+	const widget = createWorkingTreeWidgetFactory(state, { active: false } as Parameters<typeof createWorkingTreeWidgetFactory>[1], "aboveEditor")({} as TUI, theme);
+	for (const name of ["first", "second"]) {
+		palette = name;
+		const output = widget.render(500).join("\n");
+		for (const text of ["Git changes · 3 files", "staged 1", "unstaged 2", "new 1"]) assert.ok(output.includes(`<${name}:accent>${text}</>`));
+		assert.ok(output.includes(`<${name}:toolDiffAdded>+7</>`));
+		assert.ok(output.includes(`<${name}:toolDiffRemoved>-2</>`));
+	}
+	state.snapshot!.totalFiles = 0;
+	assert.ok(widget.render(500).join("").includes("<second:accent>Git changes · working tree clean</>"));
+});
+
+void test("active account uses the live theme accent in editor and native footer", (t) => {
+	const previous = process.env.OSDY_PI_PROFILE_NAME;
+	process.env.OSDY_PI_PROFILE_NAME = "work";
+	t.after(() => { if (previous === undefined) delete process.env.OSDY_PI_PROFILE_NAME; else process.env.OSDY_PI_PROFILE_NAME = previous; });
+	let palette = "35";
+	const accent = (text: string) => `\u001b[${palette}m${text}\u001b[39m`;
+	const theme = { fg: (token: string, text: string) => token === "accent" ? accent(text) : text, bold: (text: string) => text };
+	const state = { codexUsage: { kind: "idle" }, enabled: true, editorEffective: true, companionEnabled: false } as OsdyState;
+	const ctx = { cwd: "/synthetic", ui: { theme }, model: { provider: "test", id: "test", contextWindow: 200000 },
+		getContextUsage: () => ({ percent: 60 }), sessionManager: { getEntries: () => [] } } as unknown as ExtensionContext;
+	const pi = { getThinkingLevel: () => "off" } as ExtensionAPI;
+	const tui = { terminal: { rows: 40, columns: 120 }, requestRender() {} } as unknown as TUI;
+	const plain = (text: string) => text;
+	const editorTheme: EditorTheme = { borderColor: plain, selectList: { selectedPrefix: plain, selectedText: plain, description: plain, scrollInfo: plain, noMatch: plain } };
+	const editor = ui.createEditorComponent(pi, ctx, state)(tui, editorTheme, new KeybindingsManager());
+	const footer = ui.createFooterComponent(pi, ctx, state, { getGitBranch: () => null, getExtensionStatuses: () => new Map(), getAvailableProviderCount: () => 1, onBranchChange: () => () => {} }, theme);
+	for (const color of ["35", "36"]) {
+		palette = color;
+		state.editorEffective = true;
+		assert.ok(editor.render(120).join("\n").includes(accent(" work ")));
+		state.editorEffective = false;
+		assert.ok(footer.render(120).join("\n").includes(accent("work")));
+	}
+});
+
 void test("header version occupies a blank leading row at the right edge without moving art", () => {
 	const art = ["\u001b[31m    \u001b[0m", "  mascot logo  "];
 	const result = ui.decorateHeaderVersion(art, 40, "2.3.4");

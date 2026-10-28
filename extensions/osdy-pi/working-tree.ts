@@ -233,17 +233,17 @@ function renderSummaryLine(
 	theme: SimpleTheme,
 ): string {
 	if (snapshot.totalFiles === 0) {
-		return theme.fg("mdLink", "Git changes · working tree clean");
+		return theme.fg("accent", "Git changes · working tree clean");
 	}
 	const parts = [
-		theme.fg("mdLink", `Git changes · ${snapshot.totalFiles} files`),
+		theme.fg("accent", `Git changes · ${snapshot.totalFiles} files`),
 		theme.fg("toolDiffAdded", `+${snapshot.additions}`),
 		theme.fg("toolDiffRemoved", `-${snapshot.removals}`),
-		theme.fg("mdLink", `staged ${snapshot.stagedFiles}`),
-		theme.fg("mdLink", `unstaged ${snapshot.unstagedFiles}`),
+		theme.fg("accent", `staged ${snapshot.stagedFiles}`),
+		theme.fg("accent", `unstaged ${snapshot.unstagedFiles}`),
 	];
 	if (snapshot.untrackedFiles > 0) {
-		parts.push(theme.fg("mdLink", `new ${snapshot.untrackedFiles}`));
+		parts.push(theme.fg("accent", `new ${snapshot.untrackedFiles}`));
 	}
 	return parts.join(theme.fg("muted", " · "));
 }

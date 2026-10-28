@@ -387,13 +387,14 @@ class OsdyFooter implements Component {
 				: locationLines;
 		}
 		const thinkingLevel = this.pi.getThinkingLevel();
+		const activeProfile = resolveActiveProfileLabel();
 		const baseMetadata = formatModelMetadata(
 			modelLabel(this.ctx),
 			this.theme.fg(
 				THINKING_THEME_TOKENS[thinkingLevel],
 				`\u001B[1m${thinkingLevel}\u001B[22m`,
 			),
-			resolveActiveProfileLabel(),
+			activeProfile ? this.theme.fg("accent", activeProfile) : undefined,
 		);
 		const cachedCodexUsage =
 			this.state.codexUsage.kind === "idle"
@@ -612,7 +613,7 @@ export function createEditorComponent(
 				lines[index] = `${side}${content}${padding}${side}`;
 			}
 			const topLeft = ctx.ui.theme.fg(
-				"mdLink",
+				"accent",
 				` ${resolveEditorTitleLabel(resolveActiveProfileLabel())} `,
 			);
 			const thinkingLevel = pi.getThinkingLevel();

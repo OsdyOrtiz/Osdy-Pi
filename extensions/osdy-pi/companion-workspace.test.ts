@@ -173,7 +173,11 @@ void test("native status ordering, sanitization and small-mode formatting retain
  const output = [h.footer().render(240), h.footer().render(80)];
  h.state.smallMode = true; output.push(h.footer().render(120));
  h.state.editorEffective = false; output.push(h.footer().render(120));
- assert.equal(createHash("sha256").update(JSON.stringify(output)).digest("hex"), "bf0d7a1a7053817b49f0d503fc0b9e6bac2226f43a425dd83685714e118bb521");
+ const coloredAccount = "\u001b[33mOsdy-Work\u001b[39m";
+ assert.ok(output.at(-1)?.join("\n").includes(coloredAccount), "native footer colors the active account");
+ // Account styling intentionally changed; all other ANSI output keeps its baseline.
+ const baselineOutput = output.map(lines => lines.map(line => line.replaceAll(coloredAccount, "Osdy-Work")));
+ assert.equal(createHash("sha256").update(JSON.stringify(baselineOutput)).digest("hex"), "bf0d7a1a7053817b49f0d503fc0b9e6bac2226f43a425dd83685714e118bb521");
 });
 
 void test("dynamic provider statuses move once, update/remove live and keep identity-safe disposal", () => {
