@@ -266,6 +266,7 @@ export function renderCompactCodexQuotaBars(
 	theme: SimpleTheme,
 	snapshot: CodexUsageSnapshot,
 	width: number,
+	layout: "compact" | "spaced" = "compact",
 ): string[] {
 	const maximumWidth = Math.max(1, Math.floor(width));
 	const main = snapshot.buckets.find((bucket) => bucket.id === "codex");
@@ -307,7 +308,10 @@ export function renderCompactCodexQuotaBars(
 	});
 	if (bars.length !== 2) return bars;
 	const combined = `${bars[0]}   ${bars[1]}`;
-	return visibleWidth(combined) <= maximumWidth ? [combined] : bars;
+	if (visibleWidth(combined) <= maximumWidth) return [combined];
+	return layout === "spaced"
+		? bars.flatMap((bar, index) => index === 0 ? [bar] : ["", bar])
+		: bars;
 }
 
 export function renderCodexUsageReadyLines(

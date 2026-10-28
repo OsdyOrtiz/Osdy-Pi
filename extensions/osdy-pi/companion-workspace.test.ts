@@ -342,7 +342,7 @@ void test("responsive grouping measures compact widths and lets absent cards rel
  assert.equal(usage.x, 0);
  assert.match(usageOnlyTop[usage.y] ?? "", /✦─ Usage .*✦ ✦─ Git .*✦$/);
  assert.match(usageOnlyTop[usage.y + 1] ?? "", /Session/);
- assert.match(usageOnlyTop[usage.y + 2] ?? "", /Weekly/, "released TODO width gives Usage and Git readable peer columns");
+ assert.match(usageOnlyTop[usage.y + 3] ?? "", /Weekly/, "released TODO width gives Usage and Git readable peer columns");
  assert.equal(usageOnlyTop.length, 14, "no TODO: spare height stays within Companion's band");
  h.tree.enabled = false; h.working.active = false; h.state.codexUsage = { kind: "idle" };
  assert.equal(h.editor.render(120).length, 14, "no cards: keep only original Companion/editor geometry");
@@ -358,7 +358,9 @@ void test("Session and Weekly move together into Usage above the editor without 
  const editorTop = rows.findIndex(line => line.startsWith("╭"));
  assert.ok(usage < editorTop);
  assert.match(rows[usage + 1] ?? "", /Session.*75%/);
- assert.match(rows[usage + 2] ?? "", /Weekly.*40%/);
+ const card = renderedCard(h.editor, 120, "Usage");
+ assert.equal(card.body[1], "");
+ assert.match(rows[usage + 3] ?? "", /Weekly.*40%/);
  assert.equal(rows.filter(line => line.includes("Session")).length, 1);
  assert.equal(rows.filter(line => line.includes("Weekly")).length, 1);
  assert.equal(lines.length, 14, "Usage fits beside three tasks and their overflow border, above the six-row editor");
@@ -384,7 +386,8 @@ void test("only fullscreen Usage title/content left-clicks invoke its entrypoint
  assert.deepEqual(click(), { handled: true });
  assert.deepEqual(click(1), { handled: true });
  assert.equal(opens, 2);
- assert.equal(click(3), undefined, "bottom border stays inert");
+ assert.deepEqual(click(3), { handled: true });
+ assert.equal(click(4), undefined, "bottom border stays inert");
  for (const change of [{ type: "wheel", wheelDelta: 1 }, { type: "drag" }, { type: "press" }, { button: "right" }] as const)
   assert.equal(click(1, change), undefined);
  const todo = cardPosition(h.editor, 120, "● Todos");
@@ -395,12 +398,12 @@ void test("only fullscreen Usage title/content left-clicks invoke its entrypoint
  assert.equal(h.mouse(usage.x - 2, todo.y + 1, wheel), undefined, "TODO right border cannot scroll tasks");
  assert.equal(h.mouse(usage.x + 5, usage.y + 4, wheel), undefined, "padding below Usage is not its content");
  assert.equal(plain(h.editor.render(120)), before);
- assert.equal(opens, 2);
- h.hostState.overlay = true; assert.equal(click(), undefined); assert.equal(opens, 2);
+ assert.equal(opens, 3);
+ h.hostState.overlay = true; assert.equal(click(), undefined); assert.equal(opens, 3);
  h.hostState.overlay = false; h.state.companionEnabled = false;
  const quotaRow = h.editor.render(120).findIndex(line => line.includes("Session"));
  h.mouse(5, quotaRow);
- assert.equal(opens, 2, "habitual bars acquire no Usage interaction");
+ assert.equal(opens, 3, "habitual bars acquire no Usage interaction");
 });
 
 void test("enabled panels share the Companion band, without stack duplicates or lost preview rows", () => {
@@ -510,6 +513,8 @@ void test("style and multiline height limits restore widgets before editor rende
  h.state.companionStyle = "drawn";
  h.store.set("main", { tasks: [], nextId: 1 }); h.emit("tool_execution_end");
  h.tree.enabled = false; h.working.active = false;
+ assert.match(plain(h.editor.render(120)), /Session.*Weekly/, "wide Usage keeps both quotas on one row so the shortest Companion fits");
+ h.state.codexUsage = { kind: "ready", snapshot: { ...quota, buckets: quota.buckets.map(bucket => ({ ...bucket, secondary: undefined })) } };
  const lines = h.editor.render(120);
  assert.match(plain(lines), /Tiny Doodle/);
  assert.equal(lines.length, companionLayout("drawn").boxHeight);

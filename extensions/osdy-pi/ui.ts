@@ -536,10 +536,10 @@ export function createEditorComponent(
 			workspace.available = width => this.prepareWorkspace(width) !== undefined;
 		}
 
-		private renderQuotaLines(width: number): string[] {
+		private renderQuotaLines(width: number, layout: "compact" | "spaced" = "compact"): string[] {
 			const snapshot = state.codexUsage.kind === "idle" ? undefined : state.codexUsage.snapshot;
 			return ctx.model?.provider === "openai-codex" && snapshot
-				? renderCompactCodexQuotaBars(ctx.ui.theme, snapshot, width) : [];
+				? renderCompactCodexQuotaBars(ctx.ui.theme, snapshot, width, layout) : [];
 		}
 
 		/** The same live measurement is used by native wrappers, even before this editor renders. */
@@ -552,7 +552,7 @@ export function createEditorComponent(
 			const editorWidth = width - companion.columns;
 			const editorHeight = Math.max(super.render(editorWidth - 2).length, internalLineTarget(this.tuiRef) + 2);
 			const usage: Component = {
-				render: width => this.renderQuotaLines(width),
+				render: width => this.renderQuotaLines(width, "spaced"),
 				handleMouse: event => {
 					if (this.tuiRef.mode !== "fullscreen" || this.tuiRef.hasOverlay()
 						|| event.type !== "click" || event.button !== "left" || !state.openUsage) return undefined;

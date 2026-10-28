@@ -989,6 +989,8 @@ void test("places compact Codex quota bars on one wide line and stacks them when
 	assert.match(stripLabelSgr(narrow[0] ?? ""), /Session 5h 63% left/);
 	assert.match(stripLabelSgr(narrow[1] ?? ""), /Weekly 7d 29% left/);
 	assert.ok([...wide, ...narrow].every((line) => !line.includes("% used")));
+	assert.deepEqual(renderCompactCodexQuotaBars(theme, snapshot, 80, "spaced"), wide);
+	assert.deepEqual(renderCompactCodexQuotaBars(theme, snapshot, 40, "spaced"), [narrow[0], "", narrow[1]]);
 });
 
 void test("fits ANSI-colored compact quota bars at very narrow widths without losing windows", () => {
