@@ -49,6 +49,7 @@ import {
 } from "./constants.js";
 import { formatPath } from "./format.js";
 import { renderPixelHeader } from "./header-slanted.js";
+import { TYPEWRITER_FRAMES, typewriterReveal } from "./header-typewriter.js";
 import { PI_WAVE_TICKS, piMascotWidthForRows, piWaveFrameAt, renderPiMascot } from "./pixel-mascot.js";
 import { renderWorkingWidget } from "./working-animation.js";
 import { contextUsageData, modelLabel } from "./metrics.js";
@@ -284,6 +285,7 @@ function renderResponsiveHeader(
 	theme: SimpleTheme,
 	animationStyle: "animated" | "static",
 	waveFrame?: number,
+	typewriterFrame?: number,
 ): string[] {
 	const variant = HEADER_VARIANTS[state.headerVariant];
 	const mascot = headerMascotFor(state.mascot);
@@ -301,7 +303,7 @@ function renderResponsiveHeader(
 		return mascotLines.map((line) => fitCenterVisible(line, layout.renderWidth));
 	}
 	// Pixel headers cannot be scaled: they render whole here, or the layout above fell back to the mascot alone.
-	const logoLines = variant.pixelHeader
+	const fullLogoLines = variant.pixelHeader
 		? renderPixelHeader(variant.pixelHeader, frame, theme, animationStyle)
 		: renderHeaderLines(
 			variant,
@@ -312,6 +314,9 @@ function renderResponsiveHeader(
 			theme,
 			animationStyle,
 		);
+	const logoLines = typewriterFrame === undefined
+		? fullLogoLines
+		: typewriterReveal(fullLogoLines, typewriterFrame, layout.fullHeaderWidth, theme);
 	const scaledMascotWidth = mascotLines.reduce(
 		(maximum, line) => Math.max(maximum, visibleWidth(line)),
 		0,
@@ -441,9 +446,10 @@ class OsdyWorkingWidget implements Component {
 	invalidate(): void {}
 }
 
-/** The intro runs until both the glow intro and, for the pi mascot, its startup wave are done. */
+/** The intro runs until the glow intro, the typewriter and, for the pi mascot, its startup wave are done. */
 function introFramesFor(choice: MascotChoice): number {
-	return isTextMascotChoice(choice) ? INTRO_ANIMATION_FRAMES : Math.max(INTRO_ANIMATION_FRAMES, PI_WAVE_TICKS);
+	const textIntroFrames = Math.max(INTRO_ANIMATION_FRAMES, TYPEWRITER_FRAMES);
+	return isTextMascotChoice(choice) ? textIntroFrames : Math.max(textIntroFrames, PI_WAVE_TICKS);
 }
 
 export function createHeaderComponent(
@@ -475,6 +481,7 @@ export function createHeaderComponent(
 				const waveFrame = animateAscii && !animationComplete && state.mascot === "pi"
 					? piWaveFrameAt(frame)
 					: undefined;
+				const typewriterFrame = animateAscii && frame < TYPEWRITER_FRAMES ? frame : undefined;
 				const lines = renderResponsiveHeader(
 					state,
 					width,
@@ -483,6 +490,7 @@ export function createHeaderComponent(
 					theme,
 					animationStyle,
 					waveFrame,
+					typewriterFrame,
 				);
 				return decorateHeaderVersion(lines, width, installedVersion, theme);
 			},

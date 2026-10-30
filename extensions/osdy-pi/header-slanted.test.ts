@@ -234,9 +234,9 @@ void test("osdy-theme, neon and block-shadow headers render beside the mascot at
 
 void test("osdy-theme, neon and block-shadow full headers keep their side-by-side render", () => {
 	const sideBySide = {
-		"osdy-theme": { off: "112ba74f765c1bf1dcbccbb4b41acd38ef7419c52b811b8e680c2ee91613f1ce", continuous: "4328288678d7560283ef156fa7eaf49ce863595eff6e37d25ae3c54155433293" },
-		neon: { off: "ed7c4d68f4483d86537fc0497c3d1b1c05dff57cdd7474d7c1e872b671046323", continuous: "e2900a8dd3b7ee8d4769b1dadaaf25590d5c2e67dff6398cd5fe54d389d53327" },
-		"block-shadow": { off: "8be43fa7093fc87b8114651471176bad05c7451c09344689e525111973ae83b9", continuous: "be9415d616e226566448248c5214f19f3bed2b29975c5eb907ef30173959662f" },
+		"osdy-theme": { off: "112ba74f765c1bf1dcbccbb4b41acd38ef7419c52b811b8e680c2ee91613f1ce", continuous: "db432379000327630c91c8602aa97f0f1b1680c3d1170fd52cffbb327d780cc4" },
+		neon: { off: "ed7c4d68f4483d86537fc0497c3d1b1c05dff57cdd7474d7c1e872b671046323", continuous: "689308b5463e5c951f5fc7eae6516d51ceabed8944db787bc3501f4799e65d2a" },
+		"block-shadow": { off: "8be43fa7093fc87b8114651471176bad05c7451c09344689e525111973ae83b9", continuous: "a8eb095600283c7b819657beda6350aefdef3244e09f6d165dc84555e8852046" },
 	} as const;
 	for (const variant of ["osdy-theme", "neon", "block-shadow"] as const) {
 		for (const animation of ["off", "continuous"] as const) {
@@ -249,7 +249,7 @@ void test("osdy-theme, neon and block-shadow full headers are unchanged by the s
 	const baselines = {
 		"osdy-theme": { off: "f48a019759221701383abcb0b7b859765b20ab4b0cb7e4f432d5fcd69e56a6a9", continuous: "f85ee1768fb18661392a3075116b90ce50ea4237962e0069e605b36b62b842a5" },
 		neon: { off: "f48a019759221701383abcb0b7b859765b20ab4b0cb7e4f432d5fcd69e56a6a9", continuous: "f85ee1768fb18661392a3075116b90ce50ea4237962e0069e605b36b62b842a5" },
-		"block-shadow": { off: "59db9e2ee6c42b918796348d4649ef906a103e5886601691cb0569a62febbfb5", continuous: "206d244f2986906eec9b6accdd5694a4a31e86be82d32f900026f482b0260f2e" },
+		"block-shadow": { off: "59db9e2ee6c42b918796348d4649ef906a103e5886601691cb0569a62febbfb5", continuous: "8db3ca5fe7d9c76fcc8c15abb9b791b49a69322296eae0ce745089069f50f245" },
 	} as const;
 	const compactBaselines = {
 		off: "7fac5f1343becb05b5866fef8e7340f43cda94f84a04d6b741b58fd707846dba",

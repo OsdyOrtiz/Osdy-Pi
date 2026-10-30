@@ -447,12 +447,14 @@ The header also shows **`osdy-pi v<version>`** at the top right in the theme's a
 
 In normal mode, the selected header and mascot render side by side, four blank columns apart, when both fit. All four headers use active-theme colors: OsdyTheme uses `accent`, `mdLink`, and `mdHeading`; Neon derives its highlights from the active theme rather than using one fixed palette. The Block Shadow header is 76 columns of block faces with shaded offset edges, split into three bands that follow the active theme's accent, mdLink and mdHeading colors, with dimmed shadows and the same animation as OsdyTheme. The Slanted header is a 78 by 11 sans-serif wordmark with a slanted bevel, drawn as half-block pixel art: the bevel follows `accent`, the letter face follows `mdLink` and the depth follows `mdHeading`, and its animation shifts those three roles with the same wave as OsdyTheme. It is never scaled; when it does not fit beside the mascot (78 columns plus the four-column gap and the height-fitted mascot, and at least 11 rows) the mascot is shown alone, like the other headers. Text mascots keep their own tone maps; Hoodie Pi keeps its pixel palette. Their animated edge glow follows theme colors. Header artwork is not scaled in this layout; mascot sizing is independent, and every combination uses the same responsive fallback rules.
 
+When the header mounts with animation on, the wordmark **types itself in**: it is revealed left to right, every row at once, with an `accent` caret (`▌`) at the writing edge, in about 0.72 seconds (24 ticks of 30 ms). The color wave runs while it types, and the mascot is drawn in full from the start. Layouts that show the mascot alone have no wordmark, so they skip the effect.
+
 Animation is enabled by default with an intro animation. Configure it through `OSDY_PI_ANIMATION`:
 
 | Value | Result |
 | --- | --- |
-| `0`, `off` | Static art; Hoodie Pi stays on its neutral pose and never waves |
-| `1`, `on`, `continuous` | Continuous animation; Hoodie Pi waves once at startup, then keeps its glow |
+| `0`, `off` | Static art; the wordmark is shown at once and Hoodie Pi stays on its neutral pose and never waves |
+| `1`, `on`, `continuous` | Continuous animation; the wordmark types in and Hoodie Pi waves once at startup, then the glow keeps going |
 | `intro` | Intro animation, then static art; the intro lasts until Hoodie Pi's wave is done (about 1.2 seconds instead of 0.84) |
 
 ### Responsive layout

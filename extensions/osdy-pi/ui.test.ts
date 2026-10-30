@@ -180,6 +180,9 @@ function renderHeader(
 	rows: number,
 	columns = width,
 ): string[] {
+	// Layout tests compare finished artwork, so they skip the startup typewriter.
+	const previous = process.env.OSDY_PI_ANIMATION;
+	process.env.OSDY_PI_ANIMATION = "off";
 	type Factory = ReturnType<typeof ui.createHeaderComponent>;
 	const component = ui.createHeaderComponent(
 		{} as Parameters<typeof ui.createHeaderComponent>[0],
@@ -193,6 +196,8 @@ function renderHeader(
 		return plainHeader(component.render(width));
 	} finally {
 		component.dispose();
+		if (previous === undefined) delete process.env.OSDY_PI_ANIMATION;
+		else process.env.OSDY_PI_ANIMATION = previous;
 	}
 }
 
@@ -296,6 +301,42 @@ void test("hoodie pi never waves when animation is off and waves only once in co
 	const continuous = headerAfterTicks(t, "pi", [0, 39, 40, 41, 100], "continuous");
 	assert.equal(continuous.requestedRenders, 100, "continuous keeps ticking");
 	assert.notEqual(continuous.renders[0], off[0]);
+});
+
+void test("the wordmark types itself in at startup, then stays fully written", (t) => {
+	const previous = process.env.OSDY_PI_ANIMATION;
+	process.env.OSDY_PI_ANIMATION = "intro";
+	t.after(() => {
+		if (previous === undefined) delete process.env.OSDY_PI_ANIMATION;
+		else process.env.OSDY_PI_ANIMATION = previous;
+	});
+	t.mock.timers.enable({ apis: ["setInterval"] });
+	const art = MASCOTS.current.art;
+	const width = headerWidth("osdy-theme") + MASCOT_GAP + mascotWidthForRows(art, 40);
+	type Factory = ReturnType<typeof ui.createHeaderComponent>;
+	const component = ui.createHeaderComponent(
+		{} as Parameters<typeof ui.createHeaderComponent>[0],
+		{} as Parameters<typeof ui.createHeaderComponent>[1],
+		{ headerVariant: "osdy-theme", mascot: "current" } as Parameters<typeof ui.createHeaderComponent>[2],
+	)({ terminal: { columns: width, rows: 40 }, requestRender() {} } as unknown as Parameters<Factory>[0],
+		{ fg: (_color: string, text: string) => text });
+	const written = (): number => plainHeader(component.render(width)).join("").replace(/[\s▌]/g, "").length;
+	try {
+		const start = plainHeader(component.render(width)).join("\n");
+		const atStart = written();
+		t.mock.timers.tick(12 * 30);
+		const halfway = written();
+		t.mock.timers.tick(12 * 30);
+		const done = plainHeader(component.render(width));
+		assert.ok(start.includes("▌"), "the caret shows while typing");
+		assert.ok(atStart < halfway, "more of the wordmark is written halfway");
+		assert.ok(halfway < written(), "the wordmark finishes after the typewriter");
+		assert.ok(!done.join("\n").includes("▌"), "the caret is gone once written");
+		assert.deepEqual(done, renderHeader("osdy-theme", "current", width, 40), "the finished header matches the static one");
+	} finally {
+		component.dispose();
+		t.mock.timers.reset();
+	}
 });
 
 void test("text mascots keep the 28-frame intro and ignore the wave", (t) => {
