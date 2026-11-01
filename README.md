@@ -42,7 +42,7 @@ Screenshot of the Companion workspace running osdy-pi v1.11.22. The version labe
 | Themes introduced in 1.11.0 | Spider-Man Classic, Miles Morales, and Spider-Verse add three distinct dark palettes. |
 | Themes introduced in 1.9.0 | Halloween and Halloween Killer add two dark palettes. |
 | Themes introduced in 1.8.0 | Gruvbox Dark, Nord, Rosé Pine base dark, and Daniela Cute. |
-| Message cards | Pi-native colored user cards without emojis and plain assistant Markdown preceded by a separate `🦝` transcript row. |
+| Message cards | Pi-native colored user cards without emojis and plain assistant Markdown preceded by a separate accent-colored `✦ Pi` transcript row. |
 | Header and mascot | Independent header/mascot choices, an installed-package version label, and mascot-only fallback when full artwork cannot fit. |
 | [Companion workspace](#companion-raccoon) | Adaptive framed TODO (up to three preview tasks), Usage and Git beside the Companion, with top activity, live location/statuses, a combined height limit, and automatic habitual fallback. |
 | Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
@@ -359,7 +359,7 @@ Before rename or removal, close this Pi process when it uses the target and **ma
 | Themes | 23 built-in themes, including Osdy, Kanagawa, Dracula, Gruvbox, Nord, Rosé Pine, Daniela Cute, Halloween, Halloween Killer, Catppuccin, Matrix, Lucent Orange, and three Spider-Man-inspired palettes |
 | Header and mascot | Independently selectable `osdy-theme`/`neon`/`block-shadow`/`slanted` headers and `current`/`bts`/`osdy-halloween`/`pi` mascots |
 | Companion workspace | Six pixel-art styles (Pixel Pal, Tiny Doodle, Big Cuddle, Retro Buddy, Slim Ringtail, Pocket Ringtail) beside adaptive framed TODO/Usage/Git cards and editor; [automatic fallback](#companion-raccoon) when the combined block cannot fit |
-| Messages | Native colored user cards without emojis and plain assistant Markdown with a separate assistant `🦝` row |
+| Messages | Native colored user cards without emojis and plain assistant Markdown with a separate assistant `✦ Pi` row |
 | Input | Responsive auto editor by default, with selectable simple Pi-native or extended framed modes |
 | Status | Six activity labels with compact per-state glyphs and a shared theme-color pulse, live location and dynamic extension statuses, responsive metrics, and Codex subscription quota with low-capacity emphasis |
 | Local analytics | Four keyboard-selectable pages with shared filters, token charts, estimated cost, and private metadata-only history from new assistant turns |
@@ -568,7 +568,7 @@ Costs are Pi's per-message estimates, **not quota, a provider bill, or confirmed
 
 ## Native message cards
 
-Pi renders the colored user card and assistant Markdown natively. User messages have no emoji; Osdy Pi places a separate `🦝` transcript entry before each assistant response with visible text, not inside message content. Previously saved user `👤` entries remain in session history but render no row on replay. Selecting only the native message keeps its body clean; a wide selection that includes the emoji row copies the emoji too. Assistant markers persist with the session but do not enter model context. Earlier checks on Pi 0.87.1 found that it did not use `assistantMessage*` theme palette keys; these keys alone should not be assumed to create a native assistant card. Osdy does not install a Markdown transformer or change streaming. The current user card colors remain unchanged. Try both roles in your selected theme with `npm run pi:dev`; terminal rendering and selection still need a live visual check. When disabled, Osdy does not add new markers.
+Pi renders the colored user card and assistant Markdown natively. User messages have no emoji; Osdy Pi places a separate `✦ Pi` text label, in the theme's `accent` color, before each assistant response with visible text, not inside message content. It is plain text in every terminal (no image); terminals narrower than the label show only `✦`. Previously saved user `👤` entries remain in session history but render no row on replay. Selecting only the native message keeps its body clean; a wide selection that includes the label row copies the label too. Assistant markers persist with the session but do not enter model context. Earlier checks on Pi 0.87.1 found that it did not use `assistantMessage*` theme palette keys; these keys alone should not be assumed to create a native assistant card. Osdy does not install a Markdown transformer or change streaming. The current user card colors remain unchanged. Try both roles in your selected theme with `npm run pi:dev`; terminal rendering and selection still need a live visual check. When disabled, Osdy does not add new markers.
 
 ## Editor and working indicator
 

@@ -1,11 +1,25 @@
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createAssistantMarker } from "./message-role-marker-image.js";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import { Text, visibleWidth, type Component } from "@earendil-works/pi-tui";
 
 const ENTRY_TYPE = "osdy-pi-role-marker";
+const ASSISTANT_GLYPH = "✦";
+const ASSISTANT_LABEL = `${ASSISTANT_GLYPH} Pi`;
 type Marker = { role: "assistant" };
 
+/** Accent-colored text label; narrow widths keep only the glyph, invalid widths an empty row. */
+function createAssistantMarker(theme: Pick<Theme, "fg">): Component {
+ return {
+  render(width) {
+   if (!Number.isInteger(width) || width < 2) return [""];
+   const label = visibleWidth(ASSISTANT_LABEL) <= width ? ASSISTANT_LABEL : ASSISTANT_GLYPH;
+   return new Text(theme.fg("accent", label), 0, 0).render(width);
+  },
+  invalidate() { /* Stateless text. */ },
+ };
+}
+
 export function registerMessageRoleMarkers(
- pi: Pick<ExtensionAPI, "on" | "appendEntry" | "registerEntryRenderer"> & Partial<Pick<ExtensionAPI, "getSettings">>,
+ pi: Pick<ExtensionAPI, "on" | "appendEntry" | "registerEntryRenderer">,
  isEnabled: () => boolean,
  isVisible: () => boolean = () => true,
 ): void {
@@ -22,7 +36,7 @@ export function registerMessageRoleMarkers(
  pi.registerEntryRenderer<Marker>(ENTRY_TYPE, (entry, _options, theme) => {
   const role = entry.data?.role;
   if (role !== "assistant") return undefined;
-  const marker = createAssistantMarker(theme, () => pi.getSettings?.().terminal?.showImages !== false);
+  const marker = createAssistantMarker(theme);
   // Historical entries stay intact; both replay and already-created rows honor visibility.
   return {
    render: (width: number) => isVisible() ? marker.render(width) : [],

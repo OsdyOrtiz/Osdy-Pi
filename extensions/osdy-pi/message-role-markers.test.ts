@@ -44,18 +44,15 @@ function harness(mode = "tui", enabled = true, settingsAvailable = true, isVisib
 }
 const message = (role: string, timestamp: number, content: unknown[] = []) => ({ role, timestamp, content });
 
-void test("supported images replace only the standalone marker and settings are read at render time", () => {
+void test("assistant marker is an accent-colored text label, never an image", () => {
  setCapabilities({ images: "kitty", trueColor: true, hyperlinks: false });
  try {
   const h = harness();
-  const marker = h.renderer?.({ data: { role: "assistant" } }, { expanded: false }, { fg: (_color: string, text: string) => text });
+  const marker = h.renderer?.({ data: { role: "assistant" } }, { expanded: false }, { fg: (color: string, text: string) => `${color}:${text}` });
   assert.ok(marker);
-  assert.ok(marker.render(40).join("").includes("\x1b_G"));
-  h.setShowImages(false);
-  assert.deepEqual(marker.render(40), new Text("🦝", 0, 0).render(40));
-  h.setShowImages(true);
-  setCapabilities({ images: null, trueColor: true, hyperlinks: false });
-  assert.deepEqual(marker.render(40), new Text("🦝", 0, 0).render(40));
+  const lines = marker.render(40);
+  assert.deepEqual(lines, new Text("accent:✦ Pi", 0, 0).render(40));
+  for (const forbidden of ["\x1b_G", "\x1b]1337;File=", "🦝"]) assert.ok(!lines.join("").includes(forbidden));
  } finally {
   setCapabilities({ images: null, trueColor: true, hyperlinks: false });
  }
@@ -90,12 +87,9 @@ void test("legacy disabled creation gate leaves historical and already-created m
 });
 
 void test("older hosts without getSettings remain compatible", () => {
- setCapabilities({ images: "iterm2", trueColor: true, hyperlinks: false });
- try {
-  const h = harness("tui", true, false);
-  const marker = h.renderer?.({ data: { role: "assistant" } }, { expanded: false }, { fg: (_color: string, text: string) => text });
-  assert.ok(marker?.render(40).join("").includes("\x1b]1337;File="));
- } finally { setCapabilities({ images: null, trueColor: true, hyperlinks: false }); }
+ const h = harness("tui", true, false);
+ const marker = h.renderer?.({ data: { role: "assistant" } }, { expanded: false }, { fg: (_color: string, text: string) => text });
+ assert.match(marker?.render(40).join("") ?? "", /✦ Pi/);
 });
 
 void test("user starts preserve the native card without appending an emoji or changing content", () => {
@@ -200,7 +194,7 @@ void test("legacy user entries render no row, while assistant glyph stays copy-i
  assert.equal(legacy.customType, h.entries[0]?.customType);
  assert.equal(h.renderer?.(legacy, { expanded: false }, theme), undefined);
  const assistantLines = h.renderer?.(h.entries[0]!, { expanded: false }, theme)?.render(40) ?? [];
- assert.match(assistantLines.join(""), /🦝/);
+ assert.match(assistantLines.join(""), /✦ Pi/);
  assert.doesNotMatch(assistantLines.join(""), /secret body/);
  assert.equal(h.entries[0]?.customType, h.customType);
  assert.equal(h.renderer?.({ data: { role: "invalid" } }, { expanded: false }, theme), undefined);
@@ -214,5 +208,7 @@ void test("renderer returns an empty line for invalid or narrow widths", () => {
  assert.ok(renderer);
  for (const width of [0, 1, -1, NaN, Infinity, -Infinity, 2.5])
   assert.deepEqual(renderer.render(width), [""], `width ${width}`);
- assert.match(renderer.render(2).join(""), /🦝/);
+ assert.match(renderer.render(2).join(""), /✦/);
+ assert.doesNotMatch(renderer.render(3).join(""), /Pi/, "narrow widths keep only the glyph");
+ assert.match(renderer.render(4).join(""), /✦ Pi/);
 });
