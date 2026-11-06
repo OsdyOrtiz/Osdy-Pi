@@ -632,6 +632,48 @@ void test("editor translates clicks but preserves screen coordinates, focus, typ
  h.editor.handleInput("Y"); assert.equal(h.editor.getText(), "abXYcd");
 });
 
+void test("combined Usage fits with TODO and Git at a wide original Companion without hiding siblings", () => {
+ const h = workspace(); h.model.provider = "openai-codex";
+ h.state.codexUsage = { kind: "ready", snapshot: quota };
+ Object.assign(h.state, { getClaudeBridgeUsage: () => ({
+  session: { usedPercent: 20, resetsAt: undefined }, weekly: { usedPercent: 70, resetsAt: undefined },
+  overageIncluded: undefined, status: undefined, reset: undefined, representativeClaim: undefined,
+  overageStatus: undefined, overageReset: undefined, capturedAt: 123,
+ }) });
+ const rows = h.editor.render(240); const output = plain(rows);
+ assert.match(output, /Pixel Pal/); assert.match(output, /Todos/); assert.match(output, /Git changes/);
+ assert.match(output, /Codex/); assert.match(output, /Claude Bridge/);
+ for (const percent of ["75%", "40%", "80%", "30%"]) assert.ok(output.includes(percent), percent);
+ assert.ok(rows.every(line => visibleWidth(line) <= 240));
+ assert.equal(rows.length, companionLayout("original").boxHeight);
+ assert.deepEqual(h.stacked(240), []);
+});
+
+void test("combined Usage stacks narrow Session and Weekly windows with a blank separator", () => {
+ const h = workspace(); h.model.provider = "openai-codex"; h.terminal.rows = 48;
+ h.state.companionStyle = "rounded"; h.state.codexUsage = { kind: "ready", snapshot: quota };
+ h.tree.enabled = false; h.working.active = false;
+ h.store.set("main", { tasks: [], nextId: 1 }); h.emit("tool_execution_end");
+ Object.assign(h.state, { getClaudeBridgeUsage: () => ({
+  session: { usedPercent: 20, resetsAt: undefined }, weekly: { usedPercent: 70, resetsAt: undefined },
+  overageIncluded: undefined, status: undefined, reset: undefined, representativeClaim: undefined,
+  overageStatus: undefined, overageReset: undefined, capturedAt: 123,
+ }) });
+ const rows = h.editor.render(110); const output = plain(rows);
+ assert.match(output, /Big Cuddle/); assert.equal(rows.length, companionLayout("rounded").boxHeight);
+ const body = renderedCard(h.editor, 110, "Usage").body;
+ const codex = body.findIndex(line => /Codex/.test(line));
+ const bridge = body.findIndex(line => /Claude Bridge/.test(line));
+ assert.ok(codex >= 0 && bridge > codex);
+ for (const section of [body.slice(codex + 1, bridge), body.slice(bridge + 1)]) {
+  const session = section.findIndex(line => /Session/.test(line));
+  const weekly = section.findIndex(line => /Weekly/.test(line));
+  assert.ok(session >= 0 && weekly === session + 2, `stacked windows with blank gap: ${section.join(" | ")}`);
+  assert.equal(section[session + 1], "");
+ }
+ assert.ok(rows.every(line => visibleWidth(line) <= 110));
+});
+
 void test("cleared and replaced panels cannot resurrect old TODO content or detach a newer instance", () => {
  const h = workspace();
  const old = h.widgets.get("osdy-todos")?.component;

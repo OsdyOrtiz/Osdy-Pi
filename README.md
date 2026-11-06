@@ -19,7 +19,7 @@ Screenshot of the Companion workspace running osdy-pi v1.11.22. The version labe
 
 ## Release highlights
 
-**Claude Bridge subscription quota is available in `/usage`** when `claude-bridge` is selected and a response supplies quota headers. The view is passive and shows reported Session and Weekly capacity; see [Claude Bridge subscription usage](#claude-bridge-subscription-usage) for the first-use path and limits.
+**Codex and Claude Bridge subscription quotas appear together in `/usage` and the Companion Usage card.** Claude Bridge remains passive: it shows the latest same-session response headers, while Codex refreshes when the modal opens or you press **r**. See [Claude Bridge subscription usage](#claude-bridge-subscription-usage) for the first-use path and limits.
 
 **The Companion workspace adapts framed cards to available space** above the editor, to the Companion's left: active work stays above the cards, with live location and extension statuses; opt-in TODO, Session/Weekly Usage, and Git share the remaining room. Cards and editor together never exceed the Companion's height; when they cannot fit or Companion is off, the habitual layout returns automatically. In fullscreen Pi, click Usage to open the same `/usage` modal. See [Companion raccoon](#companion-raccoon), [TODO](#first-party-todo-included-starting-in-150), and [subscription usage](#codex-subscription-usage). This describes current source; confirm the resolved npm release includes it. Live artwork fidelity across terminals and fonts remains unverified.
 
@@ -48,7 +48,7 @@ Screenshot of the Companion workspace running osdy-pi v1.11.22. The version labe
 | Header and mascot | Independent header/mascot choices, an installed-package version label, and mascot-only fallback when full artwork cannot fit. |
 | [Companion workspace](#companion-raccoon) | Adaptive framed TODO (up to three preview tasks), Usage and Git beside the Companion, with top activity, live location/statuses, a combined height limit, and automatic habitual fallback. |
 | Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
-| Quota | **Ctrl+Option+U**, `/usage`, or a fullscreen click on the Companion workspace Usage card opens provider-specific Codex or Claude Bridge subscription quota; compact Codex bars emphasize remaining quota at warning (40% or less) and error (15% or less) thresholds. |
+| Quota | **Ctrl+Option+U**, `/usage`, or a fullscreen click on the Companion Usage card opens separate Codex and Claude Bridge quotas together; remaining-capacity bars use warning (40% or less) and error (15% or less) thresholds. |
 | TODO (starting in 1.5.0, opt-in) | Default-off first-party `todo` snapshots track the Pi session branch; `/todos` reads them without editing. ODD Markdown remains separate. |
 
 ## Prerequisites
@@ -99,14 +99,14 @@ The switch commits the appearance override, provider changes and narrow undo rec
 | Shortcut | Action | Command fallback |
 | --- | --- | --- |
 | **Ctrl+Option+O** | Osdy Control Center | `/osdyConfig` |
-| **Ctrl+Option+U** | Codex or Claude Bridge subscription quota—not local token/cost analytics | `/usage` |
+| **Ctrl+Option+U** | Combined Codex and Claude Bridge subscription quota—not local token/cost analytics | `/usage` |
 | **Ctrl+Option+S** | Stop speech from chat | `/osdy-pi speech stop` |
 
 On macOS, **Option = Alt** in Pi's shortcut names: these bindings register as `ctrl+alt+o`, `ctrl+alt+u`, and `ctrl+alt+s`. On other platforms, use **Ctrl+Alt+O**, **Ctrl+Alt+U**, and **Ctrl+Alt+S**. Your terminal must send Option as **Alt/Meta** and support **Ctrl+Alt chords**; registration does not guarantee actual hardware delivery. Check **`/hotkeys`** for bindings, and use the command fallback if the terminal, OS, or another extension intercepts or cannot deliver the chord.
 
 **Ctrl+Option+O capability limits:** Account **Switch**, **Set default**, and **Clear default** refuse changes while Pi is busy; retry when idle. The same actions through `/osdyConfig` retain idle waiting, as does switching through `/osdy-account`. Read-only account quota previews remain available while busy. Successful Visuals/TODO/Agents selection from Ctrl+Option+O saves settings, closes/disposes the panel, releases its editor hold, then asks you to run **`/reload` manually** (or restart Pi). From `/osdyConfig`, the same sequence still reloads automatically once; restart Pi if reload fails.
 
-Ctrl+Option+U opens the same provider-specific `/usage` view as the command; it does not open `/osdy-usage`. Codex refreshes on open; Claude Bridge is passive.
+Ctrl+Option+U opens the same combined `/usage` view as the command; it does not open `/osdy-usage`. Opening and **r** refresh Codex only, even while Claude Bridge is selected; Claude Bridge is passive.
 
 When Codex reports an available banked reset count, `/usage`, **Account → View usage**, and the **Usage** category show **Banked resets: N**, including zero. Unknown counts are omitted. Banked resets are separate from paid **Credits** and legacy **Credit resets**; local analytics filters do not change the count. Displaying it never consumes a reset or changes the compact footer.
 
@@ -505,7 +505,7 @@ The enabled state, editor mode, working-tree visibility preference, header, masc
 | Response speech Stop | **Ctrl+Option+S** or `/osdy-pi speech stop` |
 | Diff | `/osdy-pi diff` |
 | Package | `/osdy-pi uninstall` |
-| Subscription quota | **Ctrl+Option+U** or `/usage` (Codex or Claude Bridge) |
+| Subscription quota | **Ctrl+Option+U** or `/usage` (Codex and Claude Bridge) |
 | Local usage analytics (starting in 1.10.0) | `/osdy-usage` |
 
 `/osdy-pi uninstall` finds a unique Osdy Pi package in Pi's configured package list and asks you to confirm its exact source and user/project scope before calling Pi's `remove` command. Run it from a trusted project with interactive UI. Git registrations are checked against Pi's host/path identity; a local registration must point to this running extension's package root and have a matching manifest. Ambiguous or changed registrations, unrecognized sources, and cancelled confirmation remove nothing. It removes only the Pi package registration, not Osdy profiles, accounts, the globally installed CLI, or other packages. Restart Pi afterward to unload the extension. If no unique source is found, inspect `pi list` and use `pi remove <source> [-l]` manually.
@@ -516,17 +516,17 @@ The enabled state, editor mode, working-tree visibility preference, header, masc
 
 **First use:** Ensure your `pi-claude-bridge` package supplies quota headers, select a Claude Bridge model, and receive a response that reports quota. Then run `/usage`; press **Esc** or **q** to close.
 
-With the selected provider exactly `claude-bridge`, **Ctrl+Option+U** and `/usage` open a passive Claude Bridge quota view; the existing fullscreen Usage-card opener also routes there when available. It waits for a Claude Bridge response containing quota headers; opening it does not request quota. Support for these event-driven headers is verified against `pi-claude-bridge` **0.10.0**. The latest valid event supplies Session (5h) and Weekly (7d) remaining capacity and reset times when reported; missing values are unknown. Capture time is when the event was observed. The overage-included window is not substituted for Weekly. Pi exposes the selected provider context, not the response's provider identity.
+The combined modal and Companion card wait for a response received while the selected provider is exactly `claude-bridge`. Support for these event-driven headers is verified against `pi-claude-bridge` **0.10.0**. The latest valid same-session event supplies Session (5h) and Weekly (7d) remaining capacity and reset times when reported; missing values are unknown, and capture time is when the event was observed. Provider switches retain that reading; session replacement or shutdown clears it. The overage-included window is not substituted for Weekly. Pi exposes the selected provider context, not the response's provider identity.
 
-Press **Esc** or **q** to close. There is no network refresh or banked reset action in this view. Bridge quota support is limited to this `/usage` entry and its shared shortcut/mouse opener: compact footer/editor and Companion quota cards, Control Center, and stored-profile previews remain Codex-only.
+Bridge data is passive: opening the modal or pressing **r** queries Codex only and never queries Bridge. The two quotas are independent and are not summed. The habitual compact footer/editor, Control Center and stored-profile previews remain Codex-only.
 
 ### Codex subscription usage
 
-For other selected providers, **Ctrl+Option+U** or `/usage` retains the existing Codex dashboard path, including its unavailable fallback. The Codex dashboard uses the active managed `openai-codex` profile and model. Press `r` to refresh; `esc` or `q` closes it. The dashboard shows these controls at the bottom.
+**Ctrl+Option+U**, `/usage`, and the fullscreen Companion Usage click open the same combined dashboard. Codex uses the active `openai-codex` credentials independently of the selected model; unavailable Codex authentication or quota does not hide Claude. Press **r** to refresh Codex, **↑/↓**, **Page Up/Down**, or **Home/End** to scroll, and **Esc** or **q** to close. Codex banked reset is not available from this modal while Claude Bridge is selected.
 
 The main windows are labeled **Session** and **Weekly** (the API/domain remains primary/secondary). Their remaining-capacity bars are full at 100% remaining and empty at 0%; labels use the active theme's bold accent, Session uses the accent fill, Weekly uses `mdLink`, and empty segments are muted. The remaining percentage stays muted above 40%, changes to the theme's warning color at 40% or less, and changes to its error color at 15% or less. The same thresholds apply in the `/usage` dashboard and compact footer/editor quota bars. A double themed frame, section dividers, and spacing separate the display. Detail cards show each duration and relative, local, and UTC reset times. Plan, availability, credits/reset count, and additional buckets appear only when the service supplies them; absent optional values are omitted.
 
-At wide widths, the modal pairs the Session and Weekly detail cards. Below 72 content columns, cards and bars stack and account/model data wraps. The native footer and extended editor also show compact Session/Weekly remaining-capacity bars whenever a current Codex snapshot exists. With Companion visible, both move together into a single **Usage** frame above the editor, with Session and Weekly side by side when they fit, or on separate rows with one blank line between them otherwise, without duplicate bars below it. In fullscreen Pi, left-click its title or content to open the same `/usage` modal (not `/osdy-usage` analytics); other mouse gestures retain their normal behavior. In regular mode use **Ctrl+Option+U** (**Ctrl+Alt+U** elsewhere) or `/usage`. Companion off/hidden restores the usual unframed quota placement. In that unframed placement, wide widths combine those bars; narrow widths stack them. Additional buckets appear in `/usage` and the selected-profile Control Center quota view, not compact editor/footer bars.
+At wide widths, the Codex modal pairs its Session and Weekly detail cards; below 72 content columns they stack and account/model data wraps. The native footer and extended editor retain their compact Codex-only bars. With Companion visible, a single **Usage** frame above the editor shows labeled Codex and Claude Bridge blocks, each with Session and Weekly bars or unknown indicators. Each pair is side by side with a three-column gap when it fits, or stacked with a blank line between windows. If the whole workspace cannot fit, Companion hides and the habitual layout returns. In fullscreen Pi, left-click Usage's title or content to open `/usage` (not `/osdy-usage` analytics); other mouse gestures retain their normal behavior. Additional Codex buckets appear in `/usage` and the selected-profile Control Center quota view, not compact editor/footer bars.
 
 Active quota loads when an enabled session starts and refreshes when **Ctrl+Option+U** or `/usage` opens the dashboard, or `r` is pressed. It also refreshes while idle on a **60-second** schedule, only after settings are loaded, with Osdy enabled, an interactive terminal UI, an `openai-codex` model selected, and no quota request already in flight. Automatic failures double the retry delay up to **10 minutes**; a successful automatic query restores the 60-second interval. This scheduler never polls stored profiles.
 
@@ -536,7 +536,7 @@ Automatic refresh retains the last snapshot during loading and on error, so an o
 
 #### Use or check a banked reset
 
-1. In `/usage`, press **u**; or select **Usage → Use or check banked reset** in `/osdyConfig`. Account → View usage remains read-only, including previews of the current profile.
+1. In `/usage`, press **u** when the action is available and Claude Bridge is not selected; or select **Usage → Use or check banked reset** in `/osdyConfig`. Account → View usage remains read-only, including previews of the current profile.
 2. The overlay closes first. Choose an indexed reset with its **local expiry date/time** (or **Expiry not provided**), then explicitly select **Use reset**. **Cancel is first**; Cancel/Esc sends nothing. The confirmation affects only the **active Codex account** and explains that a successful reset consumes one banked reset. Auth/account/session are checked again before POST.
 3. `/usage` reopens with the result snapshot if the same context remains active; Control Center exits, so reopen Usage to inspect it. A failed quota refresh or local bookkeeping failure is reported separately from a confirmed server outcome. `no_credit` and `nothing_to_reset` do not consume a reset; `already_redeemed` confirms prior success.
 
@@ -594,7 +594,7 @@ While Companion is visible, **active work is always topmost**, in a compact them
 
 The framed TODO, Usage and Git cards adapt to actual content width and remaining height: a small set of one-, two- or three-column arrangements and a TODO/sidebar arrangement is measured on each render. Readable cards share rows instead of blindly stacking; remaining cards claim released width when a sibling disappears. Git wraps its original summary, preserving counts and loading/error/clean states. TODO keeps its three-task preview and localized overflow border, while Usage retains both Session and Weekly bars.
 
-**The entire left block, including the editor, must fit the selected Companion's height.** The three-task preview, localized overflow information, and editor minimum size are preserved. At 120 columns, all cards plus the activity/location strip and editor fit Pixel Pal's 14 rows; a representative 200-column layout also fits all cards and the example provider statuses in those 14 rows. If width, a smaller style, expanded TODO, or a growing editor prevents a readable fit, Companion hides and the exact habitual widgets, quota bars, footer location and truncated native status line return, including saved Git placement. Controllers, preferences, tasks, and editor focus are not reset; sharing resumes when it fits again. Off, small mode, native/simple editor, and autocomplete retain the same habitual fallback.
+**The entire left block, including the editor, must fit the selected Companion's height.** The three-task preview, localized overflow information, and editor minimum size are preserved. Both provider blocks add height, so fit depends on the actual width, cards and status text. If width, a smaller style, expanded TODO, or a growing editor prevents a readable fit, Companion hides and the exact habitual widgets, quota bars, footer location and truncated native status line return, including saved Git placement. Controllers, preferences, tasks, and editor focus are not reset; sharing resumes when it fits again. Off, small mode, native/simple editor, and autocomplete retain the same habitual fallback.
 
 Fullscreen TODO title-click/wheel and `ctrl+shift+t` remain available. In fullscreen Pi, left-clicking Usage's title/content opens the existing `/usage` modal; `/usage` and Ctrl+Alt+U remain keyboard alternatives. No duplicate quotas or model/context metadata are added. The user confirmed the habitual fallback click/cursor/wrap case manually; broader live terminal/font artwork verification remains pending.
 
@@ -875,7 +875,7 @@ npm run pi:dev
 - The Git summary reports unavailable when Git commands cannot read a working tree.
 - Diff patches depend on readable repository files; a file whose patch cannot load shows the reported error in the panel.
 - Audio playback is limited to macOS and Windows and to readable `.mp3`/`.wav` files.
-- Codex `/usage` requires an active `openai-codex` login. Run `/login` and choose **ChatGPT Plus/Pro (Codex)**. Claude Bridge `/usage` instead waits for a response with quota headers; run `/reload` after local extension changes.
+- The Codex block in `/usage` requires an active `openai-codex` login. Run `/login` and choose **ChatGPT Plus/Pro (Codex)**. The separate Claude Bridge block waits for a response with quota headers; run `/reload` after local extension changes.
 - A `401` indicates an expired session, while a `403` means usage is unavailable. Optional backend fields may be absent and simply do not render.
 
 ## Disable, uninstall, and license

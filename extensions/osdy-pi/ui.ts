@@ -31,6 +31,7 @@ import {
 } from "./companion-panel.js";
 import { companionWorkspace, type CompanionWorkspace, type WorkspaceMouseTarget, type WorkspaceLayout } from "./companion-workspace.js";
 import { formatContextUsage } from "./context-usage-ui.js";
+import { renderCombinedCompanionUsage } from "./combined-usage-ui.js";
 import {
 	renderCompactCodexQuotaBars,
 	resolveCodexUsageLayout,
@@ -560,7 +561,9 @@ export function createEditorComponent(
 			const editorWidth = width - companion.columns;
 			const editorHeight = Math.max(super.render(editorWidth - 2).length, internalLineTarget(this.tuiRef) + 2);
 			const usage: Component = {
-				render: width => this.renderQuotaLines(width, "spaced"),
+				render: width => state.getClaudeBridgeUsage
+					? renderCombinedCompanionUsage(ctx.ui.theme, state.codexUsage, state.getClaudeBridgeUsage(), width)
+					: this.renderQuotaLines(width, "spaced"),
 				handleMouse: event => {
 					if (this.tuiRef.mode !== "fullscreen" || this.tuiRef.hasOverlay()
 						|| event.type !== "click" || event.button !== "left" || !state.openUsage) return undefined;

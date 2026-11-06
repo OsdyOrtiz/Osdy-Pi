@@ -261,22 +261,21 @@ function progress(
 	return `${theme.fg(fillTheme, "█".repeat(filled))}${theme.fg("muted", "░".repeat(barWidth - filled))}`;
 }
 
-/** Renders the main Codex bucket as compact, remaining-capacity quota bars. */
-export function renderCompactCodexQuotaBars(
+/** Renders independent quota windows using the same remaining-capacity styling. */
+export function renderCompactQuotaWindows(
 	theme: SimpleTheme,
-	snapshot: CodexUsageSnapshot,
+	windows: readonly [CodexUsageWindow | undefined, CodexUsageWindow | undefined],
 	width: number,
 	layout: "compact" | "spaced" = "compact",
+	showUnknown = false,
 ): string[] {
 	const maximumWidth = Math.max(1, Math.floor(width));
-	const main = snapshot.buckets.find((bucket) => bucket.id === "codex");
 	const bars = (
-		[
-			["Session", main?.primary],
-			["Weekly", main?.secondary],
-		] as const
+		[["Session", windows[0]], ["Weekly", windows[1]]] as const
 	).flatMap(([name, window]) => {
-		if (!window) return [];
+		if (!window || (showUnknown && !Number.isFinite(window.usedPercent))) return showUnknown
+			? [truncateToWidth(`${quotaLabel(theme, name, " ")}${theme.fg("muted", "unknown")}`, maximumWidth, "")]
+			: [];
 		const duration = formatWindowDuration(window);
 		const remaining = formatRemainingPercent(window.usedPercent);
 		const label =
@@ -312,6 +311,17 @@ export function renderCompactCodexQuotaBars(
 	return layout === "spaced"
 		? bars.flatMap((bar, index) => index === 0 ? [bar] : ["", bar])
 		: bars;
+}
+
+/** Renders the main Codex bucket as compact, remaining-capacity quota bars. */
+export function renderCompactCodexQuotaBars(
+	theme: SimpleTheme,
+	snapshot: CodexUsageSnapshot,
+	width: number,
+	layout: "compact" | "spaced" = "compact",
+): string[] {
+	const main = snapshot.buckets.find((bucket) => bucket.id === "codex");
+	return renderCompactQuotaWindows(theme, [main?.primary, main?.secondary], width, layout);
 }
 
 export function renderCodexUsageReadyLines(

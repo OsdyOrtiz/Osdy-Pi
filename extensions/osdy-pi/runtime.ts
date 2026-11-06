@@ -74,9 +74,8 @@ import {
 	type CodexUsageAuth,
 	type CodexUsageSnapshot,
 } from "./codex-usage.js";
-import { showCodexUsagePanel } from "./codex-usage-ui.js";
 import { parseClaudeBridgeUsage, type ClaudeBridgeUsageSnapshot } from "./claude-bridge-usage.js";
-import { showClaudeBridgeUsagePanel } from "./claude-bridge-usage-ui.js";
+import { showCombinedUsagePanel } from "./combined-usage-ui.js";
 import { createCodexResetStore } from "./codex-reset-store.js";
 import { createCodexResetWorkflow, type CodexResetContext } from "./codex-reset.js";
 import { createCodexResetInteraction, notifyCodexResetResult, type CodexResetAction } from "./codex-reset-ui.js";
@@ -863,6 +862,7 @@ function registerUsageCommand(
 	captureCurrentRuntime: () => () => boolean,
 	bridgeUsage: () => ClaudeBridgeUsageSnapshot | undefined,
 	subscribeBridgeUsage: (redraw: () => void) => () => void,
+	isBridgeSelected: () => boolean,
 ): void {
 	const refreshActiveSessionUsage = createActiveSessionRefresh(
 		getSessionContext,
@@ -870,29 +870,29 @@ function registerUsageCommand(
 	);
 	const openUsagePanel = async (ctx: ExtensionContext, canOpen: () => boolean = () => true): Promise<void> => {
 		if (!ctx.hasUI || ctx.mode !== "tui") {
-			ctx.ui.notify("Codex usage requires the interactive UI", "warning");
+			ctx.ui.notify("Subscription usage requires the interactive UI", "warning");
 			return;
 		}
 		const isCurrent = captureCurrentRuntime();
-		if (ctx.model?.provider === "claude-bridge") {
-			if (!isCurrent() || !canOpen()) return;
-			await showClaudeBridgeUsagePanel(ctx, () => isCurrent() && getSessionContext()?.model?.provider === "claude-bridge" ? bridgeUsage() : undefined, subscribeBridgeUsage);
-			return;
-		}
-		const bridgeSelected = (): boolean => ctx.model?.provider === "claude-bridge" ||
+		const bridgeSelected = (): boolean => isBridgeSelected() || ctx.model?.provider === "claude-bridge" ||
 			getSessionContext()?.model?.provider === "claude-bridge";
-		const useReset = await bindReset(ctx, () => !bridgeSelected());
-		if (!isCurrent() || !canOpen() || bridgeSelected()) return;
-		await showCodexUsagePanel(
+		const openedOnBridge = bridgeSelected();
+		const canReset = (): boolean => isCurrent() && !bridgeSelected();
+		const useReset = openedOnBridge ? undefined : await bindReset(ctx, canReset);
+		if (!isCurrent() || !canOpen() || (!openedOnBridge && bridgeSelected())) return;
+		await showCombinedUsagePanel(
 			ctx,
 			() => state.codexUsage,
-			async () => { if (!bridgeSelected()) await refreshActiveSessionUsage(); },
+			() => isCurrent() ? bridgeUsage() : undefined,
+			subscribeBridgeUsage,
+			async () => { if (isCurrent()) await refreshActiveSessionUsage(); },
 			{
 				profile: resolveActiveProfileLabel(),
 				provider: ctx.model?.provider ?? "unknown",
 				model: modelLabel(ctx),
 			},
-			useReset ? async () => !bridgeSelected() && await useReset() : undefined,
+			canReset,
+			useReset ? async () => canReset() && await useReset() : undefined,
 		);
 	};
 	let mouseOpenInFlight = false;
@@ -905,17 +905,17 @@ function registerUsageCommand(
 		try {
 			await openUsagePanel(ctx, canOpen);
 		} catch (error) {
-			if (isCurrent()) ctx.ui.notify(`${ctx.model?.provider === "claude-bridge" ? "Claude Bridge" : "Codex"} usage failed: ${error instanceof Error ? error.message : "unknown error"}`, "error");
+			if (isCurrent()) ctx.ui.notify(`Subscription usage failed: ${error instanceof Error ? error.message : "unknown error"}`, "error");
 		} finally {
 			mouseOpenInFlight = false;
 		}
 	};
 	pi.registerCommand("usage", {
-		description: "Show Codex or Claude Bridge subscription usage.",
+		description: "Show Codex and Claude Bridge subscription usage.",
 		handler: async (_args, ctx) => openUsagePanel(ctx),
 	});
 	pi.registerShortcut("ctrl+alt+u", {
-		description: "Show Codex or Claude Bridge subscription usage.",
+		description: "Show Codex and Claude Bridge subscription usage.",
 		handler: openUsagePanel,
 	});
 }
@@ -1344,11 +1344,18 @@ export async function registerOsdyPi(
 	let sessionContext: ExtensionContext | undefined;
 	let bridgeSessionId: string | undefined;
 	let bridgeSnapshot: ClaudeBridgeUsageSnapshot | undefined;
+	let bridgeSelectedByEvent = false;
 	const bridgeListeners = new Set<() => void>();
+	const notifyBridgeUsage = (): void => {
+		for (const redraw of bridgeListeners) redraw();
+		state.tui?.requestRender();
+	};
 	const clearBridgeUsage = (): void => {
 		bridgeSnapshot = undefined;
-		for (const redraw of bridgeListeners) redraw();
+		notifyBridgeUsage();
 	};
+	state.getClaudeBridgeUsage = () => bridgeSessionId && sessionContext?.sessionManager?.getSessionId() === bridgeSessionId
+		? bridgeSnapshot : undefined;
 	let runtimeGeneration = 0;
 	let usageSettingsReady = false;
 	registerMessageRoleMarkers(pi, () => usageSettingsReady && areVisualsEnabled(state),
@@ -1545,13 +1552,16 @@ export async function registerOsdyPi(
 		if (!snapshot.session && !snapshot.weekly && !snapshot.overageIncluded && !snapshot.reset && !snapshot.overageReset &&
 			!quotaStatus(snapshot.status) && !quotaStatus(snapshot.overageStatus)) return;
 		bridgeSnapshot = snapshot;
-		for (const redraw of bridgeListeners) redraw();
+		notifyBridgeUsage();
 	});
 	pi.on("model_select", event => {
-		if (event.model.provider !== event.previousModel?.provider) clearBridgeUsage();
+		bridgeSelectedByEvent = event.model.provider === "claude-bridge";
+		// Provider changes cancel bound reset work, but same-session quota remains visible.
+		if (event.model.provider !== event.previousModel?.provider) notifyBridgeUsage();
 	});
 	pi.on("session_shutdown", () => {
 		usageSettingsReady = false;
+		bridgeSelectedByEvent = false;
 		bridgeSessionId = undefined;
 		clearBridgeUsage();
 		presentGeneration(generationMeter.reset());
@@ -1572,6 +1582,7 @@ export async function registerOsdyPi(
 		sessionContext = undefined;
 	});
 	pi.on("session_start", async (_event, ctx) => {
+		bridgeSelectedByEvent = ctx.model?.provider === "claude-bridge";
 		bridgeSessionId = ctx.sessionManager?.getSessionId();
 		clearBridgeUsage();
 		presentGeneration(generationMeter.reset());
@@ -1662,8 +1673,9 @@ export async function registerOsdyPi(
 			return () => generation === runtimeGeneration && ctx === sessionContext &&
 				sessionId === sessionContext?.sessionManager?.getSessionId();
 		},
-		() => bridgeSnapshot,
+		() => state.getClaudeBridgeUsage?.(),
 		redraw => { bridgeListeners.add(redraw); return () => { bridgeListeners.delete(redraw); }; },
+		() => bridgeSelectedByEvent,
 	);
 	registerCommand(
 		pi,

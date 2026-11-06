@@ -6,6 +6,7 @@ type EditorFactory = Exclude<
 	undefined
 >;
 import type { CodexUsageSnapshot } from "./codex-usage.js";
+import type { ClaudeBridgeUsageSnapshot } from "./claude-bridge-usage.js";
 import type { GenerationReading } from "./generation-meter.js";
 
 export type AnimationMode = "off" | "intro" | "continuous";
@@ -95,6 +96,8 @@ export type CodexUsageState =
 
 export type OsdyState = {
 	codexUsage: CodexUsageState;
+	/** Volatile session-scoped read seam; the runtime remains the cache owner. */
+	getClaudeBridgeUsage?: () => ClaudeBridgeUsageSnapshot | undefined;
 	/** Presentation entrypoint; resolves the current foreground context on every click. */
 	openUsage?: () => Promise<void>;
 	/** Volatile response reading; never persisted as usage or settings. */

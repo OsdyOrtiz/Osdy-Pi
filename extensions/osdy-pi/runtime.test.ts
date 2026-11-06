@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DefaultPackageManager, SettingsManager, type ExtensionAPI, type Theme } from "@earendil-works/pi-coding-agent";
@@ -14,7 +14,7 @@ import type { VisualPreferenceAction } from "./control-center-preferences.js";
 import type { ProfileCodexUsageResult } from "./profile-codex-usage.js";
 import type { CodexUsageRefreshClock, CodexUsageRefreshTimer } from "./codex-usage-refresh.js";
 import type { CodexUsageSnapshot } from "./codex-usage.js";
-import { Container, TuiMainScreen, type Component, type OverlayHandle, type Terminal, type TUI, type TuiMouseEvent } from "@earendil-works/pi-tui";
+import { Container, TuiMainScreen, visibleWidth, type Component, type OverlayHandle, type Terminal, type TUI, type TuiMouseEvent } from "@earendil-works/pi-tui";
 
 registerHooks({
 	resolve(specifier, context, nextResolve) {
@@ -70,6 +70,8 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 	let beforeAction: () => Promise<void> = () => Promise.resolve();
 	let beforeAuth: () => Promise<void> = () => Promise.resolve();
 	let onRender: (view: string) => void = () => {};
+	let holdView = false;
+	let releaseView: (() => void) | undefined;
 	let panel: Component | undefined;
 	let footer: Component | undefined;
 	let renders = 0;
@@ -125,6 +127,7 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 			},
 			custom: async (factory: (tui: unknown, theme: unknown, keys: unknown, done: (result: unknown) => void) => Component) => {
 				open = true; overlays++;
+				const providerAtOpen = provider;
 				let result: unknown;
 				const mounted = factory({ terminal: { rows: 40 }, requestRender: () => { if (panel) onRender(panel.render(120).join("\n")); } }, ctx.ui.theme, undefined, value => { result = value; open = false; });
 				panel = mounted;
@@ -132,14 +135,23 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 				const act = nextAction;
 				nextAction = false;
 				if (act) await beforeAction();
-				if (!act) mounted.handleInput?.("\x1b");
-				else if (mounted.render(120).join("\n").includes("Control Center")) {
+				if (!act) {
+					if (holdView) await new Promise<void>(resolve => { releaseView = resolve; });
+					mounted.handleInput?.("\x1b");
+				} else if (mounted.render(120).join("\n").includes("Control Center")) {
 					for (let i = 0; i < 8; i++) mounted.handleInput?.("\x1b[B");
 					for (let i = 0; i < 100 && !mounted.render(120).join("\n").includes("Use or check banked reset"); i++)
 						await new Promise<void>(resolve => setImmediate(resolve));
 					assert.match(mounted.render(120).join("\n"), /Use or check banked reset/);
 					mounted.handleInput?.("\x1b[C"); mounted.handleInput?.("\x1b[H"); mounted.handleInput?.("\x1b[B"); mounted.handleInput?.("\r");
-				} else { assert.match(mounted.render(120).join("\n"), /u use\/check reset/); mounted.handleInput?.("u"); }
+				} else {
+					const initial = views.at(-1) ?? "";
+					if (providerAtOpen === "claude-bridge") assert.doesNotMatch(initial, /u use\/check reset/);
+					else assert.match(initial, /u use\/check reset/, "Codex reset remains available when binding succeeds");
+					const resetAvailable = /u use\/check reset/.test(mounted.render(120).join("\n"));
+					mounted.handleInput?.("u");
+					if (!resetAvailable && open) mounted.handleInput?.("\x1b");
+				}
 				assert.equal(open, false, "action must produce a completion intent, not nested inline confirmation");
 				return result;
 			},
@@ -164,6 +176,8 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 			? shortcuts.get("ctrl+alt+u")!.handler(ctx) : commands.get("usage")!.handler("", ctx); },
 		panel: () => panel?.render(120).join("\n") ?? "",
 		beforeAuth: (next: typeof beforeAuth) => { beforeAuth = next; },
+		holdView: () => { holdView = true; },
+		closeView: () => { holdView = false; releaseView?.(); releaseView = undefined; },
 		onRender: (next: typeof onRender) => { onRender = next; },
 		beforeAction: (next: typeof beforeAction) => { beforeAction = next; },
 		setAnswer: (next: typeof answer) => { answer = next; }, setAccount: () => { account = "next-account"; },
@@ -319,6 +333,51 @@ void test("shutdown or new session after dispatch aborts the HTTP attempt as unk
 	}
 });
 
+void test("model_select to Bridge after dispatch aborts and preserves pending plus cached quota", async () => {
+	const f = await resetRuntimeFixture();
+	const dir = join(f.root, "osdy-pi", "codex-reset-attempts");
+	const journal = () => readdirSync(dir).filter(name => name.endsWith(".json")).sort()
+		.map(name => ({ name, text: readFileSync(join(dir, name), "utf8") }));
+	const select = async (provider: string, previous: string) => {
+		f.setProvider(provider);
+		await f.emit("model_select", { model: { provider, id: "x" }, previousModel: { provider: previous, id: "x" }, source: "set" });
+	};
+	let pending: ReturnType<typeof journal> | undefined;
+	let postedSignal: AbortSignal | undefined;
+	try {
+		await select("claude-bridge", "openai-codex");
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200,
+			headers: { "anthropic-ratelimit-unified-5h-utilization": "0.25", "anthropic-ratelimit-unified-7d-utilization": "0.7" } });
+		await select("openai-codex", "claude-bridge");
+		f.setPost(async signal => {
+			postedSignal = signal; assert.equal(signal?.aborted, false); assert.equal(f.posts.length, 1);
+			pending = journal(); assert.equal(pending.length, 1);
+			const record = JSON.parse(pending[0]!.text) as { status: string; creditId: string; requestId: string };
+			assert.equal(record.status, "pending"); assert.equal(record.creditId, f.posts[0]!.credit_id);
+			assert.equal(record.requestId, f.posts[0]!.redeem_request_id);
+			await select("claude-bridge", "openai-codex");
+			assert.equal(signal?.aborted, true); assert.deepEqual(journal(), pending);
+			throw new Error("synthetic interrupted dispatch");
+		});
+		await f.open(); assert.equal(postedSignal?.aborted, true); assert.equal(f.posts.length, 1);
+		assert.equal(f.dialogs.length, 2); assert.equal(f.overlays(), 1, "do not reopen reset modal on Bridge");
+		assert.ok(pending); assert.deepEqual(journal(), pending);
+		assert.match(f.notices.join("\n"), /Outcome unknown; do not start another reset/);
+		await f.view(); assert.match(f.panel(), /Claude Bridge/); assert.match(f.panel(), /75% left/);
+		assert.match(f.panel(), /30% left/); assert.doesNotMatch(f.panel(), /u use\/check reset/);
+		assert.equal(f.posts.length, 1); assert.deepEqual(journal(), pending);
+		await select("openai-codex", "claude-bridge"); f.setAnswer(() => Promise.resolve("Cancel"));
+		await f.open(); assert.deepEqual(f.dialogs.at(-1)?.options, ["Cancel", "Check pending attempt"]);
+		assert.equal(f.posts.length, 1); assert.deepEqual(journal(), pending);
+		f.setPost(() => Promise.resolve()); f.setAnswer((_title, options) => Promise.resolve(options.at(-1)));
+		await f.open(); assert.equal(f.posts.length, 2);
+		assert.deepEqual(f.posts[1], f.posts[0], "recovery uses same UUID/credit, never a fresh request");
+		const resolved = JSON.parse(journal()[0]!.text) as { status: string; creditId: string; requestId: string };
+		assert.equal(resolved.status, "resolved"); assert.equal(resolved.creditId, f.posts[0]!.credit_id);
+		assert.equal(resolved.requestId, f.posts[0]!.redeem_request_id);
+	} finally { await f.close(); }
+});
+
 void test("confirmed result refreshes the reopened view; failed refresh cannot turn it into failure or expose backend errors", async () => {
 	for (const fails of [false, true]) {
 		const f = await resetRuntimeFixture();
@@ -365,20 +424,28 @@ for (const fails of [false, true]) {
 		} });
 		f.onRender(view => { if (/Banked resets: 7/.test(view)) currentPublished.resolve(); });
 		const old = f.open("osdyConfig");
+		let view: Promise<void> | undefined;
+		let deadline: ReturnType<typeof setTimeout> | undefined;
 		try {
 			await authEntered.promise;
 			assert.equal(oldSignal?.aborted, false, "old refresh reached its awaited publication auth check");
-			await f.view();
-			await currentPublished.promise;
+			f.holdView(); view = Promise.resolve(f.view());
+			await Promise.race([currentPublished.promise, new Promise<never>((_resolve, reject) => {
+				deadline = setTimeout(() => reject(new Error("new quota did not render while the modal was open")), 2000);
+			})]);
 			assert.equal(oldSignal?.aborted, true, "new usage refresh supersedes the auth-blocked reset refresh");
 			assert.match(f.panel(), /Banked resets: 7/, "new quota is published before old auth resumes");
+			f.closeView(); await view;
 			releaseAuth.resolve();
 			await old;
 			assert.match(f.panel(), /Banked resets: 7/, `old ${fails ? "error" : "success"} must not replace current quota`);
 			assert.equal(f.posts.length, 1);
 			assert.match(f.notices.join(""), /Banked reset consumed.*Quota refresh failed/);
 			assert.doesNotMatch(f.notices.join(""), /private-/);
-		} finally { releaseAuth.resolve(); await old; await f.close(); }
+		} finally {
+			if (deadline) clearTimeout(deadline);
+			f.closeView(); releaseAuth.resolve(); await view; await old; await f.close();
+		}
 	});
 }
 
@@ -2341,16 +2408,17 @@ async function idleQuotaFixture(visualsEnabled = true, workspaceEditor = false) 
 	const commands = new Map<string, { handler(args: string, ctx: ExtensionCommandContext): Promise<void> }>();
 	const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>();
 	const requests: Array<{ signal: AbortSignal; resolve(snapshot: CodexUsageSnapshot): void; reject(error: Error): void }> = [];
-	let enabled = true; let hasUI = true; let idle = true; let provider = "openai-codex"; let mode = "tui";
+	let enabled = true; let hasUI = true; let idle = true; let provider = "openai-codex"; let mode = "tui"; let hasAuth = true;
 	let session = 0; let authCalls = 0; let panel: Component | undefined; let panelRenders = 0;
-	let visualMounts = 0;
-	let editor: Component | undefined;
+	let visualMounts = 0; let workspaceRenders = 0;
+	let editor: Component | undefined; let footer: Component | undefined;
 	let overlay = false; let holdPanel = false; let failPanel = false; let overlays = 0;
+	const terminal = { columns: 120, rows: 40 };
 	let closePanel: (() => void) | undefined;
 	const notices: string[] = [];
 	const theme = { fg: (_color: string, text: string) => text, bold: (text: string) => text };
 	const identity = (text: string) => text;
-	const tui = { mode: "fullscreen", terminal: { columns: 120, rows: 40 }, requestRender() {}, hasOverlay: () => overlay } as unknown as TUI;
+	const tui = { mode: "fullscreen", terminal, requestRender() { workspaceRenders++; }, hasOverlay: () => overlay } as unknown as TUI;
 	const writes: GlobalEditorSettings[] = [];
 	const snapshot = (fetchedAt: number): CodexUsageSnapshot => ({ fetchedAt, planType: "plus", ordinaryUsageAllowed: true,
 		buckets: workspaceEditor ? [{ id: "codex", label: undefined,
@@ -2371,7 +2439,7 @@ async function idleQuotaFixture(visualsEnabled = true, workspaceEditor = false) 
 		getContextUsage: () => undefined,
 		get sessionManager() { return workspaceEditor || provider === "claude-bridge" ? { getSessionId: () => `session-${generation}`, getEntries: () => [] } : undefined; },
 		getThinkingLevel: () => "off", modelRegistry: { getProviderAuth: () => {
-			authCalls++; authSessions.push(generation); return Promise.resolve({ auth: { apiKey: accessToken } });
+			authCalls++; authSessions.push(generation); return Promise.resolve(hasAuth ? { auth: { apiKey: accessToken } } : undefined);
 		} }, ui: { theme, getEditorComponent: () => undefined,
 			setEditorComponent: (factory: Parameters<ExtensionContext["ui"]["setEditorComponent"]>[0]) => {
 				visualMounts++;
@@ -2381,11 +2449,14 @@ async function idleQuotaFixture(visualsEnabled = true, workspaceEditor = false) 
 			},
 			setHeader: (factory?: (tui: TUI, theme: SimpleTheme) => Component & { dispose?(): void }) => {
 				visualMounts++; if (workspaceEditor) factory?.(tui, theme).dispose?.();
-			}, setFooter: () => { visualMounts++; },
+			}, setFooter: (factory?: (tui: TUI, theme: SimpleTheme, data: unknown) => Component) => {
+				visualMounts++;
+				if (workspaceEditor) footer = factory?.(tui, theme, { getGitBranch: () => "main", getExtensionStatuses: () => new Map() });
+			},
 			setWidget: () => { visualMounts++; }, setWorkingVisible: () => { visualMounts++; }, notify: (message: string) => { notices.push(message); },
 			custom: (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component) => {
 				overlays++; if (failPanel) throw new Error("overlay failed");
-				panel = factory({ requestRender: () => { panelRenders++; } }, theme, undefined, () => { overlay = false; closePanel?.(); });
+				panel = factory({ terminal, requestRender: () => { panelRenders++; } }, theme, undefined, () => { overlay = false; closePanel?.(); });
 				if (!holdPanel) return Promise.resolve();
 				overlay = true;
 				return new Promise<void>(resolve => { closePanel = resolve; });
@@ -2396,7 +2467,7 @@ async function idleQuotaFixture(visualsEnabled = true, workspaceEditor = false) 
 	let ctx = makeContext();
 	const previousDir = process.env.PI_CODING_AGENT_DIR;
 	// A nonexistent synthetic directory prevents factory inspection of personal settings.
-	process.env.PI_CODING_AGENT_DIR = "/nonexistent-osdy-idle-quota-fixture";
+	process.env.PI_CODING_AGENT_DIR = join(tmpdir(), "nonexistent-osdy-idle-quota-fixture");
 	try {
 		await registerOsdyPi(pi, { readActiveProfile: () => Promise.resolve(undefined), codexUsageClock: clock,
 			fetchCodexUsage: (_auth, { signal }) => new Promise((resolve, reject) => { requests.push({ signal, resolve, reject }); }),
@@ -2413,7 +2484,8 @@ async function idleQuotaFixture(visualsEnabled = true, workspaceEditor = false) 
 		assert.ok(handler, `runtime ${name} handler must be registered`);
 		await handler({}, ctx); await clock.advance(0);
 	};
-	return { clock, requests, snapshot, authSessions, writes, commands, notices, editor: () => editor!, overlays: () => overlays,
+	return { clock, requests, snapshot, authSessions, writes, commands, notices, terminal, editor: () => editor!, footer: () => footer!, overlays: () => overlays,
+		workspaceRenders: () => workspaceRenders,
 		hold: () => { holdPanel = true; }, fail: (value: boolean) => { failPanel = value; }, overlay: (value: boolean) => { overlay = value; },
 		dismiss: () => panel?.handleInput?.("\x1b"), visualMounts: () => visualMounts, authCalls: () => authCalls, context: () => ctx,
 		start: () => lifecycle("session_start"), stop: () => lifecycle("session_shutdown"), settle: () => lifecycle("agent_settled"),
@@ -2427,12 +2499,12 @@ async function idleQuotaFixture(visualsEnabled = true, workspaceEditor = false) 
 			await shortcuts.get("ctrl+alt+u")!.handler(context); await clock.advance(0);
 		},
 		visual: async (action: "on" | "off") => { await commands.get("osdy-pi")!.handler(action, ctx as ExtensionCommandContext); },
-		panel: () => panel!.render(100).join("\n"), panelRenders: () => panelRenders,
+		panel: (width = 100) => panel!.render(width).join("\n"), panelLines: (width: number) => panel!.render(width), panelRenders: () => panelRenders,
 		key: (key: string) => panel?.handleInput?.(key),
 		emit: async (name: string, event: unknown, context: ExtensionContext = ctx) => { for (const handler of handlers.get(name) ?? []) await handler(event, context); },
-		set: (values: { enabled?: boolean; hasUI?: boolean; idle?: boolean; provider?: string; mode?: string }) => {
+		set: (values: { enabled?: boolean; hasUI?: boolean; idle?: boolean; provider?: string; mode?: string; hasAuth?: boolean }) => {
 			enabled = values.enabled ?? enabled; hasUI = values.hasUI ?? hasUI; idle = values.idle ?? idle;
-			provider = values.provider ?? provider; mode = values.mode ?? mode;
+			provider = values.provider ?? provider; mode = values.mode ?? mode; hasAuth = values.hasAuth ?? hasAuth;
 		},
 		complete: async (index: number, at = index) => { requests[index]!.resolve(snapshot(at)); await clock.advance(0); },
 	};
@@ -2494,7 +2566,7 @@ void test("workspace Usage left-click opens the existing live /usage modal once 
   assert.equal(click()?.handled, true, "a quota left-click must call the shared modal opener");
   click(); await f.clock.advance(0);
   assert.equal(f.overlays(), 1);
-  assert.match(f.panel(), /Codex subscription usage/);
+  assert.match(f.panel(), /Codex \+ Claude Bridge subscription usage/);
   assert.match(f.panel(), /u use\/check reset/, "mouse preserves reset binding, not a replacement modal");
   await f.complete(1); f.dismiss(); await f.clock.advance(0);
   f.fail(true); click(); await f.clock.advance(0);
@@ -2525,7 +2597,7 @@ void test("Ctrl+Alt+U opens the usage command panel and refreshes the latest ses
 		assert.equal(f.requests.length, 3);
 		assert.equal(f.requests[1]?.signal.aborted, true, "Ctrl+Alt+U supersedes the command refresh");
 		await f.complete(1); await f.complete(2);
-		assert.match(f.panel(), /Codex subscription usage/);
+		assert.match(f.panel(), /Codex \+ Claude Bridge subscription usage/);
 		const oldContext = f.context();
 		await f.replace(); await f.complete(3);
 		await f.shortcut(oldContext);
@@ -2819,9 +2891,28 @@ void test("a Codex panel cannot use a reset after selecting bridge", async () =>
 
 void test("a pending Codex reset cannot dispatch after selection changes to bridge", async () => {
 	const f = await resetRuntimeFixture();
-	f.setAnswer((_title, options, index) => { if (index === 1) f.setProvider("claude-bridge"); return Promise.resolve(options.at(-1)); });
-	try { await f.open(); assert.equal(f.posts.length, 0); }
-	finally { await f.close(); }
+	const root = join(f.root, "osdy-pi", "codex-reset-attempts");
+	const journals = () => existsSync(root) ? readdirSync(root).filter(name => name.endsWith(".json")).sort()
+		.map(name => [name, readFileSync(join(root, name), "utf8")]) : [];
+	let before: string[][] | undefined;
+	f.setAnswer(async (_title, options, index) => {
+		if (index === 1) {
+			before = journals();
+			f.setProvider("claude-bridge");
+			await f.emit("model_select", { model: { provider: "claude-bridge", id: "x" },
+				previousModel: { provider: "openai-codex", id: "x" }, source: "set" });
+		}
+		return options.at(-1);
+	});
+	try {
+		f.setProvider("claude-bridge");
+		await f.emit("model_select", { model: { provider: "claude-bridge", id: "x" }, previousModel: { provider: "openai-codex", id: "x" }, source: "set" });
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "0.25" }) });
+		f.setProvider("openai-codex");
+		await f.emit("model_select", { model: { provider: "openai-codex", id: "x" }, previousModel: { provider: "claude-bridge", id: "x" }, source: "set" });
+		await f.open(); assert.ok(before); assert.equal(f.posts.length, 0); assert.deepEqual(journals(), before);
+		await f.view(); assert.match(f.panel(), /75% left/, "reset cancellation does not erase same-session Bridge quota");
+	} finally { await f.close(); }
 });
 
 void test("Codex opening awaiting reset binding cannot mount after selection changes to bridge", async () => {
@@ -2834,26 +2925,45 @@ void test("Codex opening awaiting reset binding cannot mount after selection cha
 	} finally { release.resolve(); await opening; await f.close(); }
 });
 
-void test("bridge usage waits for a response and command and shortcut stay passive", async () => {
+void test("bridge startup and idle stay passive; command and shortcut explicitly refresh Codex", async () => {
 	const f = await idleQuotaFixture();
-	f.set({ provider: "claude-bridge" });
+	f.set({ provider: "claude-bridge" }); f.hold(); f.terminal.rows = 100;
+	let opening: Promise<void> | undefined;
 	try {
-		await f.start();
-		await f.manual();
-		assert.match(f.panel(), /waiting.*Claude Bridge.*response/i);
-		const commandView = f.panel();
-		await f.commands.get("usage")!.handler("ignored arguments", f.context() as ExtensionCommandContext);
-		assert.equal(f.panel(), commandView);
-		assert.equal(f.authCalls(), 0); assert.equal(f.requests.length, 0);
-		f.key("r"); f.key("u");
-		await f.shortcut();
-		assert.match(f.panel(), /waiting.*Claude Bridge.*response/i);
-		assert.equal(f.authCalls(), 0); assert.equal(f.requests.length, 0);
-	} finally { await f.stop(); }
+		await f.start(); await f.clock.advance(120_000);
+		assert.equal(f.requests.length, 0, "no Bridge or Codex background query on Bridge");
+		opening = f.manual(); await f.clock.advance(0);
+		assert.match(f.panel(), /Claude Bridge/i);
+		assert.match(f.panel(), /waiting|unknown/i);
+		assert.match(f.panel(), /Codex/i);
+		assert.equal(f.requests.length, 1, "opening explicitly queries only Codex");
+		await f.complete(0);
+		f.key("r"); await f.clock.advance(0);
+		assert.equal(f.requests.length, 2, "r explicitly queries only Codex");
+		await f.complete(1); f.key("u");
+		f.dismiss(); await opening;
+		opening = f.shortcut(); await f.clock.advance(0);
+		assert.equal(f.requests.length, 3);
+		await f.complete(2); await f.clock.advance(120_000);
+		assert.equal(f.requests.length, 3, "combined view does not create idle queries");
+	} finally { f.dismiss(); await opening; await f.stop(); }
+});
+
+void test("combined Codex quota never attributes its account to the selected Bridge model", async () => {
+	const f = await idleQuotaFixture(true, true); f.set({ provider: "claude-bridge" }); f.hold(); f.terminal.rows = 100;
+	let opening: Promise<void> | undefined;
+	try {
+		await f.start(); opening = f.manual(); await f.clock.advance(0);
+		assert.equal(f.requests.length, 1); await f.complete(0);
+		const text = f.panel(180);
+		assert.match(text, /Codex/); assert.match(text, /75% left/); assert.match(text, /40% left/);
+		assert.doesNotMatch(text, /Provider: claude-bridge|Model: claude-bridge\//);
+		assert.match(text, /Claude Bridge/);
+	} finally { f.dismiss(); await opening; await f.stop(); }
 });
 
 void test("bridge event supplies quota, sparse unknowns and ignores malformed later responses", async () => {
-	const f = await idleQuotaFixture(); f.set({ provider: "claude-bridge" });
+	const f = await idleQuotaFixture(); f.set({ provider: "claude-bridge" }); f.terminal.rows = 100;
 	try {
 		await f.start();
 		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: {} });
@@ -2864,19 +2974,22 @@ void test("bridge event supplies quota, sparse unknowns and ignores malformed la
 		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: {} });
 		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "invalid" }) });
 		assert.match(f.panel(), /Session.*75% left/);
-		assert.equal(f.authCalls(), 0); assert.equal(f.requests.length, 0);
+		assert.equal(f.requests.length, 2, "only the two explicit modal opens request Codex");
 	} finally { await f.stop(); }
 });
 
-void test("provider changes and session replacement discard bridge quota and ignore unrelated selections", async () => {
-	const f = await idleQuotaFixture(); f.set({ provider: "claude-bridge" });
+void test("provider changes retain bridge quota while session replacement discards it", async () => {
+	// The live session manager exists for every provider, including after switching to Codex.
+	const f = await idleQuotaFixture(true, true); f.set({ provider: "claude-bridge" }); f.terminal.rows = 100;
 	const response = { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "0.25" }) };
 	try {
 		await f.start(); await f.emit("after_provider_response", response); await f.manual(); assert.match(f.panel(), /75% left/);
-		f.set({ provider: "other" }); await f.emit("model_select", { model: { provider: "other", id: "other" }, previousModel: { provider: "claude-bridge", id: "x" }, source: "set" });
-		await f.emit("after_provider_response", response);
-		f.set({ provider: "claude-bridge" }); await f.emit("model_select", { model: { provider: "claude-bridge", id: "x" }, previousModel: { provider: "other", id: "other" }, source: "set" });
-		await f.manual(); assert.match(f.panel(), /waiting.*response/i);
+		f.set({ provider: "openai-codex" }); await f.emit("model_select", { model: { provider: "openai-codex", id: "x" }, previousModel: { provider: "claude-bridge", id: "x" }, source: "set" });
+		await f.manual(); assert.match(f.panel(), /75% left/, "Codex selection can still display the cached Bridge value");
+		await f.emit("after_provider_response", { ...response, headers: bridgeHeaders({ "5h-utilization": "0.99" }) });
+		f.set({ provider: "claude-bridge" }); await f.emit("model_select", { model: { provider: "claude-bridge", id: "x" }, previousModel: { provider: "openai-codex", id: "x" }, source: "set" });
+		await f.manual(); assert.match(f.panel(), /75% left/);
+		assert.doesNotMatch(f.panel(), /1% left/, "response while another provider is selected is not attributed to Bridge");
 		await f.emit("after_provider_response", response); const oldContext = f.context();
 		await f.replace(); await f.emit("after_provider_response", response, oldContext);
 		await f.manual(); assert.match(f.panel(), /waiting.*response/i);
@@ -2885,11 +2998,13 @@ void test("provider changes and session replacement discard bridge quota and ign
 });
 
 void test("bridge event redraws an open modal and never redraws after disposal", async () => {
-	const f = await idleQuotaFixture(); f.set({ provider: "claude-bridge" }); f.hold();
+	const f = await idleQuotaFixture(); f.set({ provider: "claude-bridge" }); f.hold(); f.terminal.rows = 100;
 	const response = { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "0.25" }) };
 	let opening: Promise<void> | undefined;
 	try {
 		await f.start(); opening = f.manual(); await f.clock.advance(0);
+		assert.equal(f.requests.length, 1, "opening the combined modal starts a Codex request");
+		await f.complete(0);
 		const before = f.panelRenders(); await f.emit("after_provider_response", response);
 		assert.equal(f.panelRenders(), before + 1); assert.match(f.panel(), /75% left/);
 		f.dismiss(); await opening; const closed = f.panelRenders();
@@ -2897,7 +3012,7 @@ void test("bridge event redraws an open modal and never redraws after disposal",
 	} finally { f.dismiss(); await opening; await f.stop(); }
 });
 
-void test("existing workspace mouse opener selects bridge view without a Codex action", async () => {
+void test("workspace mouse opener shows the combined view and refreshes Codex while Bridge is selected", async () => {
 	const f = await idleQuotaFixture(true, true);
 	try {
 		await f.start(); await f.complete(0);
@@ -2909,14 +3024,16 @@ void test("existing workspace mouse opener selects bridge view without a Codex a
 		const before = f.authCalls(); f.hold();
 		assert.equal(editor.handleMouse?.({ type: "click", button: "left", x: 5, y, screenX: 15, screenY: y + 20,
 			width: 120, height: lines.length, shift: false, alt: false, ctrl: false })?.handled, true);
-		await f.clock.advance(0); assert.match(f.panel(), /waiting.*Claude Bridge.*response/i);
-		f.key("u"); f.key("r"); assert.equal(f.authCalls(), before); assert.equal(f.requests.length, 1);
+		await f.clock.advance(0); assert.match(f.panel(), /Claude Bridge/i); assert.match(f.panel(), /Codex/i);
+		assert.ok(f.authCalls() > before); assert.equal(f.requests.length, 2);
+		await f.complete(1); f.key("u"); f.key("r"); await f.clock.advance(0);
+		assert.equal(f.requests.length, 3); await f.complete(2);
 	} finally { f.dismiss(); await f.stop(); }
 });
 
 void test("unsupported provider still uses the Codex panel and refresh path", async () => {
 	const f = await idleQuotaFixture(); f.set({ provider: "other" });
-	try { await f.start(); await f.manual(); assert.match(f.panel(), /Codex subscription usage/); assert.ok(f.authCalls() > 0); assert.ok(f.requests.length > 0); }
+	try { await f.start(); await f.manual(); assert.match(f.panel(), /Codex \+ Claude Bridge subscription usage/); assert.ok(f.authCalls() > 0); assert.ok(f.requests.length > 0); }
 	finally { await f.stop(); }
 });
 
@@ -2924,4 +3041,159 @@ void test("bridge entry preserves no-UI refusal", async () => {
 	const f = await idleQuotaFixture(); f.set({ provider: "claude-bridge", hasUI: false });
 	try { await f.start(); await f.manual(); assert.equal(f.overlays(), 0); assert.match(f.notices.join("\n"), /interactive UI/i); assert.equal(f.authCalls(), 0); }
 	finally { await f.stop(); }
+});
+
+void test("combined command keeps known Bridge quota visible when the explicit Codex request fails", async () => {
+	const f = await idleQuotaFixture(true, true); f.set({ provider: "claude-bridge" }); f.hold(); f.terminal.rows = 100;
+	let opening: Promise<void> | undefined;
+	try {
+		await f.start();
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200,
+			headers: bridgeHeaders({ "5h-utilization": "0.2", "7d-utilization": "0.7" }) });
+		opening = f.manual(); await f.clock.advance(0);
+		assert.equal(f.requests.length, 1);
+		f.requests[0]!.reject(new Error("synthetic Codex failure")); await f.clock.advance(0);
+		const text = f.panel();
+		assert.match(text, /Codex/i); assert.match(text, /failure|unavailable|error/i);
+		assert.match(text, /Claude Bridge/i); assert.match(text, /80% left/); assert.match(text, /30% left/);
+		assert.match(text, /captured/i);
+	} finally { f.dismiss(); await opening; await f.stop(); }
+});
+
+void test("missing Codex auth leaves known Bridge quota visible without making a request", async () => {
+	const f = await idleQuotaFixture(true, true); f.set({ provider: "claude-bridge", hasAuth: false }); f.hold(); f.terminal.rows = 100;
+	let opening: Promise<void> | undefined;
+	try {
+		await f.start();
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200,
+			headers: bridgeHeaders({ "5h-utilization": "0.2", "7d-utilization": "0.7" }) });
+		opening = f.manual(); await f.clock.advance(0);
+		assert.equal(f.requests.length, 0);
+		assert.match(f.panel(), /Codex/i); assert.match(f.panel(), /login|auth/i);
+		assert.match(f.panel(), /Claude Bridge/i); assert.match(f.panel(), /80% left/); assert.match(f.panel(), /30% left/);
+	} finally { f.dismiss(); await opening; await f.stop(); }
+});
+
+void test("Companion shows sparse Bridge and absent Codex as unknown, not fabricated percentages", async () => {
+	const f = await idleQuotaFixture(true, true); f.set({ provider: "claude-bridge" });
+	try {
+		await f.start();
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200,
+			headers: bridgeHeaders({ "5h-utilization": "0.25", "7d_oi-utilization": "0.8" }) });
+		const lines = f.editor().render(200); const text = lines.join("\n");
+		assert.match(text, /Pixel Pal/); assert.match(text, /Codex/i); assert.match(text, /Claude Bridge/i);
+		assert.ok((text.match(/Session/g) ?? []).length >= 2); assert.ok((text.match(/Weekly/g) ?? []).length >= 2);
+		assert.match(text, /75%/); assert.ok((text.match(/unknown|waiting/gi) ?? []).length >= 2);
+		assert.doesNotMatch(text, /20%|100% left/, "overage and missing data are not ordinary quotas");
+		assert.ok(lines.length <= 14);
+		assert.equal(f.requests.length, 0, "a passive Bridge event starts no query");
+	} finally { await f.stop(); }
+});
+
+void test("retaining Bridge quota does not change ordinary editor or footer output", async () => {
+	const cached = await idleQuotaFixture(true, true); const baseline = await idleQuotaFixture(true, true);
+	try {
+		for (const f of [cached, baseline]) { await f.start(); await f.complete(0); }
+		cached.set({ provider: "claude-bridge" });
+		await cached.emit("model_select", { model: { provider: "claude-bridge", id: "x" }, previousModel: { provider: "openai-codex", id: "x" }, source: "set" });
+		await cached.emit("after_provider_response", { type: "after_provider_response", status: 200,
+			headers: bridgeHeaders({ "5h-utilization": "0.2", "7d-utilization": "0.7" }) });
+		cached.set({ provider: "openai-codex" });
+		await cached.emit("model_select", { model: { provider: "openai-codex", id: "x" }, previousModel: { provider: "claude-bridge", id: "x" }, source: "set" });
+		for (const f of [cached, baseline]) await f.commands.get("osdy-pi")!.handler("companion off", f.context() as ExtensionCommandContext);
+		for (const width of [80, 120, 200]) {
+			assert.deepEqual(cached.editor().render(width), baseline.editor().render(width));
+			assert.deepEqual(cached.footer().render(width), baseline.footer().render(width));
+		}
+	} finally { await cached.stop(); await baseline.stop(); }
+});
+
+void test("combined modal lines fit zero-, one-, and two-column viewports", async () => {
+	const f = await idleQuotaFixture(true, true); f.set({ provider: "claude-bridge" }); f.hold();
+	f.terminal.rows = 14; f.terminal.columns = 2;
+	let opening: Promise<void> | undefined;
+	try {
+		await f.start(); opening = f.manual(); await f.clock.advance(0);
+		assert.equal(f.requests.length, 1, "opening starts the explicit Codex request");
+		for (const width of [0, 1, 2]) {
+			const lines = f.panelLines(width);
+			assert.ok(lines.every(line => visibleWidth(line) <= width), `modal lines exceed ${width} columns`);
+		}
+	} finally { f.dismiss(); await opening; await f.stop(); }
+});
+
+void test("combined modal scrolls in a short narrow viewport, keeps controls reachable and closes", async () => {
+	for (const close of ["q", "\x1b"]) {
+		const f = await idleQuotaFixture(true, true); f.set({ provider: "claude-bridge" }); f.hold();
+		f.terminal.rows = 14; f.terminal.columns = 48;
+		let opening: Promise<void> | undefined;
+		try {
+			await f.start();
+			await f.emit("after_provider_response", { type: "after_provider_response", status: 200,
+				headers: bridgeHeaders({ "5h-utilization": "0.2", "7d-utilization": "0.7", "5h-reset": "1893463200", "7d-reset": "1893549600" }) });
+			opening = f.manual(); await f.clock.advance(0);
+			assert.equal(f.requests.length, 1, "opening the combined modal starts a Codex request");
+			await f.complete(0);
+			const frame = () => {
+				const lines = f.panelLines(48);
+				assert.ok(lines.length <= Math.floor(f.terminal.rows * 0.92), `viewport exceeded: ${lines.length} rows`);
+				assert.ok(lines.every(line => visibleWidth(line) <= 48));
+				return lines.join("\n");
+			};
+			const home = frame();
+			f.key("\x1b[B"); const down = frame(); assert.notEqual(down, home, "down moves the viewport");
+			f.key("\x1b[A"); assert.equal(frame(), home, "up returns one line");
+			f.key("\x1b[6~"); const page = frame(); assert.notEqual(page, home, "PageDown moves");
+			f.key("\x1b[5~"); assert.equal(frame(), home, "PageUp returns to the start");
+			f.key("\x1b[F"); const end = frame(); assert.notEqual(end, home, "End reaches the end");
+			f.key("\x1b[H"); assert.equal(frame(), home, "Home returns to the start");
+			const views = [home];
+			for (let i = 0; i < 120; i++) { f.key("\x1b[B"); views.push(frame()); }
+			const all = views.join("\n");
+			for (const value of [/Codex/i, /Claude Bridge/i, /Session/i, /Weekly/i, /75% left/, /40% left/,
+				/80% left/, /30% left/, /captured/i, /updated|fetched|cached/i, /[█░]/]) assert.match(all, value);
+			assert.match(all, /esc|close/i, "close help remains reachable");
+			assert.match(all, /refresh/i, "refresh help remains reachable");
+			f.key(close); await opening;
+		} finally { f.dismiss(); await opening; await f.stop(); }
+	}
+});
+
+void test("live Companion combines independent provider blocks and restores habitual output on short screens", async () => {
+	const f = await idleQuotaFixture(true, true);
+	try {
+		await f.start(); await f.complete(0);
+		f.set({ provider: "claude-bridge" });
+		await f.emit("model_select", { model: { provider: "claude-bridge", id: "x" }, previousModel: { provider: "openai-codex", id: "x" }, source: "set" });
+		const before = f.workspaceRenders();
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200,
+			headers: bridgeHeaders({ "5h-utilization": "0.2", "7d-utilization": "0.7" }) });
+		assert.ok(f.workspaceRenders() > before, "Bridge response requests a workspace repaint");
+		const lines = f.editor().render(200); const text = lines.join("\n");
+		assert.match(text, /Pixel Pal/); assert.match(text, /Codex/i); assert.match(text, /Claude Bridge/i);
+		for (const value of ["75%", "40%", "80%", "30%"]) assert.ok(text.includes(value), value);
+		assert.ok((text.match(/Session/g) ?? []).length >= 2);
+		assert.ok((text.match(/Weekly/g) ?? []).length >= 2);
+		assert.ok(lines.filter(line => /Session.* {3}.*Weekly/.test(line)).length >= 2,
+			"at a fitting width both provider windows use the three-column horizontal gap");
+		assert.ok(lines.length <= 14); assert.ok(lines.every(line => visibleWidth(line) <= 200));
+		f.hold(); const refresh = f.manual(); await f.clock.advance(0);
+		const beforeCodex = f.workspaceRenders(); await f.complete(1);
+		assert.ok(f.workspaceRenders() > beforeCodex, "Codex refresh completion requests a workspace repaint");
+		f.dismiss(); await refresh;
+		const narrow = f.editor().render(89); const narrowText = narrow.join("\n");
+		assert.ok(narrow.every(line => visibleWidth(line) <= 89));
+		if (narrowText.includes("Pixel Pal")) {
+			assert.match(narrowText, /Codex/i); assert.match(narrowText, /Claude Bridge/i);
+			assert.ok(narrow.length <= 14);
+		} else {
+			await f.commands.get("osdy-pi")!.handler("companion off", f.context() as ExtensionCommandContext);
+			assert.deepEqual(f.editor().render(89), narrow, "narrow fit rejection restores the native editor");
+			await f.commands.get("osdy-pi")!.handler("companion on", f.context() as ExtensionCommandContext);
+		}
+		f.terminal.rows = 27;
+		const fallback = f.editor().render(200);
+		await f.commands.get("osdy-pi")!.handler("companion off", f.context() as ExtensionCommandContext);
+		assert.deepEqual(f.editor().render(200), fallback, "short terminal restores exact habitual editor output");
+	} finally { await f.stop(); }
 });
