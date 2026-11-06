@@ -63,6 +63,7 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 	const notices: string[] = [];
 	let account = "synthetic-account";
 	let session = "synthetic-session";
+	let provider = "openai-codex";
 	let open = false;
 	let overlays = 0;
 	let nextAction = true;
@@ -106,7 +107,7 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 		}, registerFlag: () => {}, registerMessageRenderer: () => {}, registerEntryRenderer: () => {},
 		getThinkingLevel: () => "off", events: { on: () => () => {} }, exec: () => { throw new Error("external execution forbidden"); },
 	} as unknown as ExtensionAPI;
-	const ctx = { cwd: root, hasUI: true, mode: "tui", model: { provider: "openai-codex", id: "synthetic" }, isIdle: () => true,
+	const ctx = { cwd: root, hasUI: true, mode: "tui", get model() { return { provider, id: "synthetic" }; }, isIdle: () => true,
 		getContextUsage: () => undefined,
 		sessionManager: { getSessionId: () => session, getEntries: () => [] }, modelRegistry: { getProviderAuth: async (provider: string) => {
 			assert.equal(provider, "openai-codex");
@@ -166,7 +167,7 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 		onRender: (next: typeof onRender) => { onRender = next; },
 		beforeAction: (next: typeof beforeAction) => { beforeAction = next; },
 		setAnswer: (next: typeof answer) => { answer = next; }, setAccount: () => { account = "next-account"; },
-		setSession: () => { session = "next-session"; }, setUnknown: () => { unknown = true; },
+		setSession: () => { session = "next-session"; }, setProvider: (next: string) => { provider = next; }, setUnknown: () => { unknown = true; },
 		setRefreshFailure: () => { refreshFails = true; }, setCount: (next: number) => { count = next; },
 		setPost: (next: typeof onPost) => { onPost = next; }, shutdown: () => lifecycle("session_shutdown"),
 		replace: () => lifecycle("session_start"),
@@ -688,8 +689,7 @@ async function focusFixture(options: { appearance?: { agentDir: string; home: st
 		} as unknown as ExtensionAPI;
 		const previousDir = process.env.PI_CODING_AGENT_DIR;
 		const previousConfig = process.env.XDG_CONFIG_HOME;
-		mkdirSync(".pi-dev", { recursive: true });
-		const syntheticAgentDir = mkdtempSync(join(process.cwd(), ".pi-dev", "osdy-modal-runtime-"));
+		const syntheticAgentDir = mkdtempSync(join(tmpdir(), "osdy-modal-runtime-"));
 		process.env.PI_CODING_AGENT_DIR = syntheticAgentDir;
 		process.env.XDG_CONFIG_HOME = syntheticAgentDir;
 		try {
@@ -955,8 +955,7 @@ for (const shortcut of [false, true]) for (const initial of [true, false]) void 
 });
 
 function appearanceFixture(optedIn = true) {
-	mkdirSync(".pi-dev", { recursive: true });
-	const home = mkdtempSync(join(process.cwd(), ".pi-dev", "appearance-integration-"));
+	const home = mkdtempSync(join(tmpdir(), "appearance-integration-"));
 	const agentDir = join(home, ".pi", "agent"); mkdirSync(agentDir, { recursive: true });
 	const path = join(agentDir, "settings.json");
 	const joker = join(agentDir, "npm", "node_modules", "pi-subagents-j0k3r"); mkdirSync(joker, { recursive: true });
@@ -2343,7 +2342,7 @@ async function idleQuotaFixture(visualsEnabled = true, workspaceEditor = false) 
 	const handlers = new Map<string, Array<(event: unknown, ctx: ExtensionContext) => Promise<void> | void>>();
 	const requests: Array<{ signal: AbortSignal; resolve(snapshot: CodexUsageSnapshot): void; reject(error: Error): void }> = [];
 	let enabled = true; let hasUI = true; let idle = true; let provider = "openai-codex"; let mode = "tui";
-	let session = 0; let authCalls = 0; let panel: Component | undefined;
+	let session = 0; let authCalls = 0; let panel: Component | undefined; let panelRenders = 0;
 	let visualMounts = 0;
 	let editor: Component | undefined;
 	let overlay = false; let holdPanel = false; let failPanel = false; let overlays = 0;
@@ -2370,7 +2369,7 @@ async function idleQuotaFixture(visualsEnabled = true, workspaceEditor = false) 
 		return ({ cwd: "/synthetic-idle-quota", get hasUI() { return hasUI; }, get mode() { return mode; },
 		get model() { return { provider, id: "fake-codex", name: `session-${session}` }; }, isIdle: () => idle,
 		getContextUsage: () => undefined,
-		...(workspaceEditor ? { sessionManager: { getSessionId: () => `session-${generation}`, getEntries: () => [] } } : {}),
+		get sessionManager() { return workspaceEditor || provider === "claude-bridge" ? { getSessionId: () => `session-${generation}`, getEntries: () => [] } : undefined; },
 		getThinkingLevel: () => "off", modelRegistry: { getProviderAuth: () => {
 			authCalls++; authSessions.push(generation); return Promise.resolve({ auth: { apiKey: accessToken } });
 		} }, ui: { theme, getEditorComponent: () => undefined,
@@ -2386,7 +2385,7 @@ async function idleQuotaFixture(visualsEnabled = true, workspaceEditor = false) 
 			setWidget: () => { visualMounts++; }, setWorkingVisible: () => { visualMounts++; }, notify: (message: string) => { notices.push(message); },
 			custom: (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component) => {
 				overlays++; if (failPanel) throw new Error("overlay failed");
-				panel = factory({ requestRender: () => {} }, theme, undefined, () => { overlay = false; closePanel?.(); });
+				panel = factory({ requestRender: () => { panelRenders++; } }, theme, undefined, () => { overlay = false; closePanel?.(); });
 				if (!holdPanel) return Promise.resolve();
 				overlay = true;
 				return new Promise<void>(resolve => { closePanel = resolve; });
@@ -2428,7 +2427,9 @@ async function idleQuotaFixture(visualsEnabled = true, workspaceEditor = false) 
 			await shortcuts.get("ctrl+alt+u")!.handler(context); await clock.advance(0);
 		},
 		visual: async (action: "on" | "off") => { await commands.get("osdy-pi")!.handler(action, ctx as ExtensionCommandContext); },
-		panel: () => panel!.render(100).join("\n"),
+		panel: () => panel!.render(100).join("\n"), panelRenders: () => panelRenders,
+		key: (key: string) => panel?.handleInput?.(key),
+		emit: async (name: string, event: unknown, context: ExtensionContext = ctx) => { for (const handler of handlers.get(name) ?? []) await handler(event, context); },
 		set: (values: { enabled?: boolean; hasUI?: boolean; idle?: boolean; provider?: string; mode?: string }) => {
 			enabled = values.enabled ?? enabled; hasUI = values.hasUI ?? hasUI; idle = values.idle ?? idle;
 			provider = values.provider ?? provider; mode = values.mode ?? mode;
@@ -2803,4 +2804,124 @@ void test("question prompts subscribe through the plugin event bus", () => {
 	sessionContextProvider.context = sessionContext;
 	api.events.emit(PLUGIN_EVENTS.QUESTION_PROMPT, { question: "Continue?" });
 	assert.deepEqual(notifiedContexts, [sessionContext]);
+});
+
+const bridgeHeaders = (values: Record<string, string>) => Object.fromEntries(
+	Object.entries(values).map(([key, value]) => [`anthropic-ratelimit-unified-${key}`, value]),
+);
+
+void test("a Codex panel cannot use a reset after selecting bridge", async () => {
+	const f = await resetRuntimeFixture();
+	f.beforeAction(() => { f.setProvider("claude-bridge"); return Promise.resolve(); });
+	try { await f.open(); assert.equal(f.posts.length, 0); assert.equal(f.dialogs.length, 0); }
+	finally { await f.close(); }
+});
+
+void test("a pending Codex reset cannot dispatch after selection changes to bridge", async () => {
+	const f = await resetRuntimeFixture();
+	f.setAnswer((_title, options, index) => { if (index === 1) f.setProvider("claude-bridge"); return Promise.resolve(options.at(-1)); });
+	try { await f.open(); assert.equal(f.posts.length, 0); }
+	finally { await f.close(); }
+});
+
+void test("Codex opening awaiting reset binding cannot mount after selection changes to bridge", async () => {
+	const f = await resetRuntimeFixture(); const entered = runtimeGate(); const release = runtimeGate();
+	f.beforeAuth(() => { entered.resolve(); return release.promise; });
+	const opening = f.view();
+	try {
+		await entered.promise; f.setProvider("claude-bridge"); release.resolve(); await opening;
+		assert.equal(f.overlays(), 0); assert.equal(f.quotaReads(), 0); assert.equal(f.posts.length, 0);
+	} finally { release.resolve(); await opening; await f.close(); }
+});
+
+void test("bridge usage waits for a response and command and shortcut stay passive", async () => {
+	const f = await idleQuotaFixture();
+	f.set({ provider: "claude-bridge" });
+	try {
+		await f.start();
+		await f.manual();
+		assert.match(f.panel(), /waiting.*Claude Bridge.*response/i);
+		const commandView = f.panel();
+		await f.commands.get("usage")!.handler("ignored arguments", f.context() as ExtensionCommandContext);
+		assert.equal(f.panel(), commandView);
+		assert.equal(f.authCalls(), 0); assert.equal(f.requests.length, 0);
+		f.key("r"); f.key("u");
+		await f.shortcut();
+		assert.match(f.panel(), /waiting.*Claude Bridge.*response/i);
+		assert.equal(f.authCalls(), 0); assert.equal(f.requests.length, 0);
+	} finally { await f.stop(); }
+});
+
+void test("bridge event supplies quota, sparse unknowns and ignores malformed later responses", async () => {
+	const f = await idleQuotaFixture(); f.set({ provider: "claude-bridge" });
+	try {
+		await f.start();
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: {} });
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "invalid" }) });
+		await f.manual(); assert.match(f.panel(), /waiting.*response/i); assert.doesNotMatch(f.panel(), /captured/i);
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "0.25", "7d_oi-utilization": "0.8" }) });
+		await f.manual(); assert.match(f.panel(), /Session.*75% left/); assert.match(f.panel(), /Weekly.*unknown/i);
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: {} });
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "invalid" }) });
+		assert.match(f.panel(), /Session.*75% left/);
+		assert.equal(f.authCalls(), 0); assert.equal(f.requests.length, 0);
+	} finally { await f.stop(); }
+});
+
+void test("provider changes and session replacement discard bridge quota and ignore unrelated selections", async () => {
+	const f = await idleQuotaFixture(); f.set({ provider: "claude-bridge" });
+	const response = { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "0.25" }) };
+	try {
+		await f.start(); await f.emit("after_provider_response", response); await f.manual(); assert.match(f.panel(), /75% left/);
+		f.set({ provider: "other" }); await f.emit("model_select", { model: { provider: "other", id: "other" }, previousModel: { provider: "claude-bridge", id: "x" }, source: "set" });
+		await f.emit("after_provider_response", response);
+		f.set({ provider: "claude-bridge" }); await f.emit("model_select", { model: { provider: "claude-bridge", id: "x" }, previousModel: { provider: "other", id: "other" }, source: "set" });
+		await f.manual(); assert.match(f.panel(), /waiting.*response/i);
+		await f.emit("after_provider_response", response); const oldContext = f.context();
+		await f.replace(); await f.emit("after_provider_response", response, oldContext);
+		await f.manual(); assert.match(f.panel(), /waiting.*response/i);
+		await f.stop(); await f.emit("after_provider_response", response); await f.start(); await f.manual(); assert.match(f.panel(), /waiting.*response/i);
+	} finally { await f.stop(); }
+});
+
+void test("bridge event redraws an open modal and never redraws after disposal", async () => {
+	const f = await idleQuotaFixture(); f.set({ provider: "claude-bridge" }); f.hold();
+	const response = { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "0.25" }) };
+	let opening: Promise<void> | undefined;
+	try {
+		await f.start(); opening = f.manual(); await f.clock.advance(0);
+		const before = f.panelRenders(); await f.emit("after_provider_response", response);
+		assert.equal(f.panelRenders(), before + 1); assert.match(f.panel(), /75% left/);
+		f.dismiss(); await opening; const closed = f.panelRenders();
+		await f.emit("after_provider_response", response); assert.equal(f.panelRenders(), closed);
+	} finally { f.dismiss(); await opening; await f.stop(); }
+});
+
+void test("existing workspace mouse opener selects bridge view without a Codex action", async () => {
+	const f = await idleQuotaFixture(true, true);
+	try {
+		await f.start(); await f.complete(0);
+		const editor = f.editor(); const lines = editor.render(120);
+		const y = lines.findIndex(line => line.includes("Session"));
+		assert.ok(y >= 0);
+		f.set({ provider: "claude-bridge" });
+		await f.emit("model_select", { model: { provider: "claude-bridge", id: "x" }, previousModel: { provider: "openai-codex", id: "x" }, source: "set" });
+		const before = f.authCalls(); f.hold();
+		assert.equal(editor.handleMouse?.({ type: "click", button: "left", x: 5, y, screenX: 15, screenY: y + 20,
+			width: 120, height: lines.length, shift: false, alt: false, ctrl: false })?.handled, true);
+		await f.clock.advance(0); assert.match(f.panel(), /waiting.*Claude Bridge.*response/i);
+		f.key("u"); f.key("r"); assert.equal(f.authCalls(), before); assert.equal(f.requests.length, 1);
+	} finally { f.dismiss(); await f.stop(); }
+});
+
+void test("unsupported provider still uses the Codex panel and refresh path", async () => {
+	const f = await idleQuotaFixture(); f.set({ provider: "other" });
+	try { await f.start(); await f.manual(); assert.match(f.panel(), /Codex subscription usage/); assert.ok(f.authCalls() > 0); assert.ok(f.requests.length > 0); }
+	finally { await f.stop(); }
+});
+
+void test("bridge entry preserves no-UI refusal", async () => {
+	const f = await idleQuotaFixture(); f.set({ provider: "claude-bridge", hasUI: false });
+	try { await f.start(); await f.manual(); assert.equal(f.overlays(), 0); assert.match(f.notices.join("\n"), /interactive UI/i); assert.equal(f.authCalls(), 0); }
+	finally { await f.stop(); }
 });

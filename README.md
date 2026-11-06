@@ -97,14 +97,14 @@ The switch commits the appearance override, provider changes and narrow undo rec
 | Shortcut | Action | Command fallback |
 | --- | --- | --- |
 | **Ctrl+Option+O** | Osdy Control Center | `/osdyConfig` |
-| **Ctrl+Option+U** | Active Codex subscription quota—not local token/cost analytics | `/usage` |
+| **Ctrl+Option+U** | Codex or Claude Bridge subscription quota—not local token/cost analytics | `/usage` |
 | **Ctrl+Option+S** | Stop speech from chat | `/osdy-pi speech stop` |
 
 On macOS, **Option = Alt** in Pi's shortcut names: these bindings register as `ctrl+alt+o`, `ctrl+alt+u`, and `ctrl+alt+s`. On other platforms, use **Ctrl+Alt+O**, **Ctrl+Alt+U**, and **Ctrl+Alt+S**. Your terminal must send Option as **Alt/Meta** and support **Ctrl+Alt chords**; registration does not guarantee actual hardware delivery. Check **`/hotkeys`** for bindings, and use the command fallback if the terminal, OS, or another extension intercepts or cannot deliver the chord.
 
 **Ctrl+Option+O capability limits:** Account **Switch**, **Set default**, and **Clear default** refuse changes while Pi is busy; retry when idle. The same actions through `/osdyConfig` retain idle waiting, as does switching through `/osdy-account`. Read-only account quota previews remain available while busy. Successful Visuals/TODO/Agents selection from Ctrl+Option+O saves settings, closes/disposes the panel, releases its editor hold, then asks you to run **`/reload` manually** (or restart Pi). From `/osdyConfig`, the same sequence still reloads automatically once; restart Pi if reload fails.
 
-Ctrl+Option+U opens the existing `/usage` dashboard with the same refresh behavior; it does not open `/osdy-usage`.
+Ctrl+Option+U opens the same provider-specific `/usage` view as the command; it does not open `/osdy-usage`. Codex refreshes on open; Claude Bridge is passive.
 
 When Codex reports an available banked reset count, `/usage`, **Account → View usage**, and the **Usage** category show **Banked resets: N**, including zero. Unknown counts are omitted. Banked resets are separate from paid **Credits** and legacy **Credit resets**; local analytics filters do not change the count. Displaying it never consumes a reset or changes the compact footer.
 
@@ -503,16 +503,22 @@ The enabled state, editor mode, working-tree visibility preference, header, masc
 | Response speech Stop | **Ctrl+Option+S** or `/osdy-pi speech stop` |
 | Diff | `/osdy-pi diff` |
 | Package | `/osdy-pi uninstall` |
-| Codex subscription | **Ctrl+Option+U** or `/usage` |
+| Subscription quota | **Ctrl+Option+U** or `/usage` (Codex or Claude Bridge) |
 | Local usage analytics (starting in 1.10.0) | `/osdy-usage` |
 
 `/osdy-pi uninstall` finds a unique Osdy Pi package in Pi's configured package list and asks you to confirm its exact source and user/project scope before calling Pi's `remove` command. Run it from a trusted project with interactive UI. Git registrations are checked against Pi's host/path identity; a local registration must point to this running extension's package root and have a matching manifest. Ambiguous or changed registrations, unrecognized sources, and cancelled confirmation remove nothing. It removes only the Pi package registration, not Osdy profiles, accounts, the globally installed CLI, or other packages. Restart Pi afterward to unload the extension. If no unique source is found, inspect `pi list` and use `pi remove <source> [-l]` manually.
 
 `/osdy-pi` reports status. `enable` (or `on`) applies the Osdy Pi UI without changing the selected Pi theme; `disable` (or `off`) restores the Gentle Shell or Pi UI captured at session startup while preserving that theme. The enabled state, editor mode, working-tree visibility, and sound configuration persist globally.
 
+### Claude Bridge subscription usage
+
+With the selected provider exactly `claude-bridge`, **Ctrl+Option+U** and `/usage` open a passive Claude Bridge quota view; the existing fullscreen Usage-card opener also routes there when available. It waits for a Claude Bridge response containing quota headers; opening it does not request quota. Support for these event-driven headers is verified against `pi-claude-bridge` **0.10.0**. The latest valid event supplies Session (5h) and Weekly (7d) remaining capacity and reset times when reported; missing values are unknown. Capture time is when the event was observed. The overage-included window is not substituted for Weekly. Pi exposes the selected provider context, not the response's provider identity.
+
+Press **Esc** or **q** to close. There is no network refresh or banked reset action in this view. Bridge quota support is limited to this `/usage` entry and its shared shortcut/mouse opener: compact footer/editor and Companion quota cards, Control Center, and stored-profile previews remain Codex-only.
+
 ### Codex subscription usage
 
-Press **Ctrl+Option+U** or run `/usage` to open the same Codex subscription dashboard for the active managed `openai-codex` profile and model. Press `r` to refresh; `esc` or `q` closes it. The dashboard shows these controls at the bottom.
+For other selected providers, **Ctrl+Option+U** or `/usage` retains the existing Codex dashboard path, including its unavailable fallback. The Codex dashboard uses the active managed `openai-codex` profile and model. Press `r` to refresh; `esc` or `q` closes it. The dashboard shows these controls at the bottom.
 
 The main windows are labeled **Session** and **Weekly** (the API/domain remains primary/secondary). Their remaining-capacity bars are full at 100% remaining and empty at 0%; labels use the active theme's bold accent, Session uses the accent fill, Weekly uses `mdLink`, and empty segments are muted. The remaining percentage stays muted above 40%, changes to the theme's warning color at 40% or less, and changes to its error color at 15% or less. The same thresholds apply in the `/usage` dashboard and compact footer/editor quota bars. A double themed frame, section dividers, and spacing separate the display. Detail cards show each duration and relative, local, and UTC reset times. Plan, availability, credits/reset count, and additional buckets appear only when the service supplies them; absent optional values are omitted.
 
@@ -832,7 +838,7 @@ An isolated agent directory does **not** make custom audio paths or real provide
 - In disposable settings, change a visual preference, wait for **Saved globally**, close and reopen, then reload/restart to check persistence. Esc does not undo changes; distinguish save/application errors from success.
 - Visual additions (manual, not yet verified on a live terminal/font): check all four headers and six companion styles, theme changes, name-tab ellipsis (Pocket Ringtail shows `Pocket Ring…`), bottom alignment, and the selected header's responsive cutoffs above. Check fresh defaults separately from saved choices/off. Observe Hoodie Pi's startup wave with intro, continuous, and off; allow for a roughly one-row shift and subtle motion at small sizes. Source and automated rendering checks do not establish visual fidelity or npm artifact availability.
 - Account (manual): with disposable profiles only, check Cancel-first switch/set-default/clear-default confirmations, Esc cancellation, idle switching, and current/default labels. Verify Ctrl+Option+O refuses all three changes while busy, succeeds when idle, and `/osdyConfig` still waits for idle. Check one row per profile with **v/s/d/c** context actions and **Enter** usage fallback, without a second action list. From **v** quota details, check eligible **s Switch** opens the same Cancel-first confirmation, with blank separators between the title/effects, choices, and instructions; Cancel/Esc must retain the quota view and scroll position. Check gaps yield on short viewports without hiding safety content or enabling acceptance when the full confirmation cannot fit. Check remaining-capacity bars, **r Refresh**, **b Back/Esc** returning to the selected profile, long-view scrolling, no query on navigation, no stored-profile polling, and cancellation on exit. Create/rename/remove stay in `/osdy-account`, login in `/login`.
-- Subscription quota (manual): compare **Ctrl+Option+U** and `/usage` (Ctrl+Alt+U on other platforms), including **r Refresh** and Esc/q closing. Verify actual terminal chord delivery; use `/usage` if intercepted or unsupported.
+- Subscription quota (manual): compare **Ctrl+Option+U** and `/usage` (Ctrl+Alt+U on other platforms), including Codex **r Refresh**, passive Bridge response updates, and Esc/q closing. Verify actual terminal chord delivery; use `/usage` if intercepted or unsupported.
 - Speech Stop (manual): during intentional narration or a voice preview, press **Ctrl+Option+S** in chat; confirm audio stops without aborting the agent or changing editor text/settings. Check actual terminal delivery, with `/osdy-pi speech stop` as fallback. Registration and automated callback tests do not establish a hardware pass.
 - Usage (manual): check day/week/month and all/current filters, empty/unavailable/limited states, and explicit refresh. Authenticated quota and post-switch account correctness need an intentionally authorized live provider check; local estimates are not billing.
 - Sounds (manual): use disposable readable `.mp3`/`.wav` files to check configure, cancel, clear, and startup-flag precedence. Only choose **Test effective** when playback is intended. The user reported successful live playback of the bundled default; exhaustive macOS/Windows coverage still needs a live check.
@@ -865,7 +871,7 @@ npm run pi:dev
 - The Git summary reports unavailable when Git commands cannot read a working tree.
 - Diff patches depend on readable repository files; a file whose patch cannot load shows the reported error in the panel.
 - Audio playback is limited to macOS and Windows and to readable `.mp3`/`.wav` files.
-- `/usage` requires an active `openai-codex` login. Run `/login` and choose **ChatGPT Plus/Pro (Codex)**; run `/reload` after local extension changes.
+- Codex `/usage` requires an active `openai-codex` login. Run `/login` and choose **ChatGPT Plus/Pro (Codex)**. Claude Bridge `/usage` instead waits for a response with quota headers; run `/reload` after local extension changes.
 - A `401` indicates an expired session, while a `403` means usage is unavailable. Optional backend fields may be absent and simply do not render.
 
 ## Disable, uninstall, and license
