@@ -52,28 +52,27 @@ async function modal(width: number, snapshot: ClaudeBridgeUsageSnapshot | undefi
  return lines;
 }
 
-void test("Claude shows spaced, simple windows with remaining capacity and next resets", async t => {
+void test("Claude /usage groups reported windows in Codex-style cards with reset details", async t => {
  t.mock.method(Date, "now", () => now);
  const lines = (await modal(60)).map(plain);
  const section = lines.slice(lines.findIndex(line => line.includes("Claude Bridge") && !line.includes("subscription usage")));
  const text = section.join("\n");
- for (const value of [/Session/, /Weekly/, /80% left/, /30% left/, /[█░]/, /reset/i]) assert.match(text, value);
- assert.doesNotMatch(text, /Captured:|Window:|\b300m\b|\b10080m\b|% used/i);
- const session = section.findIndex(line => /Session/.test(line));
- const weekly = section.findIndex(line => /Weekly/.test(line));
- assert.ok(weekly > session && section.slice(session + 1, weekly).some(line => /^║\s*║$/.test(line)), "separate window groups with whitespace");
- const sessionText = section.slice(session, weekly).join(" ");
- const weeklyText = section.slice(weekly).join(" ");
- assert.ok(sessionText.includes(new Date(now + 7200_000).toLocaleString()) || /2030-01-01 02:00|2h/.test(sessionText));
- assert.ok(weeklyText.includes(new Date(now + 172800_000).toLocaleString()) || /2030-01-03 00:00|2d/.test(weeklyText));
+ assert.equal(section.filter(line => line.includes("╭")).length, 2, "one group box per reported window");
+ assert.equal(section.filter(line => line.includes("╰")).length, 2);
+ for (const value of [/Session/, /Weekly/, /Window: 5h/, /Window: 7d/, /Reset: resets in 2h/, /Reset: resets in 2d/,
+  /Local:/, /UTC: 2030-01-01 02:00/, /UTC: 2030-01-03 00:00/, /Quotas/, /80% left/, /30% left/, /[█░]/]) assert.match(text, value);
+ assert.doesNotMatch(text, /Captured:|Profile:|Plan:|Credits:|overage|\b300m\b|\b10080m\b/i);
 });
 
 void test("narrow modal preserves Claude window names and remaining percentages", async t => {
  t.mock.method(Date, "now", () => now);
  const raw = await modal(14);
  assert.ok(raw.every(line => visibleWidth(line) <= 14));
- const text = raw.map(plain).join("\n");
- for (const value of ["Session", "Weekly", "80%", "30%"]) assert.ok(text.includes(value), `missing ${value}`);
+ const lines = raw.map(plain);
+ const start = lines.findIndex(line => /^║Claude\s*║$/.test(line));
+ assert.ok(start > 0, "Claude section is visible at width 14");
+ const text = lines.slice(start).join("\n");
+ for (const value of ["Session", "Weekly", "80%", "30%"]) assert.ok(text.includes(value), `Claude is missing ${value}`);
 });
 
 const emptyBridge: ClaudeBridgeUsageSnapshot = { ...bridge, session: undefined, weekly: undefined };
@@ -165,8 +164,8 @@ void test("Claude modal shows an unknown reset only for a reported window", asyn
  const lines = (await modal(60, snapshot, noCodex)).map(plain);
  const text = lines.slice(lines.findIndex(line => line.includes("Claude Bridge") && !line.includes("subscription usage"))).join("\n");
  assert.match(text, /Weekly/); assert.match(text, /100% left/);
- assert.match(text, /Next reset: unknown/); assert.doesNotMatch(text, /Session/);
- assert.equal((text.match(/Next reset:/g) ?? []).length, 1);
+ assert.match(text, /Reset: unavailable/); assert.doesNotMatch(text, /Session/);
+ assert.equal((text.match(/Reset:/g) ?? []).length, 1);
 });
 
 void test("narrow modal omits missing rows while retaining a reported zero", async t => {
@@ -174,7 +173,10 @@ void test("narrow modal omits missing rows while retaining a reported zero", asy
  const snapshot: ClaudeBridgeUsageSnapshot = { ...emptyBridge, session: { usedPercent: 0, resetsAt: now / 1000 + 7200 } };
  const lines = await modal(14, snapshot, noCodex);
  assert.ok(lines.every(line => visibleWidth(line) <= 14));
- const text = lines.map(plain).join("\n");
+ const visible = lines.map(plain);
+ const start = visible.findIndex(line => /^║Claude\s*║$/.test(line));
+ assert.ok(start > 0, "Claude section is visible at width 14");
+ const text = visible.slice(start).join("\n");
  assert.match(text, /Session/); assert.match(text, /100%/);
  assert.doesNotMatch(text, /Weekly|No quota windows|NaN/);
 });

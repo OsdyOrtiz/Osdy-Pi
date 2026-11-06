@@ -2,7 +2,7 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component, type TUI } from "@earendil-works/pi-tui";
 import type { ClaudeBridgeUsageSnapshot, ClaudeBridgeUsageWindow } from "./claude-bridge-usage.js";
 import type { CodexUsageSnapshot, CodexUsageWindow } from "./codex-usage.js";
-import { renderCodexUsageDashboardContentLines, renderCompactQuotaWindows, type CodexUsagePresentation } from "./codex-usage-ui.js";
+import { renderCodexUsageDashboardContentLines, renderCompactQuotaWindows, renderQuotaWindowCard, type CodexUsagePresentation } from "./codex-usage-ui.js";
 import { doubleBorderBox, MODAL_OVERLAY_OPTIONS } from "./modal-frame.js";
 import type { CodexUsageState, SimpleTheme } from "./types.js";
 
@@ -72,23 +72,26 @@ export function renderCombinedCompanionUsage(
 	return columns ? sideBySide(left, right, leftWidth) : [...left, ...right];
 }
 
-function bridgeContent(theme: SimpleTheme, snapshot: ClaudeBridgeUsageSnapshot | undefined, width: number): string[] {
+function bridgeContent(theme: SimpleTheme, snapshot: ClaudeBridgeUsageSnapshot | undefined, width: number, now: number): string[] {
 	const maximumWidth = Math.max(1, width);
 	const lines = [theme.fg("accent", "Claude Bridge")];
 	if (!snapshot) lines.push(theme.fg("muted", "Waiting for a Claude Bridge response."));
 	const windows = bridgeWindows(snapshot);
-	let displayed = false;
+	const wide = windows.every(Boolean) && maximumWidth >= 72;
+	const cardWidth = wide ? Math.floor((maximumWidth - COLUMN_GAP) / 2) : maximumWidth;
+	const cards: string[][] = [];
 	for (const [index, window] of windows.entries()) {
 		if (!window) continue;
-		if (displayed) lines.push("");
-		displayed = true;
-		const selected: Windows = index === 0 ? [window, undefined] : [undefined, window];
-		// Modal content can wrap: keep names and percentages instead of compact-label elision.
-		lines.push(...renderCompactQuotaWindows(theme, selected, Math.max(32, maximumWidth)));
-		const date = window.resetsAt === undefined ? undefined : new Date(window.resetsAt * 1000);
-		const reset = date && Number.isFinite(date.getTime())
-			? `${date.toISOString().replace("T", " ").slice(0, 16)} UTC` : "unknown";
-		lines.push(theme.fg("muted", `Next reset: ${reset}`));
+		cards.push(renderQuotaWindowCard(theme, index === 0 ? "Session" : "Weekly", window, now, cardWidth, cardWidth < 18));
+	}
+	const [sessionCard, weeklyCard] = cards;
+	if (wide && sessionCard && weeklyCard) lines.push(...sideBySide(sessionCard, weeklyCard, cardWidth));
+	else lines.push(...cards.flat());
+	if (cards.length) {
+		const divider = theme.fg("border", "─".repeat(maximumWidth));
+		lines.push(divider, theme.fg("accent", "Quotas"), divider);
+		// Keep the names and percentages readable even when the modal is extremely narrow.
+		lines.push(...renderCompactQuotaWindows(theme, windows, Math.max(32, maximumWidth), "spaced"));
 	}
 	return lines.flatMap(line => line ? wrapTextWithAnsi(line, maximumWidth) : [""]);
 }
@@ -147,7 +150,7 @@ export async function showCombinedUsagePanel(
 						const leftWidth = columns ? Math.floor((contentWidth - COLUMN_GAP) / 2) : contentWidth;
 						const rightWidth = columns ? contentWidth - COLUMN_GAP - leftWidth : contentWidth;
 						const left = codexContent(theme, getCodex(), presentation, leftWidth, now);
-						const right = bridgeContent(theme, getBridge(), rightWidth);
+						const right = bridgeContent(theme, getBridge(), rightWidth, now);
 						const content = columns ? sideBySide(left, right, leftWidth) : [...left, "", ...right];
 						const controls = `${useReset && canReset() ? "u use/check reset · " : ""}r refresh Codex · ↑/↓ PgUp/PgDn Home/End scroll · esc/q close`;
 						const hints = wrapTextWithAnsi(theme.fg("muted", controls), contentWidth);

@@ -400,12 +400,13 @@ function formatResetDetails(
 	];
 }
 
-function renderQuotaWindowCard(
+export function renderQuotaWindowCard(
 	theme: SimpleTheme,
 	name: "Session" | "Weekly",
 	window: CodexUsageWindow,
 	now: number,
 	width: number,
+	shortTitle = false,
 ): string[] {
 	const resetDetails = formatResetDetails(window.resetsAt, now);
 	const contentWidth = Math.max(1, width - 2);
@@ -418,7 +419,7 @@ function renderQuotaWindowCard(
 	return borderBox(
 		theme,
 		Math.max(4, width),
-		`\u001B[1m${name}\u001B[22m · ${formatWindowDuration(window)}`,
+		shortTitle ? `\u001B[1m${name}\u001B[22m` : `\u001B[1m${name}\u001B[22m · ${formatWindowDuration(window)}`,
 		lines,
 		"accent",
 	);
