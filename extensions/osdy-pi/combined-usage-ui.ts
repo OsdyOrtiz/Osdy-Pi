@@ -8,13 +8,30 @@ import type { CodexUsageState, SimpleTheme } from "./types.js";
 
 type Windows = readonly [CodexUsageWindow | undefined, CodexUsageWindow | undefined];
 
+function usableWindow(window: CodexUsageWindow | undefined): CodexUsageWindow | undefined {
+	return window && Number.isFinite(window.usedPercent) ? window : undefined;
+}
+
 function codexWindows(snapshot: CodexUsageSnapshot | undefined): Windows {
 	const bucket = snapshot?.buckets.find(item => item.id === "codex");
-	return [bucket?.primary, bucket?.secondary];
+	return [usableWindow(bucket?.primary), usableWindow(bucket?.secondary)];
+}
+
+// Filter only the combined view; shared dashboard and stored-profile callers keep their original snapshot.
+function combinedCodexSnapshot(snapshot: CodexUsageSnapshot): CodexUsageSnapshot {
+	return {
+		...snapshot,
+		buckets: snapshot.buckets.flatMap(bucket => {
+			if (bucket.id !== "codex") return [bucket];
+			const primary = usableWindow(bucket.primary);
+			const secondary = usableWindow(bucket.secondary);
+			return primary || secondary ? [{ ...bucket, primary, secondary }] : [];
+		}),
+	};
 }
 
 function bridgeWindow(window: ClaudeBridgeUsageWindow | undefined, minutes: number): CodexUsageWindow | undefined {
-	if (window?.usedPercent === undefined) return undefined;
+	if (window?.usedPercent === undefined || !Number.isFinite(window.usedPercent)) return undefined;
 	return { usedPercent: window.usedPercent, windowMinutes: minutes, resetsAt: window.resetsAt };
 }
 
@@ -48,7 +65,7 @@ export function renderCombinedCompanionUsage(
 	const rightWidth = columns ? maximumWidth - COLUMN_GAP - leftWidth : maximumWidth;
 	const block = (label: string, windows: Windows, blockWidth: number): string[] => [
 		...wrapTextWithAnsi(theme.fg("accent", label), blockWidth),
-		...renderCompactQuotaWindows(theme, windows, blockWidth, "spaced", true),
+		...renderCompactQuotaWindows(theme, windows, blockWidth, "spaced"),
 	];
 	const left = block("Codex", codexWindows(snapshot), leftWidth);
 	const right = block("Claude Bridge", bridgeWindows(bridge), rightWidth);
@@ -60,16 +77,15 @@ function bridgeContent(theme: SimpleTheme, snapshot: ClaudeBridgeUsageSnapshot |
 	const lines = [theme.fg("accent", "Claude Bridge")];
 	if (!snapshot) lines.push(theme.fg("muted", "Waiting for a Claude Bridge response."));
 	const windows = bridgeWindows(snapshot);
-	for (const [index, name] of (["Session", "Weekly"] as const).entries()) {
-		if (index) lines.push("");
-		const source = index === 0 ? snapshot?.session : snapshot?.weekly;
-		const window = windows[index];
-		if (window && Number.isFinite(window.usedPercent)) {
-			const selected: Windows = index === 0 ? [window, undefined] : [undefined, window];
-			// Modal content can wrap: keep names and percentages instead of compact-label elision.
-			lines.push(...renderCompactQuotaWindows(theme, selected, Math.max(32, maximumWidth)));
-		} else lines.push(theme.fg("muted", `${name}: unknown`));
-		const date = source?.resetsAt === undefined ? undefined : new Date(source.resetsAt * 1000);
+	let displayed = false;
+	for (const [index, window] of windows.entries()) {
+		if (!window) continue;
+		if (displayed) lines.push("");
+		displayed = true;
+		const selected: Windows = index === 0 ? [window, undefined] : [undefined, window];
+		// Modal content can wrap: keep names and percentages instead of compact-label elision.
+		lines.push(...renderCompactQuotaWindows(theme, selected, Math.max(32, maximumWidth)));
+		const date = window.resetsAt === undefined ? undefined : new Date(window.resetsAt * 1000);
 		const reset = date && Number.isFinite(date.getTime())
 			? `${date.toISOString().replace("T", " ").slice(0, 16)} UTC` : "unknown";
 		lines.push(theme.fg("muted", `Next reset: ${reset}`));
@@ -84,12 +100,8 @@ function codexContent(theme: SimpleTheme, state: CodexUsageState, presentation: 
 	if (state.kind === "error") lines.push(theme.fg("warning", state.message));
 	if (!snapshot) {
 		if (state.kind === "idle") lines.push(theme.fg("muted", "Waiting for Codex usage."));
-		lines.push(...renderCompactQuotaWindows(theme, [undefined, undefined], width, "spaced", true));
 	} else {
-		lines.push(...renderCodexUsageDashboardContentLines(theme, snapshot, { profile: presentation.profile }, now, width));
-		const windows = codexWindows(snapshot);
-		for (const [index, name] of (["Session", "Weekly"] as const).entries())
-			if (!windows[index]) lines.push(theme.fg("muted", `Codex ${name}: unknown`));
+		lines.push(...renderCodexUsageDashboardContentLines(theme, combinedCodexSnapshot(snapshot), { profile: presentation.profile }, now, width));
 		lines.push(theme.fg("muted", `Fetched: ${new Date(snapshot.fetchedAt).toLocaleString()} (cached)`));
 	}
 	return lines.flatMap(line => wrapTextWithAnsi(line, Math.max(1, width)));

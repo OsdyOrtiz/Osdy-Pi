@@ -2962,7 +2962,7 @@ void test("combined Codex quota never attributes its account to the selected Bri
 	} finally { f.dismiss(); await opening; await f.stop(); }
 });
 
-void test("bridge event supplies quota, sparse unknowns and ignores malformed later responses", async () => {
+void test("bridge event shows only reported quotas and ignores malformed later responses", async () => {
 	const f = await idleQuotaFixture(); f.set({ provider: "claude-bridge" }); f.terminal.rows = 100;
 	try {
 		await f.start();
@@ -2970,7 +2970,8 @@ void test("bridge event supplies quota, sparse unknowns and ignores malformed la
 		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "invalid" }) });
 		await f.manual(); assert.match(f.panel(), /waiting.*response/i); assert.doesNotMatch(f.panel(), /captured/i);
 		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "0.25", "7d_oi-utilization": "0.8" }) });
-		await f.manual(); assert.match(f.panel(), /Session.*75% left/); assert.match(f.panel(), /Weekly.*unknown/i);
+		await f.manual(); assert.match(f.panel(), /Session.*75% left/);
+		assert.doesNotMatch(f.panel(), /Weekly|80% left|Session.*unknown/i, "overage is not ordinary Weekly and missing windows are hidden");
 		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: {} });
 		await f.emit("after_provider_response", { type: "after_provider_response", status: 200, headers: bridgeHeaders({ "5h-utilization": "invalid" }) });
 		assert.match(f.panel(), /Session.*75% left/);
@@ -3074,7 +3075,7 @@ void test("missing Codex auth leaves known Bridge quota visible without making a
 	} finally { f.dismiss(); await opening; await f.stop(); }
 });
 
-void test("Companion shows sparse Bridge and absent Codex as unknown, not fabricated percentages", async () => {
+void test("Companion hides unavailable windows and overage instead of fabricating percentages", async () => {
 	const f = await idleQuotaFixture(true, true); f.set({ provider: "claude-bridge" });
 	try {
 		await f.start();
@@ -3082,9 +3083,9 @@ void test("Companion shows sparse Bridge and absent Codex as unknown, not fabric
 			headers: bridgeHeaders({ "5h-utilization": "0.25", "7d_oi-utilization": "0.8" }) });
 		const lines = f.editor().render(200); const text = lines.join("\n");
 		assert.match(text, /Pixel Pal/); assert.match(text, /Codex/i); assert.match(text, /Claude Bridge/i);
-		assert.ok((text.match(/Session/g) ?? []).length >= 2); assert.ok((text.match(/Weekly/g) ?? []).length >= 2);
-		assert.match(text, /75%/); assert.ok((text.match(/unknown|waiting/gi) ?? []).length >= 2);
-		assert.doesNotMatch(text, /20%|100% left/, "overage and missing data are not ordinary quotas");
+		assert.equal((text.match(/Session/g) ?? []).length, 1, "only the reported Bridge Session is displayed");
+		assert.doesNotMatch(text, /Weekly|unknown|waiting/i, "missing Codex/Weekly windows are not rendered");
+		assert.match(text, /75%/); assert.doesNotMatch(text, /20%|100% left/, "overage and missing data are not ordinary quotas");
 		assert.ok(lines.length <= 14);
 		assert.equal(f.requests.length, 0, "a passive Bridge event starts no query");
 	} finally { await f.stop(); }

@@ -663,6 +663,44 @@ void test("ordinary editor and native footer show both cached providers when Com
  assert.ok(autocomplete.every(line => visibleWidth(line) <= 120));
 });
 
+for (const sample of [
+ { name: "Codex session and Claude weekly", primary: quota.buckets[0]!.primary, secondary: undefined,
+  session: undefined, weekly: { usedPercent: 70, resetsAt: undefined }, expected: ["Session", "75%", "Weekly", "30%"], absent: ["40%", "80%"] },
+ { name: "Codex weekly and Claude session", primary: undefined, secondary: quota.buckets[0]!.secondary,
+  session: { usedPercent: 20, resetsAt: undefined }, weekly: undefined, expected: ["Weekly", "40%", "Session", "80%"], absent: ["75%", "30%"] },
+ { name: "no usable windows", primary: undefined, secondary: undefined,
+  session: { usedPercent: undefined, resetsAt: 1234567890 }, weekly: undefined, expected: [], absent: ["Session", "Weekly", "100%"] },
+ { name: "reported zeros", primary: { usedPercent: 0, windowMinutes: 300, resetsAt: undefined }, secondary: undefined,
+  session: { usedPercent: 0, resetsAt: undefined }, weekly: undefined, expected: ["Session", "100%"], absent: ["Weekly"] },
+] as const) {
+ void test(`partial quotas remain accurate in Companion, fallback, and off surfaces: ${sample.name}`, () => {
+  const h = workspace(); h.model.provider = "openai-codex";
+  h.state.codexUsage = { kind: "ready", snapshot: { ...quota, buckets: [{ id: "codex", label: undefined, primary: sample.primary, secondary: sample.secondary }] } };
+  h.state.getClaudeBridgeUsage = () => ({ session: sample.session, weekly: sample.weekly,
+   overageIncluded: { usedPercent: 42, resetsAt: undefined }, status: undefined, reset: undefined, representativeClaim: undefined,
+   overageStatus: undefined, overageReset: undefined, capturedAt: 123 });
+  const check = (lines: string[], width: number, surface: string) => {
+   const text = plain(lines);
+   assert.ok(lines.every(line => visibleWidth(line) <= width), surface);
+   for (const value of sample.expected) assert.ok(text.includes(value), `${surface}: missing ${value}`);
+   for (const value of sample.absent) assert.ok(!text.includes(value), `${surface}: unexpected ${value}`);
+   assert.doesNotMatch(text, /Session\s+unknown|Weekly\s+unknown|No quota windows|NaN|Infinity/i, surface);
+  };
+  const shared = h.editor.render(240);
+  assert.match(plain(shared), /Pixel Pal/, "test the actual Companion fit");
+  check(shared, 240, "Companion");
+  h.terminal.rows = 27;
+  const fallback = h.editor.render(120);
+  assert.doesNotMatch(plain(fallback), /Pixel Pal/);
+  check(fallback, 120, "fallback editor");
+  h.state.companionEnabled = false;
+  assert.deepEqual(h.editor.render(120), fallback, "fit rejection preserves the Companion-off editor");
+  check(h.editor.render(120), 120, "off editor");
+  h.state.editorEffective = false;
+  check(h.footer().render(120), 120, "off native footer");
+ });
+}
+
 void test("combined Usage fits with TODO and Git at a wide original Companion without hiding siblings", () => {
  const h = workspace(); h.model.provider = "openai-codex";
  h.state.codexUsage = { kind: "ready", snapshot: quota };
