@@ -19,6 +19,8 @@ Screenshot of the Companion workspace running osdy-pi v1.11.22. The version labe
 
 ## Release highlights
 
+**Claude Bridge subscription quota is available in `/usage`** when `claude-bridge` is selected and a response supplies quota headers. The view is passive and shows reported Session and Weekly capacity; see [Claude Bridge subscription usage](#claude-bridge-subscription-usage) for the first-use path and limits.
+
 **The Companion workspace adapts framed cards to available space** above the editor, to the Companion's left: active work stays above the cards, with live location and extension statuses; opt-in TODO, Session/Weekly Usage, and Git share the remaining room. Cards and editor together never exceed the Companion's height; when they cannot fit or Companion is off, the habitual layout returns automatically. In fullscreen Pi, click Usage to open the same `/usage` modal. See [Companion raccoon](#companion-raccoon), [TODO](#first-party-todo-included-starting-in-150), and [subscription usage](#codex-subscription-usage). This describes current source; confirm the resolved npm release includes it. Live artwork fidelity across terminals and fonts remains unverified.
 
 **New visual defaults are Slanted + Hoodie Pi, with Pixel Pal enabled**, only for fresh, missing, or invalid preferences. Valid saved choices—including companion off—remain respected. Use `/osdyConfig` → **Header**, **Mascot**, or **Companion** to choose independently. See [Header, mascot, and animation](#header-mascot-and-animation) and [Companion raccoon](#companion-raccoon).
@@ -46,7 +48,7 @@ Screenshot of the Companion workspace running osdy-pi v1.11.22. The version labe
 | Header and mascot | Independent header/mascot choices, an installed-package version label, and mascot-only fallback when full artwork cannot fit. |
 | [Companion workspace](#companion-raccoon) | Adaptive framed TODO (up to three preview tasks), Usage and Git beside the Companion, with top activity, live location/statuses, a combined height limit, and automatic habitual fallback. |
 | Accounts | `/osdy-account` switches Codex profiles in place with atomic activation, rollback, bounded auth files, and process-safe locks. |
-| Quota | **Ctrl+Option+U**, `/usage`, or a fullscreen click on the Companion workspace Usage card opens subscription quota; compact bars emphasize remaining Codex quota at warning (40% or less) and error (15% or less) thresholds. |
+| Quota | **Ctrl+Option+U**, `/usage`, or a fullscreen click on the Companion workspace Usage card opens provider-specific Codex or Claude Bridge subscription quota; compact Codex bars emphasize remaining quota at warning (40% or less) and error (15% or less) thresholds. |
 | TODO (starting in 1.5.0, opt-in) | Default-off first-party `todo` snapshots track the Pi session branch; `/todos` reads them without editing. ODD Markdown remains separate. |
 
 ## Prerequisites
@@ -511,6 +513,8 @@ The enabled state, editor mode, working-tree visibility preference, header, masc
 `/osdy-pi` reports status. `enable` (or `on`) applies the Osdy Pi UI without changing the selected Pi theme; `disable` (or `off`) restores the Gentle Shell or Pi UI captured at session startup while preserving that theme. The enabled state, editor mode, working-tree visibility, and sound configuration persist globally.
 
 ### Claude Bridge subscription usage
+
+**First use:** Ensure your `pi-claude-bridge` package supplies quota headers, select a Claude Bridge model, and receive a response that reports quota. Then run `/usage`; press **Esc** or **q** to close.
 
 With the selected provider exactly `claude-bridge`, **Ctrl+Option+U** and `/usage` open a passive Claude Bridge quota view; the existing fullscreen Usage-card opener also routes there when available. It waits for a Claude Bridge response containing quota headers; opening it does not request quota. Support for these event-driven headers is verified against `pi-claude-bridge` **0.10.0**. The latest valid event supplies Session (5h) and Weekly (7d) remaining capacity and reset times when reported; missing values are unknown. Capture time is when the event was observed. The overage-included window is not substituted for Weekly. Pi exposes the selected provider context, not the response's provider identity.
 
