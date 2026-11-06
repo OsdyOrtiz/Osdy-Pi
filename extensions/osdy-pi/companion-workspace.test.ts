@@ -632,6 +632,37 @@ void test("editor translates clicks but preserves screen coordinates, focus, typ
  h.editor.handleInput("Y"); assert.equal(h.editor.getText(), "abXYcd");
 });
 
+void test("ordinary editor and native footer show both cached providers when Companion is off or cannot fit", t => {
+ const h = workspace("belowEditor", false);
+ h.model.provider = "openai-codex"; h.state.codexUsage = { kind: "ready", snapshot: quota };
+ h.state.getClaudeBridgeUsage = () => ({ session: { usedPercent: 20, resetsAt: undefined }, weekly: { usedPercent: 70, resetsAt: undefined },
+  overageIncluded: undefined, status: undefined, reset: undefined, representativeClaim: undefined,
+  overageStatus: undefined, overageReset: undefined, capturedAt: 123 });
+ for (const provider of ["openai-codex", "claude-bridge"] as const) {
+  h.model.provider = provider;
+  for (const width of [80, 120, 200]) {
+   const editor = h.editor.render(width); const text = plain(editor);
+   assert.match(text, /Codex/); assert.match(text, /Claude Bridge/); assert.match(text, /test/);
+   for (const value of ["75%", "40%", "80%", "30%"]) assert.ok(text.includes(value), value);
+   assert.ok(editor.every(line => visibleWidth(line) <= width));
+   h.state.editorEffective = false;
+   const footer = h.footer().render(width); const footerText = plain(footer);
+   assert.match(footerText, /Codex/); assert.match(footerText, /Claude Bridge/); assert.match(footerText, /\/synthetic.*main/);
+   for (const value of ["75%", "40%", "80%", "30%"]) assert.ok(footerText.includes(value), value);
+   assert.ok(footer.every(line => visibleWidth(line) <= width));
+   h.state.editorEffective = true;
+  }
+ }
+ const habitual = h.editor.render(120); h.state.companionEnabled = true; h.terminal.rows = 27;
+ assert.deepEqual(h.editor.render(120), habitual, "short-screen fallback retains both quotas and editor geometry");
+ h.terminal.rows = 40;
+ t.mock.method(h.editor, "isShowingAutocomplete", () => true);
+ const autocomplete = h.editor.render(120);
+ for (const value of ["Codex", "Claude Bridge", "75%", "40%", "80%", "30%"]) assert.ok(plain(autocomplete).includes(value), value);
+ assert.doesNotMatch(plain(autocomplete), /Pixel Pal/);
+ assert.ok(autocomplete.every(line => visibleWidth(line) <= 120));
+});
+
 void test("combined Usage fits with TODO and Git at a wide original Companion without hiding siblings", () => {
  const h = workspace(); h.model.provider = "openai-codex";
  h.state.codexUsage = { kind: "ready", snapshot: quota };
@@ -643,7 +674,11 @@ void test("combined Usage fits with TODO and Git at a wide original Companion wi
  const rows = h.editor.render(240); const output = plain(rows);
  assert.match(output, /Pixel Pal/); assert.match(output, /Todos/); assert.match(output, /Git changes/);
  assert.match(output, /Codex/); assert.match(output, /Claude Bridge/);
- for (const percent of ["75%", "40%", "80%", "30%"]) assert.ok(output.includes(percent), percent);
+ const body = renderedCard(h.editor, 240, "Usage").body;
+ assert.ok(body.some(line => /Codex.*Claude Bridge/.test(line)), "wide Usage presents provider blocks side by side");
+ for (const percent of ["75%", "40%", "80%", "30%"]) {
+  assert.equal(output.split(percent).length - 1, 1, `no duplicated ${percent} quota outside the card`);
+ }
  assert.ok(rows.every(line => visibleWidth(line) <= 240));
  assert.equal(rows.length, companionLayout("original").boxHeight);
  assert.deepEqual(h.stacked(240), []);
@@ -664,7 +699,8 @@ void test("combined Usage stacks narrow Session and Weekly windows with a blank 
  const body = renderedCard(h.editor, 110, "Usage").body;
  const codex = body.findIndex(line => /Codex/.test(line));
  const bridge = body.findIndex(line => /Claude Bridge/.test(line));
- assert.ok(codex >= 0 && bridge > codex);
+ assert.ok(codex >= 0 && bridge > codex, "narrow Usage stacks provider blocks");
+ for (const percent of ["75%", "40%", "80%", "30%"]) assert.ok(output.includes(percent), percent);
  for (const section of [body.slice(codex + 1, bridge), body.slice(bridge + 1)]) {
   const session = section.findIndex(line => /Session/.test(line));
   const weekly = section.findIndex(line => /Weekly/.test(line));

@@ -1,8 +1,8 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { matchesKey, truncateToWidth, wrapTextWithAnsi, type Component, type TUI } from "@earendil-works/pi-tui";
+import { matchesKey, truncateToWidth, visibleWidth, wrapTextWithAnsi, type Component, type TUI } from "@earendil-works/pi-tui";
 import type { ClaudeBridgeUsageSnapshot, ClaudeBridgeUsageWindow } from "./claude-bridge-usage.js";
 import type { CodexUsageSnapshot, CodexUsageWindow } from "./codex-usage.js";
-import { renderCodexUsageDashboardContentLines, renderCompactQuotaWindows, renderControlCenterQuotaWindow, type CodexUsagePresentation } from "./codex-usage-ui.js";
+import { renderCodexUsageDashboardContentLines, renderCompactQuotaWindows, type CodexUsagePresentation } from "./codex-usage-ui.js";
 import { doubleBorderBox, MODAL_OVERLAY_OPTIONS } from "./modal-frame.js";
 import type { CodexUsageState, SimpleTheme } from "./types.js";
 
@@ -22,35 +22,59 @@ function bridgeWindows(snapshot: ClaudeBridgeUsageSnapshot | undefined): Windows
 	return [bridgeWindow(snapshot?.session, 300), bridgeWindow(snapshot?.weekly, 10_080)];
 }
 
+// Keep enough space for a full window label, percentage, and a visible bar in each column.
+const COMPACT_COLUMNS_MIN_WIDTH = 63;
+const MODAL_COLUMNS_MIN_WIDTH = 160;
+const COLUMN_GAP = 3;
+
+function sideBySide(left: string[], right: string[], leftWidth: number): string[] {
+	return Array.from({ length: Math.max(left.length, right.length) }, (_value, index) => {
+		const line = left[index] ?? "";
+		const other = right[index] ?? "";
+		if (!other) return line;
+		return `${line}${" ".repeat(Math.max(0, leftWidth - visibleWidth(line)) + COLUMN_GAP)}${other}`;
+	});
+}
+
 /** Separate source labels and windows; absent values never become quota percentages. */
 export function renderCombinedCompanionUsage(
 	theme: SimpleTheme, codex: CodexUsageState, bridge: ClaudeBridgeUsageSnapshot | undefined, width: number,
 ): string[] {
+	if (width <= 0) return [];
+	const maximumWidth = Math.max(1, Math.floor(width));
 	const snapshot = codex.kind === "idle" ? undefined : codex.snapshot;
-	return [
-		theme.fg("accent", "Codex"),
-		...renderCompactQuotaWindows(theme, codexWindows(snapshot), width, "spaced", true),
-		theme.fg("accent", "Claude Bridge"),
-		...renderCompactQuotaWindows(theme, bridgeWindows(bridge), width, "spaced", true),
+	const columns = maximumWidth >= COMPACT_COLUMNS_MIN_WIDTH;
+	const leftWidth = columns ? Math.floor((maximumWidth - COLUMN_GAP) / 2) : maximumWidth;
+	const rightWidth = columns ? maximumWidth - COLUMN_GAP - leftWidth : maximumWidth;
+	const block = (label: string, windows: Windows, blockWidth: number): string[] => [
+		...wrapTextWithAnsi(theme.fg("accent", label), blockWidth),
+		...renderCompactQuotaWindows(theme, windows, blockWidth, "spaced", true),
 	];
+	const left = block("Codex", codexWindows(snapshot), leftWidth);
+	const right = block("Claude Bridge", bridgeWindows(bridge), rightWidth);
+	return columns ? sideBySide(left, right, leftWidth) : [...left, ...right];
 }
 
-function bridgeContent(theme: SimpleTheme, snapshot: ClaudeBridgeUsageSnapshot | undefined, width: number, now: number): string[] {
+function bridgeContent(theme: SimpleTheme, snapshot: ClaudeBridgeUsageSnapshot | undefined, width: number): string[] {
+	const maximumWidth = Math.max(1, width);
 	const lines = [theme.fg("accent", "Claude Bridge")];
 	if (!snapshot) lines.push(theme.fg("muted", "Waiting for a Claude Bridge response."));
 	const windows = bridgeWindows(snapshot);
 	for (const [index, name] of (["Session", "Weekly"] as const).entries()) {
+		if (index) lines.push("");
 		const source = index === 0 ? snapshot?.session : snapshot?.weekly;
 		const window = windows[index];
-		if (window) lines.push(...renderControlCenterQuotaWindow(theme, window, width, name, now));
-		else {
-			lines.push(theme.fg("muted", `${name}: unknown`));
-			const reset = source?.resetsAt;
-			lines.push(theme.fg("muted", `Reset: ${reset === undefined ? "unknown" : new Date(reset * 1000).toISOString().replace("T", " ").slice(0, 16) + " UTC"}`));
-		}
+		if (window && Number.isFinite(window.usedPercent)) {
+			const selected: Windows = index === 0 ? [window, undefined] : [undefined, window];
+			// Modal content can wrap: keep names and percentages instead of compact-label elision.
+			lines.push(...renderCompactQuotaWindows(theme, selected, Math.max(32, maximumWidth)));
+		} else lines.push(theme.fg("muted", `${name}: unknown`));
+		const date = source?.resetsAt === undefined ? undefined : new Date(source.resetsAt * 1000);
+		const reset = date && Number.isFinite(date.getTime())
+			? `${date.toISOString().replace("T", " ").slice(0, 16)} UTC` : "unknown";
+		lines.push(theme.fg("muted", `Next reset: ${reset}`));
 	}
-	if (snapshot) lines.push(theme.fg("muted", `Captured: ${new Date(snapshot.capturedAt).toLocaleString()} (cached)`));
-	return lines.flatMap(line => wrapTextWithAnsi(line, Math.max(1, width)));
+	return lines.flatMap(line => line ? wrapTextWithAnsi(line, maximumWidth) : [""]);
 }
 
 function codexContent(theme: SimpleTheme, state: CodexUsageState, presentation: CodexUsagePresentation, width: number, now: number): string[] {
@@ -107,8 +131,12 @@ export async function showCombinedUsagePanel(
 					render(width) {
 						const contentWidth = Math.max(1, width - 2);
 						const now = Date.now();
-						const content = [...codexContent(theme, getCodex(), presentation, contentWidth, now), "",
-							...bridgeContent(theme, getBridge(), contentWidth, now)];
+						const columns = contentWidth >= MODAL_COLUMNS_MIN_WIDTH;
+						const leftWidth = columns ? Math.floor((contentWidth - COLUMN_GAP) / 2) : contentWidth;
+						const rightWidth = columns ? contentWidth - COLUMN_GAP - leftWidth : contentWidth;
+						const left = codexContent(theme, getCodex(), presentation, leftWidth, now);
+						const right = bridgeContent(theme, getBridge(), rightWidth);
+						const content = columns ? sideBySide(left, right, leftWidth) : [...left, "", ...right];
 						const controls = `${useReset && canReset() ? "u use/check reset · " : ""}r refresh Codex · ↑/↓ PgUp/PgDn Home/End scroll · esc/q close`;
 						const hints = wrapTextWithAnsi(theme.fg("muted", controls), contentWidth);
 						const rows = tui.terminal?.rows ?? 40;
@@ -142,7 +170,7 @@ export async function showCombinedUsagePanel(
 					},
 					invalidate() {},
 				};
-			}, { overlay: true, overlayOptions: MODAL_OVERLAY_OPTIONS });
+			}, { overlay: true, overlayOptions: { ...MODAL_OVERLAY_OPTIONS, width: "90%" } });
 		} finally { disposed = true; unsubscribe(); }
 		if (intent !== "reset" || !useReset || !canReset() || !(await useReset()) || !canReset()) return;
 	}

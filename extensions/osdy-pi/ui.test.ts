@@ -708,10 +708,8 @@ void test("one real editor instance and native footer read live/final speed with
 	}
 });
 
-void test("wires themed Codex quota bars below both native footer and extended editor", () => {
+void test("compact quota output does not use the verbose Codex metadata formatter", () => {
 	const source = readFileSync(new URL("./ui.ts", import.meta.url), "utf8");
-	assert.match(source, /renderCompactCodexQuotaBars/);
-	assert.equal((source.match(/renderCompactCodexQuotaBars\(/g) ?? []).length, 2);
 	assert.doesNotMatch(source, /formatCodexUsageMetadata/);
 });
 

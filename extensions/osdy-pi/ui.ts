@@ -331,6 +331,13 @@ function renderResponsiveHeader(
 	);
 }
 
+function renderHabitualQuotaLines(theme: SimpleTheme, state: OsdyState, width: number): string[] {
+	if (state.getClaudeBridgeUsage)
+		return renderCombinedCompanionUsage(theme, state.codexUsage, state.getClaudeBridgeUsage(), width);
+	const snapshot = state.codexUsage.kind === "idle" ? undefined : state.codexUsage.snapshot;
+	return snapshot ? renderCompactCodexQuotaBars(theme, snapshot, width) : [];
+}
+
 class OsdyFooter implements Component {
 	private readonly pi: ExtensionAPI;
 	private readonly ctx: ExtensionContext;
@@ -402,16 +409,8 @@ class OsdyFooter implements Component {
 			),
 			activeProfile ? this.theme.fg("accent", activeProfile) : undefined,
 		);
-		const cachedCodexUsage =
-			this.state.codexUsage.kind === "idle"
-				? undefined
-				: this.state.codexUsage.snapshot;
-		const codexSnapshot =
-			this.ctx.model?.provider === "openai-codex" ? cachedCodexUsage : undefined;
 		const thinkingLine = truncateToWidth(baseMetadata, width, ellipsis);
-		const quotaLines = codexSnapshot
-			? renderCompactCodexQuotaBars(this.theme, codexSnapshot, width)
-			: [];
+		const quotaLines = renderHabitualQuotaLines(this.theme, this.state, width);
 		const usageLine = truncateToWidth(
 			formatContextUsage(this.theme, { ...contextUsageData(this.ctx), generation: this.state.generation }, width),
 			width,
@@ -546,6 +545,7 @@ export function createEditorComponent(
 		}
 
 		private renderQuotaLines(width: number, layout: "compact" | "spaced" = "compact"): string[] {
+			if (layout === "compact") return renderHabitualQuotaLines(ctx.ui.theme, state, width);
 			const snapshot = state.codexUsage.kind === "idle" ? undefined : state.codexUsage.snapshot;
 			return ctx.model?.provider === "openai-codex" && snapshot
 				? renderCompactCodexQuotaBars(ctx.ui.theme, snapshot, width, layout) : [];
@@ -599,7 +599,11 @@ export function createEditorComponent(
 
 		override render(width: number): string[] {
 			this.mouseLayout = undefined;
-			if (width < 4 || this.isShowingAutocomplete()) return super.render(width);
+			if (width < 4) return super.render(width);
+			if (this.isShowingAutocomplete()) {
+				const lines = super.render(width);
+				return state.getClaudeBridgeUsage ? [...lines, ...renderHabitualQuotaLines(ctx.ui.theme, state, width)] : lines;
+			}
 			const companionStyle = state.companionStyle ?? "original";
 			const companion = companionLayout(companionStyle);
 			const shared = this.prepareWorkspace(width);

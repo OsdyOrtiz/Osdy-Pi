@@ -3056,7 +3056,7 @@ void test("combined command keeps known Bridge quota visible when the explicit C
 		const text = f.panel();
 		assert.match(text, /Codex/i); assert.match(text, /failure|unavailable|error/i);
 		assert.match(text, /Claude Bridge/i); assert.match(text, /80% left/); assert.match(text, /30% left/);
-		assert.match(text, /captured/i);
+		assert.doesNotMatch(text, /Captured:/i);
 	} finally { f.dismiss(); await opening; await f.stop(); }
 });
 
@@ -3090,22 +3090,26 @@ void test("Companion shows sparse Bridge and absent Codex as unknown, not fabric
 	} finally { await f.stop(); }
 });
 
-void test("retaining Bridge quota does not change ordinary editor or footer output", async () => {
-	const cached = await idleQuotaFixture(true, true); const baseline = await idleQuotaFixture(true, true);
+void test("cached Bridge and Codex quotas both reach the ordinary editor after provider changes", async () => {
+	const f = await idleQuotaFixture(true, true);
 	try {
-		for (const f of [cached, baseline]) { await f.start(); await f.complete(0); }
-		cached.set({ provider: "claude-bridge" });
-		await cached.emit("model_select", { model: { provider: "claude-bridge", id: "x" }, previousModel: { provider: "openai-codex", id: "x" }, source: "set" });
-		await cached.emit("after_provider_response", { type: "after_provider_response", status: 200,
+		await f.start(); await f.complete(0);
+		f.set({ provider: "claude-bridge" });
+		await f.emit("model_select", { model: { provider: "claude-bridge", id: "x" }, previousModel: { provider: "openai-codex", id: "x" }, source: "set" });
+		const reads = f.authCalls(); const requests = f.requests.length;
+		await f.emit("after_provider_response", { type: "after_provider_response", status: 200,
 			headers: bridgeHeaders({ "5h-utilization": "0.2", "7d-utilization": "0.7" }) });
-		cached.set({ provider: "openai-codex" });
-		await cached.emit("model_select", { model: { provider: "openai-codex", id: "x" }, previousModel: { provider: "claude-bridge", id: "x" }, source: "set" });
-		for (const f of [cached, baseline]) await f.commands.get("osdy-pi")!.handler("companion off", f.context() as ExtensionCommandContext);
+		assert.equal(f.authCalls(), reads); assert.equal(f.requests.length, requests);
+		f.set({ provider: "openai-codex" });
+		await f.emit("model_select", { model: { provider: "openai-codex", id: "x" }, previousModel: { provider: "claude-bridge", id: "x" }, source: "set" });
+		await f.commands.get("osdy-pi")!.handler("companion off", f.context() as ExtensionCommandContext);
 		for (const width of [80, 120, 200]) {
-			assert.deepEqual(cached.editor().render(width), baseline.editor().render(width));
-			assert.deepEqual(cached.footer().render(width), baseline.footer().render(width));
+			const lines = f.editor().render(width); const text = lines.join("\n");
+			assert.match(text, /Codex/); assert.match(text, /Claude Bridge/);
+			for (const value of ["75%", "40%", "80%", "30%"]) assert.ok(text.includes(value), value);
+			assert.match(text, /fake-codex/); assert.ok(lines.every(line => visibleWidth(line) <= width));
 		}
-	} finally { await cached.stop(); await baseline.stop(); }
+	} finally { await f.stop(); }
 });
 
 void test("combined modal lines fit zero-, one-, and two-column viewports", async () => {
@@ -3151,7 +3155,7 @@ void test("combined modal scrolls in a short narrow viewport, keeps controls rea
 			for (let i = 0; i < 120; i++) { f.key("\x1b[B"); views.push(frame()); }
 			const all = views.join("\n");
 			for (const value of [/Codex/i, /Claude Bridge/i, /Session/i, /Weekly/i, /75% left/, /40% left/,
-				/80% left/, /30% left/, /captured/i, /updated|fetched|cached/i, /[█░]/]) assert.match(all, value);
+				/80% left/, /30% left/, /updated|fetched|cached/i, /[█░]/]) assert.match(all, value);
 			assert.match(all, /esc|close/i, "close help remains reachable");
 			assert.match(all, /refresh/i, "refresh help remains reachable");
 			f.key(close); await opening;
@@ -3174,8 +3178,8 @@ void test("live Companion combines independent provider blocks and restores habi
 		for (const value of ["75%", "40%", "80%", "30%"]) assert.ok(text.includes(value), value);
 		assert.ok((text.match(/Session/g) ?? []).length >= 2);
 		assert.ok((text.match(/Weekly/g) ?? []).length >= 2);
-		assert.ok(lines.filter(line => /Session.* {3}.*Weekly/.test(line)).length >= 2,
-			"at a fitting width both provider windows use the three-column horizontal gap");
+		assert.ok(lines.some(line => /Codex.*Claude Bridge/.test(line)),
+			"at a fitting width the provider blocks share a row");
 		assert.ok(lines.length <= 14); assert.ok(lines.every(line => visibleWidth(line) <= 200));
 		f.hold(); const refresh = f.manual(); await f.clock.advance(0);
 		const beforeCodex = f.workspaceRenders(); await f.complete(1);
