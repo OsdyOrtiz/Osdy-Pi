@@ -71,6 +71,7 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 	let beforeAuth: () => Promise<void> = () => Promise.resolve();
 	let onRender: (view: string) => void = () => {};
 	let holdView = false;
+	let detailsOnView = false;
 	let releaseView: (() => void) | undefined;
 	let panel: Component | undefined;
 	let footer: Component | undefined;
@@ -136,6 +137,10 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 				nextAction = false;
 				if (act) await beforeAction();
 				if (!act) {
+					if (detailsOnView) {
+						mounted.handleInput?.("\t");
+						views.push(mounted.render(120).join("\n"));
+					}
 					if (holdView) await new Promise<void>(resolve => { releaseView = resolve; });
 					mounted.handleInput?.("\x1b");
 				} else if (mounted.render(120).join("\n").includes("Control Center")) {
@@ -177,6 +182,7 @@ async function resetRuntimeFixture(root = mkdtempSync(join(tmpdir(), "osdy-reset
 		panel: () => panel?.render(120).join("\n") ?? "",
 		beforeAuth: (next: typeof beforeAuth) => { beforeAuth = next; },
 		holdView: () => { holdView = true; },
+		showDetailsOnView: () => { detailsOnView = true; },
 		closeView: () => { holdView = false; releaseView?.(); releaseView = undefined; },
 		onRender: (next: typeof onRender) => { onRender = next; },
 		beforeAction: (next: typeof beforeAction) => { beforeAction = next; },
@@ -382,6 +388,7 @@ void test("confirmed result refreshes the reopened view; failed refresh cannot t
 	for (const fails of [false, true]) {
 		const f = await resetRuntimeFixture();
 		try {
+			f.showDetailsOnView();
 			if (fails) f.setRefreshFailure();
 			await f.open();
 			assert.equal(f.posts.length, 1);
@@ -422,6 +429,7 @@ for (const fails of [false, true]) {
 			}
 			return Promise.resolve(snapshot(7));
 		} });
+		f.showDetailsOnView();
 		f.onRender(view => { if (/Banked resets: 7/.test(view)) currentPublished.resolve(); });
 		const old = f.open("osdyConfig");
 		let view: Promise<void> | undefined;
@@ -2986,7 +2994,11 @@ void test("provider changes retain bridge quota while session replacement discar
 	try {
 		await f.start(); await f.emit("after_provider_response", response); await f.manual(); assert.match(f.panel(), /75% left/);
 		f.set({ provider: "openai-codex" }); await f.emit("model_select", { model: { provider: "openai-codex", id: "x" }, previousModel: { provider: "claude-bridge", id: "x" }, source: "set" });
-		await f.manual(); assert.match(f.panel(), /75% left/, "Codex selection can still display the cached Bridge value");
+		await f.manual();
+		const wide = f.panel(180);
+		assert.match(wide, /Claude Bridge/);
+		assert.ok(wide.split("\n").some(line => line.indexOf("75% left") >= 90),
+			"wide view retains the cached Bridge value in the right-hand provider column");
 		await f.emit("after_provider_response", { ...response, headers: bridgeHeaders({ "5h-utilization": "0.99" }) });
 		f.set({ provider: "claude-bridge" }); await f.emit("model_select", { model: { provider: "claude-bridge", id: "x" }, previousModel: { provider: "openai-codex", id: "x" }, source: "set" });
 		await f.manual(); assert.match(f.panel(), /75% left/);
@@ -3070,8 +3082,10 @@ void test("missing Codex auth leaves known Bridge quota visible without making a
 			headers: bridgeHeaders({ "5h-utilization": "0.2", "7d-utilization": "0.7" }) });
 		opening = f.manual(); await f.clock.advance(0);
 		assert.equal(f.requests.length, 0);
-		assert.match(f.panel(), /Codex/i); assert.match(f.panel(), /login|auth/i);
 		assert.match(f.panel(), /Claude Bridge/i); assert.match(f.panel(), /80% left/); assert.match(f.panel(), /30% left/);
+		f.key("\t");
+		assert.match(f.panel(), /Codex/i); assert.match(f.panel(), /login|auth/i);
+		assert.equal(f.requests.length, 0, "opening Codex details does not request usage");
 	} finally { f.dismiss(); await opening; await f.stop(); }
 });
 
@@ -3155,8 +3169,13 @@ void test("combined modal scrolls in a short narrow viewport, keeps controls rea
 			const views = [home];
 			for (let i = 0; i < 120; i++) { f.key("\x1b[B"); views.push(frame()); }
 			const all = views.join("\n");
-			for (const value of [/Codex/i, /Claude Bridge/i, /Session/i, /Weekly/i, /75% left/, /40% left/,
-				/80% left/, /30% left/, /updated|fetched|cached/i, /[█░]/]) assert.match(all, value);
+			for (const value of [/Claude Bridge/i, /Session/i, /Weekly/i, /80% left/, /30% left/, /[█░]/]) assert.match(all, value);
+			assert.doesNotMatch(all, /75% left|40% left/);
+			f.key("\t");
+			const details = [];
+			for (let i = 0; i < 120; i++) { details.push(frame()); f.key("\x1b[B"); }
+			const detailText = details.join("\n");
+			for (const value of [/Codex/i, /75% left/, /40% left/, /fetched|cached/i]) assert.match(detailText, value);
 			assert.match(all, /esc|close/i, "close help remains reachable");
 			assert.match(all, /refresh/i, "refresh help remains reachable");
 			f.key(close); await opening;
@@ -3189,7 +3208,9 @@ void test("live Companion combines independent provider blocks and restores habi
 		const narrow = f.editor().render(89); const narrowText = narrow.join("\n");
 		assert.ok(narrow.every(line => visibleWidth(line) <= 89));
 		if (narrowText.includes("Pixel Pal")) {
-			assert.match(narrowText, /Codex/i); assert.match(narrowText, /Claude Bridge/i);
+			assert.match(narrowText, /Claude Bridge/i);
+			assert.match(narrowText, /80% left/); assert.match(narrowText, /30% left/);
+			assert.doesNotMatch(narrowText, /75% left|40% left/, "narrow card omits Codex quota, not the model name");
 			assert.ok(narrow.length <= 14);
 		} else {
 			await f.commands.get("osdy-pi")!.handler("companion off", f.context() as ExtensionCommandContext);

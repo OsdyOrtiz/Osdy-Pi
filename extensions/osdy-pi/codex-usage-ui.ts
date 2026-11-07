@@ -623,6 +623,21 @@ function controlHints(theme: SimpleTheme, width: number, resetEnabled = false): 
 	);
 }
 
+/** Codex-only details for the combined modal; existing dashboards keep their full layout. */
+export function renderCodexUsageDetailsLines(
+	theme: SimpleTheme,
+	snapshot: CodexUsageSnapshot,
+	presentation: CodexUsagePresentation,
+	now: number,
+	width: number,
+): string[] {
+	const extraBuckets = snapshot.buckets.filter(bucket => bucket.id !== "codex");
+	return [
+		...extraBuckets.flatMap(bucket => renderQuotaBucketSection(theme, bucket, now, width)),
+		...renderQuotaFooterLines(theme, snapshot, presentation, width, now),
+	];
+}
+
 /** Snapshot-only dashboard content; callers own controls and source-specific metadata. */
 export function renderCodexUsageDashboardContentLines(
 	theme: SimpleTheme,

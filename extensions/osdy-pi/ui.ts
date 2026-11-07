@@ -331,9 +331,9 @@ function renderResponsiveHeader(
 	);
 }
 
-function renderHabitualQuotaLines(theme: SimpleTheme, state: OsdyState, width: number): string[] {
+function renderHabitualQuotaLines(theme: SimpleTheme, state: OsdyState, width: number, provider: string | undefined): string[] {
 	if (state.getClaudeBridgeUsage)
-		return renderCombinedCompanionUsage(theme, state.codexUsage, state.getClaudeBridgeUsage(), width);
+		return renderCombinedCompanionUsage(theme, state.codexUsage, state.getClaudeBridgeUsage(), width, provider ?? "unknown");
 	const snapshot = state.codexUsage.kind === "idle" ? undefined : state.codexUsage.snapshot;
 	return snapshot ? renderCompactCodexQuotaBars(theme, snapshot, width) : [];
 }
@@ -410,7 +410,7 @@ class OsdyFooter implements Component {
 			activeProfile ? this.theme.fg("accent", activeProfile) : undefined,
 		);
 		const thinkingLine = truncateToWidth(baseMetadata, width, ellipsis);
-		const quotaLines = renderHabitualQuotaLines(this.theme, this.state, width);
+		const quotaLines = renderHabitualQuotaLines(this.theme, this.state, width, this.ctx.model?.provider);
 		const usageLine = truncateToWidth(
 			formatContextUsage(this.theme, { ...contextUsageData(this.ctx), generation: this.state.generation }, width),
 			width,
@@ -545,7 +545,7 @@ export function createEditorComponent(
 		}
 
 		private renderQuotaLines(width: number, layout: "compact" | "spaced" = "compact"): string[] {
-			if (layout === "compact") return renderHabitualQuotaLines(ctx.ui.theme, state, width);
+			if (layout === "compact") return renderHabitualQuotaLines(ctx.ui.theme, state, width, ctx.model?.provider);
 			const snapshot = state.codexUsage.kind === "idle" ? undefined : state.codexUsage.snapshot;
 			return ctx.model?.provider === "openai-codex" && snapshot
 				? renderCompactCodexQuotaBars(ctx.ui.theme, snapshot, width, layout) : [];
@@ -562,7 +562,7 @@ export function createEditorComponent(
 			const editorHeight = Math.max(super.render(editorWidth - 2).length, internalLineTarget(this.tuiRef) + 2);
 			const usage: Component = {
 				render: width => state.getClaudeBridgeUsage
-					? renderCombinedCompanionUsage(ctx.ui.theme, state.codexUsage, state.getClaudeBridgeUsage(), width)
+					? renderCombinedCompanionUsage(ctx.ui.theme, state.codexUsage, state.getClaudeBridgeUsage(), width, ctx.model?.provider ?? "unknown")
 					: this.renderQuotaLines(width, "spaced"),
 				handleMouse: event => {
 					if (this.tuiRef.mode !== "fullscreen" || this.tuiRef.hasOverlay()
@@ -602,7 +602,7 @@ export function createEditorComponent(
 			if (width < 4) return super.render(width);
 			if (this.isShowingAutocomplete()) {
 				const lines = super.render(width);
-				return state.getClaudeBridgeUsage ? [...lines, ...renderHabitualQuotaLines(ctx.ui.theme, state, width)] : lines;
+				return state.getClaudeBridgeUsage ? [...lines, ...renderHabitualQuotaLines(ctx.ui.theme, state, width, ctx.model?.provider)] : lines;
 			}
 			const companionStyle = state.companionStyle ?? "original";
 			const companion = companionLayout(companionStyle);

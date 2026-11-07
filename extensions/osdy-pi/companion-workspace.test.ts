@@ -640,6 +640,14 @@ void test("ordinary editor and native footer show both cached providers when Com
   overageStatus: undefined, overageReset: undefined, capturedAt: 123 });
  for (const provider of ["openai-codex", "claude-bridge"] as const) {
   h.model.provider = provider;
+  const narrowEditor = plain(h.editor.render(50));
+  assert.match(narrowEditor, provider === "claude-bridge" ? /80%/ : /75%/);
+  assert.doesNotMatch(narrowEditor, provider === "claude-bridge" ? /75%/ : /80%/);
+  h.state.editorEffective = false;
+  const narrowFooter = plain(h.footer().render(50));
+  assert.match(narrowFooter, provider === "claude-bridge" ? /80%/ : /75%/);
+  assert.doesNotMatch(narrowFooter, provider === "claude-bridge" ? /75%/ : /80%/);
+  h.state.editorEffective = true;
   for (const width of [80, 120, 200]) {
    const editor = h.editor.render(width); const text = plain(editor);
    assert.match(text, /Codex/); assert.match(text, /Claude Bridge/); assert.match(text, /test/);
@@ -722,7 +730,7 @@ void test("combined Usage fits with TODO and Git at a wide original Companion wi
  assert.deepEqual(h.stacked(240), []);
 });
 
-void test("combined Usage stacks narrow Session and Weekly windows with a blank separator", () => {
+void test("narrow Companion Usage follows live provider without a blank window separator", () => {
  const h = workspace(); h.model.provider = "openai-codex"; h.terminal.rows = 48;
  h.state.companionStyle = "rounded"; h.state.codexUsage = { kind: "ready", snapshot: quota };
  h.tree.enabled = false; h.working.active = false;
@@ -734,16 +742,16 @@ void test("combined Usage stacks narrow Session and Weekly windows with a blank 
  }) });
  const rows = h.editor.render(110); const output = plain(rows);
  assert.match(output, /Big Cuddle/); assert.equal(rows.length, companionLayout("rounded").boxHeight);
- const body = renderedCard(h.editor, 110, "Usage").body;
- const codex = body.findIndex(line => /Codex/.test(line));
- const bridge = body.findIndex(line => /Claude Bridge/.test(line));
- assert.ok(codex >= 0 && bridge > codex, "narrow Usage stacks provider blocks");
- for (const percent of ["75%", "40%", "80%", "30%"]) assert.ok(output.includes(percent), percent);
- for (const section of [body.slice(codex + 1, bridge), body.slice(bridge + 1)]) {
-  const session = section.findIndex(line => /Session/.test(line));
-  const weekly = section.findIndex(line => /Weekly/.test(line));
-  assert.ok(session >= 0 && weekly === session + 2, `stacked windows with blank gap: ${section.join(" | ")}`);
-  assert.equal(section[session + 1], "");
+ for (const [provider, expected, absent] of [["openai-codex", ["75%", "40%"], ["80%", "30%"]], ["claude-bridge", ["80%", "30%"], ["75%", "40%"]]] as const) {
+  h.model.provider = provider;
+  const body = renderedCard(h.editor, 110, "Usage").body;
+  const text = body.join("\n");
+  for (const value of expected) assert.ok(text.includes(value), value);
+  for (const value of absent) assert.ok(!text.includes(value), value);
+  const session = body.findIndex(line => /Session/.test(line));
+  const weekly = body.findIndex(line => /Weekly/.test(line));
+  assert.equal(weekly, session + 1, `consecutive windows: ${text}`);
+  assert.ok(session >= 0);
  }
  assert.ok(rows.every(line => visibleWidth(line) <= 110));
 });

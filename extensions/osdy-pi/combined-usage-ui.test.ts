@@ -4,7 +4,7 @@ import { registerHooks } from "node:module";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { visibleWidth, wrapTextWithAnsi, type Component, type TUI } from "@earendil-works/pi-tui";
+import { visibleWidth, type Component, type TUI } from "@earendil-works/pi-tui";
 import ts from "typescript";
 import type { ClaudeBridgeUsageSnapshot } from "./claude-bridge-usage.js";
 import type { CodexUsageSnapshot } from "./codex-usage.js";
@@ -25,8 +25,6 @@ registerHooks({
  },
 });
 const { showCombinedUsagePanel, renderCombinedCompanionUsage } = await import("./combined-usage-ui.js");
-const { renderCodexUsageDashboardContentLines } = await import("./codex-usage-ui.js");
-const { doubleBorderBox } = await import("./modal-frame.js");
 const theme: SimpleTheme = { fg: (_name, text) => `\x1b[36m${text}\x1b[0m` };
 const plain = (text: string) => text.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g"), "");
 const now = Date.parse("2030-01-01T00:00:00Z");
@@ -39,22 +37,24 @@ const bridge: ClaudeBridgeUsageSnapshot = { session: { usedPercent: 20, resetsAt
  reset: undefined, representativeClaim: undefined, overageStatus: undefined, overageReset: undefined, capturedAt: now };
 
 async function modal(width: number, snapshot: ClaudeBridgeUsageSnapshot | undefined = bridge,
- codexSnapshot: CodexUsageSnapshot = codex): Promise<string[]> {
+ codexSnapshot: CodexUsageSnapshot = codex, provider = "openai-codex", keys: string[] = []): Promise<string[]> {
  let lines: string[] = [];
  const ctx = { ui: { custom: <T>(factory: (tui: TUI, theme: SimpleTheme, keys: unknown, done: (result: T) => void) => Component) => {
   let result: T;
   const panel = factory({ terminal: { rows: 300 }, requestRender() {} } as unknown as TUI, theme, undefined, value => { result = value; });
+  panel.render(width);
+  for (const key of keys) panel.handleInput?.(key);
   lines = panel.render(width); panel.handleInput?.("q");
   return Promise.resolve(result!);
  } } } as unknown as Pick<ExtensionContext, "ui">;
  await showCombinedUsagePanel(ctx, () => ({ kind: "ready", snapshot: codexSnapshot }), () => snapshot,
-  () => () => {}, () => Promise.resolve(), { profile: "work" }, () => false);
+  () => () => {}, () => Promise.resolve(), { profile: "work", provider }, () => false);
  return lines;
 }
 
 void test("Claude /usage groups reported windows in Codex-style cards with reset details", async t => {
  t.mock.method(Date, "now", () => now);
- const lines = (await modal(60)).map(plain);
+ const lines = (await modal(60, bridge, codex, "claude-bridge")).map(plain);
  const section = lines.slice(lines.findIndex(line => line.includes("Claude Bridge") && !line.includes("subscription usage")));
  const text = section.join("\n");
  assert.equal(section.filter(line => line.includes("╭")).length, 2, "one group box per reported window");
@@ -66,7 +66,7 @@ void test("Claude /usage groups reported windows in Codex-style cards with reset
 
 void test("narrow modal preserves Claude window names and remaining percentages", async t => {
  t.mock.method(Date, "now", () => now);
- const raw = await modal(14);
+ const raw = await modal(14, bridge, codex, "claude-bridge");
  assert.ok(raw.every(line => visibleWidth(line) <= 14));
  const lines = raw.map(plain);
  const start = lines.findIndex(line => /^║Claude\s*║$/.test(line));
@@ -91,7 +91,7 @@ for (const sample of [
  void test(`Claude modal omits unusable quota windows: ${sample.name}`, async t => {
   t.mock.method(Date, "now", () => now);
   const snapshot: ClaudeBridgeUsageSnapshot = { ...emptyBridge, ...sample };
-  const lines = (await modal(60, snapshot)).map(plain);
+  const lines = (await modal(60, snapshot, codex, "claude-bridge")).map(plain);
   const text = lines.slice(lines.findIndex(line => line.includes("Claude Bridge") && !line.includes("subscription usage"))).join("\n");
   for (const value of sample.expected) assert.ok(text.includes(value), `${sample.name}: missing ${value}`);
   for (const value of sample.absent) assert.ok(!text.includes(value), `${sample.name}: unexpected ${value}`);
@@ -113,13 +113,11 @@ for (const sample of [
   const snapshot: CodexUsageSnapshot = { ...codex, buckets: [{ id: "codex", label: undefined, primary: sample.primary, secondary: sample.secondary }] };
   const lines = (await modal(60, emptyBridge, snapshot)).map(plain);
   const start = lines.findIndex(line => /^║\s*Codex\s*║$/.test(line));
-  const end = lines.findIndex((line, index) => index > start && /Claude Bridge/.test(line));
-  assert.ok(start >= 0 && end > start);
-  const text = lines.slice(start, end).join("\n");
+  assert.ok(start >= 0);
+  const text = lines.slice(start).join("\n");
   for (const value of sample.expected) assert.ok(text.includes(value), `${sample.name}: missing ${value}`);
   for (const value of sample.absent) assert.ok(!text.includes(value), `${sample.name}: unexpected ${value}`);
   assert.doesNotMatch(text, /Codex (?:Session|Weekly): unknown|No quota windows available|NaN|Infinity/);
-  for (const value of ["Profile: work", "Plan: plus", "Banked resets: 3", "Credits: 12"]) assert.ok(text.includes(value), value);
   if (sample.expected.length) assert.match(text, /[█░]/);
  });
 }
@@ -141,7 +139,7 @@ for (const sample of [
  void test(`compact provider windows omit absent values: ${sample.name}`, () => {
   const codexSnapshot: CodexUsageSnapshot = { ...codex, buckets: [{ id: "codex", label: undefined, primary: sample.primary, secondary: sample.secondary }] };
   const bridgeSnapshot: ClaudeBridgeUsageSnapshot = { ...emptyBridge, session: sample.session, weekly: sample.weekly, overageIncluded: bridge.weekly };
-  for (const width of [40, 120]) {
+  for (const width of [120]) {
    const raw = renderCombinedCompanionUsage(theme, { kind: "ready", snapshot: codexSnapshot }, bridgeSnapshot, width);
    const lines = raw.map(plain); const text = lines.join("\n");
    assert.ok(raw.every(line => visibleWidth(line) <= width));
@@ -149,11 +147,6 @@ for (const sample of [
    for (const value of sample.absent) assert.ok(!text.includes(value), `${sample.name}/${width}: unexpected ${value}`);
    assert.doesNotMatch(text, /unknown|No quota windows|NaN|Infinity/i);
    if (sample.expected.length) assert.match(text, /[█░]/);
-   if (width === 40 && sample.name === "session only") {
-    const first = lines.findIndex(line => /Session/.test(line));
-    const next = lines.findIndex((line, index) => index > first && /Claude Bridge/.test(line));
-    assert.equal(next, first + 1, "one window has no empty separator before the next provider");
-   }
   }
  });
 }
@@ -161,7 +154,7 @@ for (const sample of [
 void test("Claude modal shows an unknown reset only for a reported window", async t => {
  t.mock.method(Date, "now", () => now);
  const snapshot: ClaudeBridgeUsageSnapshot = { ...emptyBridge, weekly: { usedPercent: 0, resetsAt: undefined } };
- const lines = (await modal(60, snapshot, noCodex)).map(plain);
+ const lines = (await modal(60, snapshot, noCodex, "claude-bridge")).map(plain);
  const text = lines.slice(lines.findIndex(line => line.includes("Claude Bridge") && !line.includes("subscription usage"))).join("\n");
  assert.match(text, /Weekly/); assert.match(text, /100% left/);
  assert.match(text, /Reset: unavailable/); assert.doesNotMatch(text, /Session/);
@@ -171,7 +164,7 @@ void test("Claude modal shows an unknown reset only for a reported window", asyn
 void test("narrow modal omits missing rows while retaining a reported zero", async t => {
  t.mock.method(Date, "now", () => now);
  const snapshot: ClaudeBridgeUsageSnapshot = { ...emptyBridge, session: { usedPercent: 0, resetsAt: now / 1000 + 7200 } };
- const lines = await modal(14, snapshot, noCodex);
+ const lines = await modal(14, snapshot, noCodex, "claude-bridge");
  assert.ok(lines.every(line => visibleWidth(line) <= 14));
  const visible = lines.map(plain);
  const start = visible.findIndex(line => /^║Claude\s*║$/.test(line));
@@ -199,7 +192,7 @@ void test("partial main quota preserves additional Codex bucket account data", a
   { id: "codex", label: undefined, primary: codex.buckets[0]!.primary, secondary: undefined },
   { id: "extra", label: "Extra allowance", primary: { usedPercent: 13, windowMinutes: 300, resetsAt: now / 1000 + 3600 }, secondary: undefined },
  ] };
- const text = (await modal(60, emptyBridge, snapshot)).map(plain).join("\n");
+ const text = (await modal(60, emptyBridge, snapshot, "openai-codex", ["\t"])).map(plain).join("\n");
  assert.match(text, /Extra allowance/); assert.match(text, /87% left/);
  assert.match(text, /75% left/); assert.doesNotMatch(text, /Codex Weekly: unknown/);
 });
@@ -210,7 +203,7 @@ void test("empty Codex main bucket does not hide additional buckets or account d
   { id: "codex", label: undefined, primary: undefined, secondary: undefined },
   { id: "extra", label: "Extra allowance", primary: { usedPercent: 13, windowMinutes: 300, resetsAt: now / 1000 + 3600 }, secondary: undefined },
  ] };
- const text = (await modal(60, emptyBridge, snapshot)).map(plain).join("\n");
+ const text = (await modal(60, emptyBridge, snapshot, "openai-codex", ["\t"])).map(plain).join("\n");
  assert.match(text, /Extra allowance/); assert.match(text, /87% left/);
  assert.match(text, /Profile: work/); assert.match(text, /Banked resets: 3/);
  assert.doesNotMatch(text, /No quota windows available|Codex (?:Session|Weekly): unknown/);
@@ -230,29 +223,27 @@ void test("partial modal keeps refresh, scroll and banked reset controls", async
   assert.notEqual(bottom, top, "End scrolls through the modal");
   panel.handleInput?.("\x1b[H");
   assert.equal(panel.render(120).map(plain).join("\n"), top, "Home restores the top");
+  panel.handleInput?.("\t");
+  const detailsTop = panel.render(120).map(plain).join("\n");
+  panel.handleInput?.("\x1b[F");
+  assert.notEqual(panel.render(120).map(plain).join("\n"), detailsTop, "details also scrolls");
+  panel.handleInput?.("\x1b[H");
+  assert.equal(panel.render(120).map(plain).join("\n"), detailsTop);
   panel.handleInput?.("u");
   return result!;
  } } } as unknown as Pick<ExtensionContext, "ui">;
- await showCombinedUsagePanel(ctx, () => ({ kind: "ready", snapshot: noCodex }), () => emptyBridge,
+ await showCombinedUsagePanel(ctx, () => ({ kind: "ready", snapshot: codex }), () => bridge,
   () => () => {}, () => { refreshes++; return Promise.resolve(); }, { profile: "work" }, () => true,
   () => { resets++; return Promise.resolve(false); });
  assert.equal(refreshes, 2); assert.equal(resets, 1);
 });
 
-void test("stacked modal retains the exact Codex dashboard content and controls", async t => {
+void test("Codex details preserve account fields and controls", async t => {
  t.mock.method(Date, "now", () => now);
  const width = 60;
- const raw = await modal(width); const lines = raw.map(plain);
- const start = lines.findIndex(line => /^║\s*Codex\s*║$/.test(line));
- const end = lines.findIndex((line, index) => index > start && /Claude Bridge/.test(line));
- assert.ok(start >= 0 && end > start);
- const expected = renderCodexUsageDashboardContentLines(theme, codex, { profile: "work" }, now, width - 2);
- expected.push(theme.fg("muted", `Fetched: ${new Date(codex.fetchedAt).toLocaleString()} (cached)`));
- const framed = doubleBorderBox(theme, width, "unused", expected.flatMap(line => wrapTextWithAnsi(line, width - 2))).slice(1, -1);
- assert.deepEqual(raw.slice(start + 1, start + 1 + framed.length), framed, "Codex content and styling stay byte-identical");
- assert.match(lines.join("\n"), /r refresh Codex/);
- // The frame wraps the final hint at 60 columns; preserve both words across the border.
- assert.match(lines.join("\n"), /esc\/q\s*║\s*\n║\s*close/);
+ const lines = (await modal(width, bridge, codex, "openai-codex", ["\t"])).map(plain);
+ const text = lines.join("\n");
+ for (const field of ["Quotas + account", "Profile: work", "Plan: plus", "Banked resets: 3", "Credits: 12", "Fetched:", "r refresh Codex"]) assert.ok(text.includes(field), field);
 });
 
 void test("combined modal requests enough host width for provider columns on a wide terminal", async () => {
@@ -274,7 +265,7 @@ void test("combined modal requests enough host width for provider columns on a w
  assert.ok(columns >= 160, `host offers only ${columns} columns on a 240-column terminal`);
 });
 
-void test("modal providers share a row when wide and stack without loss when narrow", async t => {
+void test("modal providers share a row when wide and show only the active provider when narrow", async t => {
  t.mock.method(Date, "now", () => now);
  for (const width of [60, 240]) {
   const raw = await modal(width); const lines = raw.map(plain);
@@ -282,6 +273,7 @@ void test("modal providers share a row when wide and stack without loss when nar
   const headings = lines.filter(line => /Codex/.test(line) && /Claude Bridge/.test(line) && !/subscription usage/.test(line));
   assert.equal(headings.length > 0, width === 240, `provider layout at ${width}`);
   const text = lines.join("\n");
-  for (const value of ["75% left", "40% left", "80% left", "30% left"]) assert.ok(text.includes(value), value);
+  for (const value of width === 240 ? ["75% left", "40% left", "80% left", "30% left"] : ["75% left", "40% left"]) assert.ok(text.includes(value), value);
+  if (width === 60) assert.doesNotMatch(text, /80% left|30% left/);
  }
 });
